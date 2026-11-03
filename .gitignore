@@ -3,6 +3,7 @@ build/
 _internal/
 *.exe
 *.spec
+!SundayBlue.spec
 __pycache__/
 .venv/
 tests/sunday-test-*/
