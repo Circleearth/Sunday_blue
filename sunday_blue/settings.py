@@ -100,11 +100,13 @@ class Settings(QDialog):
         self.tokens = QSpinBox(); self.tokens.setRange(256, 128000); self.tokens.setValue(api['max_tokens'])
         self.context = QSpinBox(); self.context.setRange(1024, 2000000); self.context.setSingleStep(1000); self.context.setValue(api['context_limit'])
         self.stream = QCheckBox('流式显示回复'); self.stream.setChecked(api.get('stream',True))
-        for title,w in [('接口协议',self.protocol),('请求地址',self.url),('API Key',self.key),('鉴权方式',self.auth),('模型 ID',self.model),('最大输出 token',self.tokens),('上下文容量（手动）',self.context)]:
+        self.thinking = QSpinBox(); self.thinking.setRange(0, 30000); self.thinking.setSingleStep(1024); self.thinking.setValue(int(api.get('thinking_budget',0) or 0))
+        self.thinking.setSuffix(' tokens（0 = 关闭）')
+        for title,w in [('接口协议',self.protocol),('请求地址',self.url),('API Key',self.key),('鉴权方式',self.auth),('模型 ID',self.model),('最大输出 token',self.tokens),('上下文容量（手动）',self.context),('扩展思考预算',self.thinking)]:
             form.addRow(title,w)
         form.addRow('',self.clear_key); form.addRow('',self.stream)
         layout.addLayout(form)
-        self.test_status = label('密钥使用 Windows DPAPI 加密保存；请求地址可填根地址、/v1 或完整端点。')
+        self.test_status = label('扩展思考预算只对 Anthropic 协议模型生效；开启后思考块会随对话存档，并原样随后续请求回传。密钥使用 Windows DPAPI 加密保存；请求地址可填根地址、/v1 或完整端点。')
         self.test_button = QPushButton('测试连接 · 发送少量请求')
         self.test_button.clicked.connect(self.test)
         layout.addWidget(self.test_button); layout.addWidget(self.test_status); layout.addStretch()
@@ -112,7 +114,8 @@ class Settings(QDialog):
     def api_value(self):
         api = dict(self.value['api'])
         api.update(protocol=self.protocol.currentData(), base_url=self.url.text().strip(), model=self.model.text().strip(),
-                   auth=self.auth.currentData(), max_tokens=self.tokens.value(), context_limit=self.context.value(), stream=self.stream.isChecked())
+                   auth=self.auth.currentData(), max_tokens=self.tokens.value(), context_limit=self.context.value(),
+                   stream=self.stream.isChecked(), thinking_budget=self.thinking.value())
         endpoint(api['base_url'], api['protocol'])
         if self.clear_key.isChecked(): api['key_encrypted'] = ''
         if self.key.text().strip(): api['key_encrypted'] = protect(self.key.text().strip())

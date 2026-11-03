@@ -72,7 +72,8 @@ class Config:
         self.value = {
             'api': {'protocol': 'anthropic', 'base_url': 'https://api.anthropic.com',
                     'model': '', 'key_encrypted': '', 'auth': 'x-api-key',
-                    'max_tokens': 4096, 'context_limit': 200000, 'stream': True},
+                    'max_tokens': 4096, 'context_limit': 200000, 'stream': True,
+                    'thinking_budget': 0},
             'roles': {r[0]: {'roots': [], 'skills': [], 'plugins': []} for r in ROLES},
             'features': {'files': True, 'memory': True, 'mcp': False},
             'mcp_servers': [],

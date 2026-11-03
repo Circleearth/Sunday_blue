@@ -7,6 +7,39 @@
 
 ---
 
+## 2026-11-03 20:55 — Claude（扩展思考 thinking 块：请求→落库→读取）
+
+改动：`sunday_blue/provider.py`、`sunday_blue/storage.py`、`sunday_blue/settings.py`、`tests/test_core.py`
+目的：主人想读到模型的"思考元数据"。之前我误以为没有这层，实际是**功能未实现**——已补齐。逐处说明：
+
+1. **设置项**：`api` 默认值加 `thinking_budget: 0`（关闭）；设置 → API 连接 加"扩展思考预算"SpinBox（0–30000，0=关闭，只 Anthropic 协议生效，非 0 时 max_tokens 必须大于预算，否则自动忽略不发）。
+2. **请求侧**（`provider.py`）：`thinking_budget>0` 且 max_tokens 更大时，Anthropic body 加 `thinking:{type:"enabled",budget_tokens:N}`；流式解析新增 `thinking_delta`/`signature_delta`（存 `thinking`/`signature` 字段）；非流式 OpenAI 侧捕获 `reasoning`/`reasoning_content`。
+3. **落库**：thinking 块作为 `{"type":"thinking","thinking":...,"signature":...}` 跟随 assistant 消息存进 `conversations.sqlite3`（无需改表结构——content 本就是 JSON 字符串）；后续轮次原样回传（模型要求，否则签名报错）。
+4. **UI 不渲染 thinking**（气泡仍只显示 text）——刻意保持安静，用户看的是正文，思考是元数据。
+
+对方需要知道 / 风险预警：
+- **这是主人明确要的行为**，不算我擅自动版本（分歧原则不触发）；但 Codex 若想换成"气泡里折叠展示思考块"或"思考块默认丢弃"，直接改 `agent.py` 的渲染层即可，别动 provider 的请求/回传逻辑。
+- **收益**：维护备忘录（`维护备忘录/聊天记录维护/`，已 gitignore）的 `read_chat.py` 现在能读出 💭 思考元数据行；做"聊天记录维护"时能看到模型每轮的内部推理。
+- **成本/风险**：① 思考 token 计入 `output_tokens` 且按思考费率计费（真实 API 会多花）；② 思考块随上下文回传，长会话上下文增长更快；③ 默认关闭（0），现有行为零变化，主人手动开启才生效。
+- 测试基线 **24 → 25 passed**（新增 `test_thinking_blocks_are_captured_and_stored`）。
+
+验证：`python -m unittest discover -s tests` → 25 OK；mock 服务覆盖 Anthropic 流式/非流式 thinking 块捕获 + 落库 + 回传。
+
+---
+
+## 2026-11-03 20:42 — Claude（维护备忘录：根目录 + gitignore + 聊天记录 skill）
+
+改动：根目录 `维护备忘录/`（已加 `.gitignore`，**不进库不打包**）：
+- `维护备忘录/README.md`：本分支约定——维护工作的信息来源是聊天记录，读库时只认 `messages` 表，不把固定注入上下文（人格/宿主规则/持久记忆/扩展）当对话读。
+- `维护备忘录/聊天记录维护/SKILL.md`：skill 入口。记录在哪（`data/conversations.sqlite3` 的 sessions/messages/audit 表）、content 字段的两种形态（str / 块数组，tool_result 挂在 user 行）、8 条坑（JSON 字符串要先 loads、空 text 块 strip、WAL 并发、只读不写、备份优先、思考块需开启才有……）。
+- `维护备忘录/聊天记录维护/read_chat.py`：只读取读器，`python read_chat.py <role> [N]` 渲染最近 N 个会话。
+
+对方需要知道：
+- 该文件夹是**本机私有维护工具**，`.gitignore` 了 `维护备忘录/`，Codex 看不到它、也不要 commit 它；需要读聊天记录时自己按 SKILL.md 的方法读 `data/conversations.sqlite3`。
+- 已知现状：Kia 目前只有 1 个会话（不是 2 段）；模型思考元数据默认不在库里（20:55 那条已补上功能，默认关闭）。
+
+---
+
 ## 2026-11-03 20:06 — Claude（交接区重构为三栏 + 归档规则）
 
 改动：`handoff/` 目录结构、`README.md`（"共同交接"一节）

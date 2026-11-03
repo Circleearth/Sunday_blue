@@ -103,6 +103,7 @@ class MockHandler(BaseHTTPRequestHandler):
             blocks=[{'type':'tool_use','id':'call_1','name':'write_file','input':{'path':self.server.target,'content':'made by mock'}}]
             finish='tool_use'
         elif mode=='compact':blocks=[{'type':'text','text':'摘要：保留任务与决策。'}];finish='end_turn'
+        elif mode=='thinking':blocks=[{'type':'thinking','thinking':'先规划再回答。','signature':'sig123'},{'type':'text','text':'你好，测试回复。'}];finish='end_turn'
         else:blocks=[{'type':'text','text':'你好，测试回复。'}];finish='end_turn'
         if not payload.get('stream'):
             if anthropic:result={'content':blocks,'usage':{'input_tokens':20,'output_tokens':8},'stop_reason':finish}
@@ -114,6 +115,10 @@ class MockHandler(BaseHTTPRequestHandler):
                 if b['type']=='text':
                     events.extend([{'type':'content_block_start','index':i,'content_block':{'type':'text','text':''}},
                       {'type':'content_block_delta','index':i,'delta':{'type':'text_delta','text':b['text']}}])
+                elif b['type']=='thinking':
+                    events.extend([{'type':'content_block_start','index':i,'content_block':{'type':'thinking','thinking':''}},
+                      {'type':'content_block_delta','index':i,'delta':{'type':'thinking_delta','thinking':b['thinking']}},
+                      {'type':'content_block_delta','index':i,'delta':{'type':'signature_delta','signature':b.get('signature','')}}])
                 else:
                     events.extend([{'type':'content_block_start','index':i,'content_block':dict(b,input={})},
                         {'type':'content_block_delta','index':i,'delta':{'type':'input_json_delta','partial_json':json.dumps(b['input'])}}])
@@ -146,6 +151,21 @@ class ProviderTests(Fixture):
     def test_incomplete_stream_rejected(self):
         self.server.mode='truncated'
         with self.assertRaises(RuntimeError):Provider(self.config.value['api']).complete('s',[{'role':'user','content':'x'}])
+    def test_thinking_blocks_are_captured_and_stored(self):
+        self.server.mode='thinking'
+        api=dict(self.config.value['api'],thinking_budget=1024)
+        self.config.value['api'].update(api)
+        sid=self.store.create('rui');self.store.add(sid,'user','think about it')
+        Agent(self.root,self.config.snapshot(),self.store,sid)._run()
+        rows=self.store.messages(sid)
+        self.assertEqual(len(rows),2)
+        last=rows[-1]['content']
+        self.assertEqual([b['type'] for b in last],['thinking','text'])
+        self.assertEqual(last[0]['thinking'],'先规划再回答。')
+        self.assertEqual(last[0]['signature'],'sig123')
+        # thinking block must be echoed in the next request as well
+        Agent(self.root,self.config.snapshot(),self.store,sid)._run()
+        self.assertIn('thinking',json.dumps(self.server.seen[-1][1],ensure_ascii=False))
     def test_agent_tool_loop_writes_with_review(self):
         self.server.mode='tool';p=self.workspace/'generated.txt';self.server.target=str(p)
         self.config.value['roles']['rui']['roots']=[{'path':str(self.workspace),'write':True}]

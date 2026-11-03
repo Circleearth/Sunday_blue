@@ -66,6 +66,11 @@ class Provider:
             body.update(system=system, messages=[{'role': m['role'], 'content': m['content']} for m in messages])
             if tools:
                 body['tools'] = tools
+            thinking_budget = int(c.get('thinking_budget') or 0)
+            # Only request extended thinking when the model actually has room for it;
+            # otherwise the API rejects the request (max_tokens must exceed the budget).
+            if thinking_budget > 0 and body['max_tokens'] > thinking_budget:
+                body['thinking'] = {'type': 'enabled', 'budget_tokens': thinking_budget}
         else:
             body['messages'] = openai_messages(system, messages)
             if tools:
@@ -86,6 +91,9 @@ class Provider:
                     else:
                         msg = payload['choices'][0]['message']
                         blocks = [{'type': 'text', 'text': msg.get('content') or ''}]
+                        reasoning = msg.get('reasoning') or msg.get('reasoning_content') or ''
+                        if reasoning:
+                            blocks.insert(0, {'type': 'thinking', 'thinking': reasoning, 'signature': ''})
                         for call in msg.get('tool_calls', []):
                             blocks.append({'type': 'tool_use', 'id': call['id'], 'name': call['function']['name'], 'input': json.loads(call['function']['arguments'])})
                         result = (blocks, payload.get('usage', {}), payload['choices'][0].get('finish_reason', ''))
@@ -125,7 +133,7 @@ class Provider:
                     usage.update(event['message'].get('usage', {}))
                 elif kind == 'content_block_start':
                     b = event['content_block']
-                    if b['type'] in ('text', 'tool_use'):
+                    if b['type'] in ('text', 'tool_use', 'thinking', 'redacted_thinking'):
                         blocks[index] = b
                         if b['type'] == 'text' and b.get('text'):
                             on_text(b['text'])
@@ -134,6 +142,10 @@ class Provider:
                     if delta['type'] == 'text_delta':
                         blocks.setdefault(index, {'type': 'text', 'text': ''})['text'] += delta['text']
                         on_text(delta['text'])
+                    elif delta['type'] == 'thinking_delta':
+                        blocks.setdefault(index, {'type': 'thinking', 'thinking': ''})['thinking'] += delta['thinking']
+                    elif delta['type'] == 'signature_delta':
+                        blocks.setdefault(index, {'type': 'thinking'})['signature'] = delta.get('signature', '')
                     elif delta['type'] == 'input_json_delta':
                         args[index] = args.get(index, '') + delta['partial_json']
                 elif kind == 'message_delta':
