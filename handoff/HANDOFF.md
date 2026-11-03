@@ -20,6 +20,26 @@
 
 ---
 
+## 2026-11-03 19:09 — Claude（UI 小修 + /compact 指令 + 主题切换）
+
+改动：`sunday_blue/theme.py`、`sunday_blue/ui.py`、`sunday_blue/agent.py`、`sunday_blue/storage.py`、`tests/test_core.py`
+目的：主人要修 4 个小问题。逐条说明：
+
+1. **角色对话框开头两个空行** — 根因是模型返回/历史里存的助手文本带前导 `\n\n`（以及 CRLF）。新增 `agent._clean()`（`replace('\r\n','\n').replace('\r','\n').lstrip()`），在「存压缩摘要」「把旧摘要拼进 system」「`Bubble.set_text()` 渲染每条气泡前」三处统一调用。旧会话里已存的前导空行，重开软件渲染时也会被 `Bubble.set_text` 清掉，所以历史对话不会再顶部开两个空行。
+2. **压缩改成指令、删掉"上下文"查看按钮** — 删掉 `ui.context_dialog()` 方法及顶栏"上下文"按钮；压缩不再靠 `ui.compact()`/`compact_button`（该按钮和 `compact` 方法都删了）。改为在输入框直接发 `/compact`（也接受 `/ compact`、`/Compact：` 这类大小写/全角变体），由 `agent.is_compact_command()` 识别后**在宿主侧拦截**：`/compact` 这条本身作为新的 `summarized_through` 边界被排除出后续模型上下文，不会发给模型当指令，也不会污染记录。仅当**最后一条**消息是裸 `/compact` 才触发（`messages[-1]`），避免把 `/compact` 出现在正文里也误触发。输入框 placeholder 已提示"输入 /compact 可压缩当前上下文"。
+3. **分支按钮改 Claude Code 风格** — 顶栏原"分支"按钮换成竖排三点 `⋮`（`session_button`），点击弹出 `QMenu`（"创建分支"）。同时给左侧会话列表加了右键菜单（`_sidebar_context_menu`），对**任意一条**历史会话右键也能建分支（`_menu_fork` 用 `_menu_fork_target` 记录目标会话 ID，不再只分当前会话）。`fork_session()` 保留为公共入口供测试/默认行为，等价于对当前会话建分支。分支功能逻辑不变（`store.fork` 未动）。
+4. **设置旁加 月亮/太阳 主题切换按钮** — `theme.py` 原来只有一个 `STYLE`（暗色），拆成 `DARK_STYLE`（=原样式，保持为默认/回退）+ 新建 `LIGHT_STYLE`（文件夹背景那种白，选择器逐条镜像暗色：底色 `#f6f7f9`、卡片白、边框浅灰、文字深灰、主按钮蓝）。新增 `style_for(name)`。顶栏"⚙ 设置"旁加 `theme_button`（暗色时显示 `☀  浅色`，浅色时显示 `☾  暗色`，点一下翻转），写入 `config.value['ui_theme']` 并 `config.save()`，下次启动记住。`Bubble` 气泡按主题换浅色配色（`light=True`）。`ui_theme` 已加进 `Config` 默认值和读取分支（默认 `dark`）。
+
+对方需要知道 / 风险预警：
+- **打包仍暂停**（沿用主人指令，本轮没动打包/EXE/.cmd）。
+- 改动集中在 `theme.py`/`ui.py`/`agent.py`/`storage.py`，**没有改** `provider.py`/`files.py`/`extensions.py` 的数据与工具路径，也不影响数据布局。`ui_theme` 是新键，老 `data/settings.json` 没有它时回退 `dark`，向后兼容。
+- Codex 若要继续做主题（比如加第三个配色或跟随系统），在 `theme.py` 里加新常量+`style_for` 分支即可，别动 `DARK_STYLE`（它是默认回退，也是主人"目前颜色"的基准）。
+- 测试基线现在 **24 passed**（原 22 + 新增 2 个 `/compact` 拦截测试：`test_slash_compact_command_intercepted`、`test_slash_compact_ignores_non_bare_command`）。
+
+验证：`python -m unittest discover -s tests` → **24 OK（11.06s）**；另跑了一次 offscreen 冒烟：`MainWindow` 正常启动、主题按钮翻转 dark↔light、`⋮` 菜单建分支正常、`data/settings.json` 正确写入 `ui_theme`（冒烟产生的临时分支与设置键已手工还原回 `dark` + 原会话）。
+
+---
+
 ## 2026-11-03 18:52 — Claude（cmd 启动修复）
 
 改动：`Start Sunday Blue.cmd`

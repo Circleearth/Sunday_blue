@@ -11,7 +11,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from sunday_blue.storage import Config, Store, protect, plain
 from sunday_blue.files import FileTools
 from sunday_blue.provider import Provider, endpoint, openai_messages
-from sunday_blue.agent import Agent
+from sunday_blue.agent import Agent, is_compact_command
 from sunday_blue.extensions import MCPClient, validate_servers, extension_text
 
 class Fixture(unittest.TestCase):
@@ -165,6 +165,22 @@ class ProviderTests(Fixture):
         self.assertEqual(len(self.store.messages(sid)),1)
         self.assertEqual(len(self.store.messages(sid,True)),0)
         self.assertIn('摘要',self.store.session(sid)['summary'])
+    def test_slash_compact_command_intercepted(self):
+        sid=self.store.create('rui');self.store.add(sid,'user','first exchange');self.store.add(sid,'assistant','first reply')
+        last=self.store.add(sid,'user','/compact')
+        self.server.mode='compact'
+        Agent(self.root,self.config.snapshot(),self.store,sid)._run()
+        s=self.store.session(sid)
+        self.assertIn('摘要',s['summary'])
+        self.assertEqual(s['summarized_through'],last)  # "/compact" itself is excluded from future context
+        self.assertEqual(len(self.store.messages(sid)),3)
+        self.assertEqual(self.store.messages(sid,True),[])
+    def test_slash_compact_ignores_non_bare_command(self):
+        self.assertTrue(is_compact_command('/compact'))
+        self.assertTrue(is_compact_command('/ compact'))
+        self.assertTrue(is_compact_command('/Compact：'))
+        self.assertFalse(is_compact_command('/compact now please'))
+        self.assertFalse(is_compact_command('please /compact'))
     def test_tool_conversion(self):
         m=[{'role':'assistant','content':[{'type':'tool_use','name':'read_file','id':'a','input':{'path':'p'}}]},
            {'role':'user','content':[{'type':'tool_result','tool_use_id':'a','content':'result'}]}]

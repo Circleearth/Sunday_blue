@@ -6,11 +6,11 @@ from PySide6.QtCore import Qt, QTimer, Signal, QSize
 from PySide6.QtGui import QIcon, QPixmap, QColor, QPainter, QPen, QLinearGradient, QFont, QTextOption
 from PySide6.QtWidgets import (QApplication, QWidget, QFrame, QLabel, QPushButton, QHBoxLayout,
     QVBoxLayout, QListWidget, QListWidgetItem, QScrollArea, QPlainTextEdit, QTextBrowser,
-    QProgressBar, QDialog, QMessageBox, QInputDialog, QFileDialog, QSizeGrip, QSizePolicy)
+    QProgressBar, QDialog, QMessageBox, QInputDialog, QFileDialog, QSizeGrip, QSizePolicy, QMenu)
 from .storage import ROLES, Store, plain
-from .agent import Agent, system_prompt
+from .agent import Agent
 from .settings import Settings
-from .theme import STYLE
+from .theme import style_for
 
 def text_label(text, name=None):
     w = QLabel(text)
@@ -71,7 +71,7 @@ class Portrait(QFrame):
         p.drawText(self.rect().adjusted(22,0,-22,-17),Qt.AlignmentFlag.AlignBottom|Qt.AlignmentFlag.AlignHCenter,'S U N D A Y   B L U E')
 
 class Bubble(QTextBrowser):
-    def __init__(self,text,user=False,tool=False):
+    def __init__(self,text,user=False,tool=False,light=False):
         super().__init__()
         self.raw=text
         self.setOpenExternalLinks(False)
@@ -80,15 +80,22 @@ class Bubble(QTextBrowser):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setWordWrapMode(QTextOption.WrapMode.WrapAnywhere)
         self.setSizePolicy(self.sizePolicy().horizontalPolicy(),self.sizePolicy().verticalPolicy())
-        background='#294761' if user else ('#152236' if tool else '#1b2a40')
-        border='#42637f' if user else '#31435c'
-        self.setStyleSheet(f'QTextBrowser {{ background:{background}; border:1px solid {border}; border-radius:11px; padding:11px; font-size:14px; color:#e0e8f3; }}')
+        if light:
+            background='#dbe7fb' if user else ('#f2f4f7' if tool else '#eef1f5')
+            border='#b9cdea' if user else '#d0d5dd'
+            color='#1f2937'
+        else:
+            background='#294761' if user else ('#152236' if tool else '#1b2a40')
+            border='#42637f' if user else '#31435c'
+            color='#e0e8f3'
+        self.setStyleSheet(f'QTextBrowser {{ background:{background}; border:1px solid {border}; border-radius:11px; padding:11px; font-size:14px; color:{color}; }}')
         self.setMinimumWidth(170)
         self.setMaximumWidth(760)
         self.set_text(text)
         self.document().documentLayout().documentSizeChanged.connect(self.fit)
 
     def set_text(self,text):
+        text=(text or '').replace('\r\n','\n').replace('\r','\n').lstrip()
         self.raw=text
         longest=max((self.fontMetrics().horizontalAdvance(line[:1000]) for line in text.splitlines()),default=150)
         self.setMaximumWidth(min(760,max(180,longest+48)))
@@ -119,7 +126,7 @@ class MainWindow(QWidget):
         self.setWindowFlags(Qt.WindowType.Window|Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.resize(1440,900); self.setMinimumSize(1100,720)
-        self.setStyleSheet(STYLE)
+        self.ui_theme=config.value.get('ui_theme','dark'); self._apply_theme()
         outer=QVBoxLayout(self); outer.setContentsMargins(0,0,0,0)
         shell=QWidget(); shell.setObjectName('shell'); outer.addWidget(shell)
         main=QVBoxLayout(shell); main.setContentsMargins(1,1,1,1); main.setSpacing(0)
@@ -128,6 +135,7 @@ class MainWindow(QWidget):
         bar.addWidget(text_label('◇  SUNDAY BLUE','brand'))
         bar.addSpacing(18); bar.addWidget(text_label('YOUR PERSONAL SPACE','eyebrow')); bar.addStretch()
         bar.addWidget(button('⚙  设置',self.settings,'ghost'))
+        self.theme_button=button('☀  浅色' if self.ui_theme=='dark' else '☾  暗色',self.toggle_theme,'ghost'); bar.addWidget(self.theme_button)
         bar.addSpacing(10)
         for title,fn,obj in [('—',self.showMinimized,'ghost'),('□',self.maximize,'ghost'),('×',self.close,'close')]:
             b=button(title,fn,obj); b.setFixedSize(34,32); bar.addWidget(b)
@@ -144,6 +152,17 @@ class MainWindow(QWidget):
     def maximize(self):
         self.showNormal() if self.isMaximized() else self.showMaximized()
 
+    def _apply_theme(self):
+        self.setStyleSheet(style_for(self.ui_theme))
+        if hasattr(self, 'theme_button'):
+            self.theme_button.setText('☀  浅色' if self.ui_theme == 'dark' else '☾  暗色')
+
+    def toggle_theme(self):
+        self.ui_theme = 'light' if self.ui_theme == 'dark' else 'dark'
+        self._apply_theme()
+        self.config.value['ui_theme'] = self.ui_theme
+        self.config.save()
+
     def _sidebar(self,body):
         frame=QFrame(); frame.setObjectName('sidebar'); frame.setFixedWidth(224)
         layout=QVBoxLayout(frame); layout.setContentsMargins(18,25,16,16); layout.setSpacing(15)
@@ -151,7 +170,10 @@ class MainWindow(QWidget):
         self.side_name=text_label('Rui','title'); layout.addWidget(self.side_name)
         layout.addWidget(button('＋  开始新对话',self.new_session,'primary'))
         layout.addSpacing(12); layout.addWidget(text_label('会话记录 / CONVERSATIONS','eyebrow'))
-        self.sessions_list=QListWidget(); self.sessions_list.currentItemChanged.connect(self.select_history); layout.addWidget(self.sessions_list,1)
+        self.sessions_list=QListWidget(); self.sessions_list.currentItemChanged.connect(self.select_history)
+        self.sessions_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.sessions_list.customContextMenuRequested.connect(self._sidebar_context_menu)
+        layout.addWidget(self.sessions_list,1)
         row=QHBoxLayout()
         row.addWidget(button('重命名',self.rename_session,'ghost')); row.addWidget(button('导出',self.export_session,'ghost')); layout.addLayout(row)
         layout.addWidget(text_label('每一次对话，都有迹可循。','muted'))
@@ -162,16 +184,19 @@ class MainWindow(QWidget):
         row=QHBoxLayout(); names=QVBoxLayout()
         self.chat_title=text_label('Rui','title'); names.addWidget(self.chat_title)
         self.chat_status=text_label('就绪','muted'); names.addWidget(self.chat_status); row.addLayout(names); row.addStretch()
-        self.branch_button=button('分支',self.fork_session,'ghost'); row.addWidget(self.branch_button)
-        self.compact_button=button('压缩',self.compact,'ghost'); row.addWidget(self.compact_button)
-        row.addWidget(button('上下文',self.context_dialog,'ghost')); layout.addLayout(row)
+        self.session_menu=QMenu(self)
+        self._menu_fork_target=self.sid
+        self.fork_action=self.session_menu.addAction('创建分支'); self.fork_action.triggered.connect(self._menu_fork)
+        self.session_button=button('⋮',lambda:None,'ghost'); self.session_button.setFixedSize(34,32)
+        self.session_button.clicked.connect(lambda:self._show_session_menu())
+        row.addWidget(self.session_button); layout.addLayout(row)
         self.chat_scroll=QScrollArea(); self.chat_scroll.setWidgetResizable(True)
         self.chat_content=QWidget(); self.chat_content.setObjectName('chatContent'); self.chat_content.setStyleSheet('QWidget#chatContent { background:transparent; }')
         self.chat_layout=QVBoxLayout(self.chat_content); self.chat_layout.setContentsMargins(0,12,5,12); self.chat_layout.setSpacing(18)
         self.chat_scroll.setWidget(self.chat_content); layout.addWidget(self.chat_scroll,1)
         self.notice=text_label('','muted'); self.notice.setWordWrap(True); self.notice.hide(); layout.addWidget(self.notice)
         composer=QFrame(); composer.setObjectName('composer'); c=QVBoxLayout(composer); c.setContentsMargins(14,10,14,10)
-        self.input=Composer(); self.input.setObjectName('input'); self.input.setPlaceholderText('今天想聊些什么？也可以交给我一项任务。')
+        self.input=Composer(); self.input.setObjectName('input'); self.input.setPlaceholderText('今天想聊些什么？也可以交给我一项任务。输入 /compact 可压缩当前上下文。')
         self.input.setFixedHeight(80); self.input.send.connect(self.send); c.addWidget(self.input)
         actions=QHBoxLayout(); actions.addWidget(text_label('Enter 发送  ·  Shift + Enter 换行','muted')); actions.addStretch()
         self.retry_button=button('重试',self.retry,'ghost'); actions.addWidget(self.retry_button)
@@ -256,10 +281,32 @@ class MainWindow(QWidget):
         self.input.clear(); self.refresh_sessions(); self.render(); self.update_state()
 
     def fork_session(self):
-        if self.sid in self.workers:
-            self.show_notice('请等待当前回复完成或停止后再创建分支。'); return
-        self.save_draft(); self.sid=self.store.fork(self.sid); self.current_by_role[self.role]=self.sid
-        self.input.clear(); self.refresh_sessions(); self.render(); self.update_state(); self.show_notice('已创建独立分支；原对话保留，角色持久记忆共享。')
+        # Public entry (header button / tests): branch the currently active session.
+        self._menu_fork_target=self.sid; self._menu_fork()
+
+    def _show_session_menu(self):
+        # Header "⋯": branch the active session, disabled while a worker is running.
+        self._menu_fork_target=self.sid
+        self.fork_action.setEnabled(self.sid not in self.workers)
+        self.session_menu.exec(self.session_button.mapToGlobal(self.session_button.rect().bottomLeft()))
+
+    def _sidebar_context_menu(self, pos):
+        # Right-click on a session row: branch that specific session.
+        items=self.sessions_list.itemsAt(pos)
+        if not items:return
+        sid=items[0].data(Qt.ItemDataRole.UserRole)
+        self._menu_fork_target=sid
+        self.fork_action.setEnabled(sid not in self.workers)
+        self.session_menu.exec(self.sessions_list.mapToGlobal(pos))
+
+    def _menu_fork(self):
+        sid=self._menu_fork_target
+        if sid in self.workers:
+            self.show_notice('请等待该会话当前回复完成或停止后再创建分支。'); return
+        self.save_draft()
+        self.sid=self.store.fork(sid); self.current_by_role[self.role]=self.sid
+        self.input.clear(); self.refresh_sessions(); self.render(); self.update_state()
+        self.show_notice('已创建独立分支；原对话保留，角色持久记忆共享。')
 
     def rename_session(self):
         title,ok=QInputDialog.getText(self,'会话名称','名称：',text=self.store.session(self.sid)['title'])
@@ -322,7 +369,7 @@ class MainWindow(QWidget):
         col.setAlignment(Qt.AlignmentFlag.AlignTop)
         name='你' if user else next(r[1] for r in ROLES if r[0]==self.role)
         caption=text_label(name,'muted'); caption.setFixedHeight(20); caption.setAlignment(Qt.AlignmentFlag.AlignRight if user else Qt.AlignmentFlag.AlignLeft); col.addWidget(caption)
-        bubble=Bubble(text,user); col.addWidget(bubble,0,Qt.AlignmentFlag.AlignRight if user else Qt.AlignmentFlag.AlignLeft)
+        bubble=Bubble(text,user,light=self.ui_theme=='light'); col.addWidget(bubble,0,Qt.AlignmentFlag.AlignRight if user else Qt.AlignmentFlag.AlignLeft)
         if user:line.addStretch(1)
         line.addLayout(col,7)
         if not user:line.addStretch(1)
@@ -355,15 +402,11 @@ class MainWindow(QWidget):
         if not msgs or msgs[-1]['role']!='user':self.show_notice('没有等待回复的消息。');return
         self.start_worker()
 
-    def compact(self):
-        if self.sid in self.workers:return
-        if not self.store.messages(self.sid,context=True):self.show_notice('没有需要压缩的新消息。');return
-        self.start_worker(compact=True)
-
-    def start_worker(self,compact=False):
+    def start_worker(self):
+        # Normal chat turns. Typing "/compact" in the composer is intercepted inside the agent.
         sid=self.sid
         self.errors.pop(sid,None)
-        worker=Agent(self.config.root,self.config.snapshot(),self.store,sid,compact)
+        worker=Agent(self.config.root,self.config.snapshot(),self.store,sid)
         worker.live_text=''; self.workers[sid]=worker
         worker.text.connect(self.on_text); worker.status.connect(self.on_status); worker.changed.connect(self.on_changed)
         worker.failed.connect(self.on_error); worker.approval.connect(self.on_approval)
@@ -425,7 +468,6 @@ class MainWindow(QWidget):
     def update_state(self):
         active=self.sid in self.workers
         self.send_button.setEnabled(not active);self.retry_button.setEnabled(not active);self.stop_button.setEnabled(active)
-        self.branch_button.setEnabled(not active);self.compact_button.setEnabled(not active)
         self.chat_status.setText(self.statuses.get(self.sid,'就绪 · 对话保存在本地'))
         for rid,b in self.role_buttons.items():
             busy=any(w.role==rid for w in self.workers.values())
@@ -446,13 +488,6 @@ class MainWindow(QWidget):
         limit=self.config.value['api']['context_limit'];percent=min(100,round(tokens/limit*100))
         self.context_label.setText(f'{prefix}\n{tokens:,} / {limit:,} tokens · {percent}%')
         self.context_progress.setValue(percent)
-
-    def context_dialog(self):
-        s=self.store.session(self.sid)
-        try:system=system_prompt(self.config.root,self.role,self.config.value)
-        except Exception as exc:system='系统提示构建失败：'+str(exc)
-        text='会话 ID：'+self.sid+'\n角色：'+self.role+'\n父会话：'+str(s['parent'])+'\n\n上次 API 用量：\n'+s['usage']+'\n\n压缩摘要：\n'+(s['summary'] or '尚未压缩')+'\n\n系统提示词预览：\n'+system
-        self.show_document('上下文 / CONTEXT',text)
 
     def memory_dialog(self):
         p=self.config.data/'memory'/self.role/'long_term.md'

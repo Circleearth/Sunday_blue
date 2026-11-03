@@ -76,6 +76,7 @@ class Config:
             'roles': {r[0]: {'roots': [], 'skills': [], 'plugins': []} for r in ROLES},
             'features': {'files': True, 'memory': True, 'mcp': False},
             'mcp_servers': [],
+            'ui_theme': 'dark',
         }
         if self.path.exists():
             loaded = json.loads(self.path.read_text(encoding='utf-8'))
@@ -86,6 +87,7 @@ class Config:
             self.value['mcp_servers'] = loaded.get('mcp_servers', [])
             self.value['last_role'] = loaded.get('last_role', 'rui')
             self.value['active_sessions'] = loaded.get('active_sessions', {})
+            self.value['ui_theme'] = loaded.get('ui_theme', 'dark')
         for role in ROLE_IDS:
             p = self.data / 'memory' / role / 'long_term.md'
             p.parent.mkdir(parents=True, exist_ok=True)
