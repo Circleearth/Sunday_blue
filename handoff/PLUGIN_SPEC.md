@@ -90,12 +90,12 @@ UTF-8 JSON，文件名与 id 一致，ID 使用小写字母、数字、短横线
 - https://docs.astrbot.app/dev/star/plugin-new.html
 - https://github.com/AstrBotDevs/AstrBot/blob/master/astrbot/core/platform/astr_message_event.py
 
-## 7. 已实现示例：daypart-greetings 1.0.0
+## 7. 已实现示例：daypart-greetings 2.0.0
 
-入口 `daypart_greetings.Greetings.on_message(config, role, sid, message_id, moment=None)`。UI 在保存普通用户输入后调用；`/compact`、重试、工具轮次不调用。无网络、无模型调用、无提示词注入。`native_plugins.py` 登记名称版本，设置插件列表基于 itemData 区分 native/prompt，不能把 native ID 当 JSON 文件名读取。
+主人已将 v1“纯本地固定寒暄”改为“本地触发+LLM表达”。本地只负责时段、角色、日期、冷却与幂等；Agent 在识别 /compact 之后、普通模型请求之前调用 on_message，获取本轮短控制信息，不新增持久提示词或本地气泡。表达通过现有模型请求生成，回复正常落 messages；有少量事件输入 token，但无额外 LLM 调用。
 
-时段表及本地文案位于 daypart_greetings.py；首次键为 role+local date+period，同角色会话共享。凌晨每次主动消息可提醒，配置 greetings/night_repeat 与 night_interval_minutes（默认 true/0）；其余时段仅首次。单条用户消息以 session+message_id 保证幂等；SQLite BEGIN IMMEDIATE 保证并发互斥。独立插件库 `data/plugins/daypart-greetings/state.sqlite3` 存 seen/events，不改主数据库 schema，不进入 memory/system/messages。插件库失败只写 audit，不阻塞模型请求；不自动重试生成重复气泡。
+插件库采用增量 CREATE TABLE triggers，不改变 seen/events 或主库。原 events 作为旧气泡只读保留；新 triggers 保存 message 级控制信息，session+message 唯一，失败重试复用。实际表达已在该用户消息之后出现时不再次触发；同轮工具前若有正文，撤掉事件，纯工具块保留事件到正文。时段首次状态为触发预留，不代表模型一定成功说出寒暄；请求失败可对原消息重试。
 
-宿主 UI 在对应用户消息之后展示本地气泡，并标明来源。关闭插件保留历史，设置从下一条消息生效。当前分支和 Markdown 导出不含本地气泡；重新开启不清空当天首次记录。后台无独立推送或定时催睡。文案是本地固定模板，不宣称由 LLM 生成。
+构建请求/压缩时 replay_legacy 将当前上下文范围内已展示的旧本地气泡插入请求历史，保留其对应用户消息 ID 用于压缩游标；不重写主 messages，不从更早已压缩历史复活事件。新模型寒暄天然可被模型回看、导出和分支。旧 events 不随分支复制，这是 v1 兼容限制。
 
-新增类似插件时仍需独立模块、显式注册、按角色配置、明确调用点与数据归属；禁止为了展示寒暄把事件混入模型消息。备份保留 data/plugins；卸载/关闭不能连带删除用户会话。测试覆盖边界、跨日、角色隔离、跨会话/重启、幂等、间隔、开关独立性、UI可见性及模型历史不含插件文案。
+插件在设置中按角色独立启停；凌晨重复与冷却沿用，默认0分钟，每个新输入可触发。日常八时段边界不变。必须测试触发去重、失败重试、工具前后指令撤除、实际回复落库、控制信息不落消息、旧数据只读重放及压缩游标。不要重新引入 UI 固定文案拼接，也不要为寒暄单独请求模型。

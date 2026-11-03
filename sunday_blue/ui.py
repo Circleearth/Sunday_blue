@@ -332,9 +332,6 @@ class MainWindow(QWidget):
         if not self.config.value['api']['model']:
             self.settings(); return
         mid=self.store.add(self.sid,'user',text)
-        if not is_compact_command(text):
-            try:self.greetings.on_message(self.config.value,self.role,self.sid,mid)
-            except Exception as exc:self.store.audit(self.role,self.sid,'greetings_failed',type(exc).__name__)
         if self.store.session(self.sid)['title']=='新对话':self.store.update(self.sid,title=text.replace('\n',' ')[:26])
         self.input.clear(); self.drafts[self.sid]=''; self.render(); self.start_worker()
 

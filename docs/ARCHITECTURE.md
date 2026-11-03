@@ -51,3 +51,5 @@ UI 组件实现已移至 `sunday_blue/ui_components.py`，主窗口协调仍在 
 聊天展示更新：Bubble 已改为无内滚动的 QLabel；短消息分段/延时只影响展示，不改变 messages 内容。chat_presentation.py 负责纯显示策略，chat_preferences.py 提供设置控件；ui.py 管线程信号和非阻塞分段计时。主题更新现有组件，避免重建历史后跳动。
 
 宿主插件更新：native_plugins 显式注册时间上下文与时段寒暄，Settings 按角色配置。Greetings 独立 SQLite 存首次状态及本地事件，UI 发送路径触发并显示，不注入模型 history/system，主聊天数据库 schema 不变。
+
+时段寒暄 v2 更新：触发入口已从 UI.send 移至 Agent._run，本地规则生成短暂控制信息，由同一次 LLM 回复表达并正常落库；不再添加本地固定气泡。旧 events 保留并按当前消息范围重放至请求/压缩历史，详细合同以 PLUGIN_SPEC 第7节为准。

@@ -181,12 +181,15 @@ class UITests(unittest.TestCase):
         self.assertEqual(saved['greetings']['night_interval_minutes'],20)
         dlg.deleteLater()
 
-    def test_local_greeting_visible_but_not_in_api_history(self):
+    def test_new_trigger_not_rendered_and_legacy_greeting_retained(self):
         from datetime import datetime,timezone
         mid=self.window.store.add(self.window.sid,'user','hello')
         self.window.greetings.on_message(self.config.value,'rui',self.window.sid,mid,datetime(2026,11,3,8,tzinfo=timezone.utc))
         self.window.render();QTest.qWait(80)
-        self.assertEqual(len(self.window.chat_bubbles),2)
+        self.assertEqual(len(self.window.chat_bubbles),1)
+        with self.window.greetings.connection() as db:
+            db.execute('INSERT INTO events VALUES(?,?,?,?)',(self.window.sid,mid,'早上好，旧版寒暄','2026-11-03'))
+        self.window.render();self.assertEqual(len(self.window.chat_bubbles),2)
         self.assertIn('早上',self.window.chat_bubbles[-1].raw)
         self.assertEqual(len(self.window.store.messages(self.window.sid,True)),1)
 

@@ -23,8 +23,8 @@ class GreetingTests(Fixture):
         self.assertEqual(a,g.on_message(c,'luna','a',1,self.at(1)))
         b=g.on_message(c,'luna','a',2,self.at(1,minute=1))
         self.assertNotEqual(a,b)
-        self.assertIn('睡',a+b)
-        self.assertEqual(len(g.for_session('a')),2)
+        self.assertIn('休息',a+b)
+        self.assertEqual(g.for_session('a'),{})
     def test_cooldown_and_disable_repeat(self):
         g=Greetings(self.config.data);c=self.config.value
         c['greetings']={'night_repeat':True,'night_interval_minutes':15}
@@ -33,7 +33,7 @@ class GreetingTests(Fixture):
         self.assertIsNotNone(g.on_message(c,'rui','a',3,self.at(1,minute=15)))
         c['greetings']['night_repeat']=False
         self.assertIsNone(g.on_message(c,'rui','a',4,self.at(2)))
-    def test_plugins_are_independent_and_prompt_free(self):
+    def test_plugins_independent_and_no_persistent_prompt(self):
         c=self.config.value;g=Greetings(self.config.data)
         c['roles']['rui']['native_plugins']={'time-context':False,'daypart-greetings':True}
         with patch('sunday_blue.agent.time_context') as clock:
@@ -46,3 +46,34 @@ class GreetingTests(Fixture):
         with patch('sunday_blue.agent.time_context',return_value='clock token'):
             self.assertIn('clock token',system_prompt(self.root,'rui',c))
         self.assertIsNone(g.on_message(c,'rui',sid,mid+1,self.at(11)))
+
+    def test_model_reply_stored_and_trigger_not_repeated_after_tools(self):
+        from sunday_blue.agent import Agent
+        sid=self.store.create('rui');self.store.add(sid,'user','hello')
+        agent=Agent(self.root,self.config.snapshot(),self.store,sid)
+        replies=[([{'type':'text','text':'早上好，今天想聊什么？'},{'type':'tool_use','id':'a','name':'memory_read','input':{}}],{},'tool_use'),
+                 ([{'type':'text','text':'接着回答你的问题。'}],{},'end_turn')]
+        with patch.object(agent.provider,'complete',side_effect=replies) as api:
+            agent._run()
+            self.assertIn('<greeting_event>',api.call_args_list[0].args[0])
+            self.assertNotIn('<greeting_event>',api.call_args_list[1].args[0])
+        history=self.store.messages(sid,True)
+        self.assertIn('早上好',str(history))
+        self.assertNotIn('<greeting_event>',str(history))
+        self.assertEqual(Greetings(self.config.data).for_session(sid),{})
+
+    def test_failed_request_retry_and_legacy_history(self):
+        from sunday_blue.agent import Agent
+        sid=self.store.create('rui');mid=self.store.add(sid,'user','hello')
+        first=Agent(self.root,self.config.snapshot(),self.store,sid)
+        with patch.object(first.provider,'complete',side_effect=RuntimeError('network')):
+            with self.assertRaises(RuntimeError):first._run()
+        retry=Agent(self.root,self.config.snapshot(),self.store,sid)
+        with patch.object(retry.provider,'complete',return_value=([{'type':'text','text':'你好。'}],{},'end_turn')) as api:
+            retry._run();self.assertIn('<greeting_event>',api.call_args.args[0])
+        g=Greetings(self.config.data)
+        with g.connection() as db:db.execute('INSERT INTO events VALUES(?,?,?,?)',(sid,mid,'旧版本已经显示的寒暄','2026-11-03'))
+        restored=g.replay_legacy(sid,self.store.messages(sid,True))
+        self.assertEqual(restored[1]['content'],'旧版本已经显示的寒暄')
+        self.assertEqual(restored[1]['id'],mid)
+        self.assertNotIn('旧版本已经显示的寒暄',str(self.store.messages(sid,True)))

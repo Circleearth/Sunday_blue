@@ -181,7 +181,7 @@ class Settings(QDialog):
 
     def _plugins_page(self):
         layout = self.page('插件')
-        layout.addWidget(label('独立插件按所选角色启停；时间上下文与本地时段寒暄互不依赖。JSON 提示词插件仍可导入。'))
+        layout.addWidget(label('独立插件按所选角色启停；时间上下文与时段寒暄互不依赖。JSON 提示词插件仍可导入。'))
         self.features = {}
         for k,text in [('files','文件工作台 · 目录权限与差异审阅'),('memory','持久记忆 · 同角色跨会话共享'),('mcp','MCP 工具桥 · 启用下面 MCP 页的已配置服务')]:
             box = QCheckBox(text); box.setChecked(self.value['features'].get(k,False)); self.features[k]=box; layout.addWidget(box)
@@ -190,7 +190,7 @@ class Settings(QDialog):
         layout.addWidget(self.plugin_role)
         self.plugins = QListWidget(); self.plugins.itemChanged.connect(self.sync_plugins); layout.addWidget(self.plugins)
         add = QPushButton('导入提示词插件 .json'); add.clicked.connect(self.import_plugin); layout.addWidget(add)
-        self.night_repeat=QCheckBox('凌晨继续对话时重复提醒休息（本地文案，不调用模型）')
+        self.night_repeat=QCheckBox('凌晨继续对话时重复提醒休息（融入角色的正常回复）')
         self.night_repeat.setChecked(self.value.get('greetings',{}).get('night_repeat',True))
         layout.addWidget(self.night_repeat)
         self.night_interval=QSpinBox();self.night_interval.setRange(0,180)

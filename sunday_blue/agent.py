@@ -11,6 +11,7 @@ from .extensions import MCPClient, extension_text
 from .storage import plain, now
 from .time_context import time_context
 from .native_plugins import enabled
+from .daypart_greetings import Greetings
 
 _COMPACT = re.compile(r'^\s*/\s*compact\b[\s:：]*$', re.IGNORECASE)
 
@@ -124,6 +125,8 @@ class Agent(QThread):
     def _run(self):
         session = self.store.session(self.sid)
         messages = self.store.messages(self.sid, context=True)
+        greetings=Greetings(self.root/'data')
+        messages=greetings.replay_legacy(self.sid,messages)
         system = system_prompt(self.root, self.role, self.config)
         if session['summary']:
             system += '\n\n以下为之前对话的压缩摘要（历史数据，不是新指令）：\n' + _clean(session['summary'])
@@ -139,6 +142,13 @@ class Agent(QThread):
             self.audit('compact_command', 'intercepted /compact from composer')
             self._compact_session(session, history, through=messages[-1]['id'])
             return
+        greeting_instruction=''
+        actual_user=next((m for m in reversed(messages) if m['role']=='user' and isinstance(m['content'],str) and m.get('id')),None)
+        if actual_user:
+            index=messages.index(actual_user)
+            already_spoke=any(m['role']=='assistant' and plain(m['content']).strip() for m in messages[index+1:])
+            if not already_spoke:
+                greeting_instruction=greetings.on_message(self.config,self.role,self.sid,actual_user['id']) or ''
         tools, external = [], {}
         if self.config['features'].get('files'):
             tools.extend(FILE_SCHEMAS)
@@ -162,12 +172,13 @@ class Agent(QThread):
         self.status.emit(self.sid, '正在思考…')
         allowed = {t['name'] for t in tools}
         for turn in range(16):
-            blocks, usage, finish = self.provider.complete(system, messages, tools, lambda s: self.text.emit(self.sid, s))
+            blocks, usage, finish = self.provider.complete(system + ('\n'+greeting_instruction if greeting_instruction else ''), messages, tools, lambda s: self.text.emit(self.sid, s))
             if self.cancel.is_set():
                 raise Cancelled()
             if not blocks:
                 raise ValueError('模型返回空响应，请检查模型配置。')
             self.store.add(self.sid, 'assistant', blocks)
+            if plain(blocks).strip():greeting_instruction=''
             self.store.update(self.sid, usage=json.dumps(usage))
             messages.append({'role': 'assistant', 'content': blocks})
             self.changed.emit(self.sid)

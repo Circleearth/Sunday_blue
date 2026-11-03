@@ -7,6 +7,14 @@
 
 ---
 
+## 2026-11-03 22:55 — Codex（时段寒暄 v2：本地触发 + 模型表达）
+改动：daypart_greetings、agent、ui、settings、native_plugins；测试和文档。
+目的：主人指出固定文案枯燥且角色不知道刚才寒暄过；明确允许改成本地代码 + LLM 回复，取代上一条纯本地方案。
+状态：完成，不打包。
+对方需要知道：UI 不再生成寒暄。Agent 普通请求按需附加事件，实际回复含寒暄，正常存 messages，下一轮可见。工具前输出正文后立即撤掉事件；纯工具块不撤。无额外模型请求，短事件有少量输入token，但不存消息、不累积。
+插件库增量新增 triggers，seen/events 保留；旧本地气泡在原会话请求及压缩历史中补入，携带来源消息 ID，主数据不重写。旧 events 不分支复制；新版正常模型寒暄随历史复制。失败重试复用同条触发。记录的是触发预留，失败未重试时不自动补发。
+验证：全量测试新增模型回复落库、工具后撤事件、失败重试与旧历史重放；结果见 docs/greeting-v2-results.txt。无真实API联调，不承诺模型绝不重复措辞。
+
 ## 2026-11-03 22:48 — Codex（时间插件可见 + 无 LLM 时段寒暄）
 改动：native_plugins.py、daypart_greetings.py；agent/settings/storage/ui/time_context；test_greetings/test_ui；README、插件规范、维护地图、架构、验证日志与截图。
 目的：主人要求独立时间插件在插件页可见；确认要新增时段首次寒暄与凌晨多次催睡，且不用 LLM 提示词实现。
