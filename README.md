@@ -142,7 +142,14 @@ Sunday_Blue/
 
 ## 共同交接
 
-本目录由 Claude 与 Codex 两个开发方共同维护，每次改动后的交接记录写入 `handoff/HANDOFF.md`（规则与模板在该文件内）。改动前请先读 `AGENTS.md`；本目录已建立 git 仓库，重要改动应提交 git 以便回退。
+本目录由 **Claude** 与 **Codex** 两个开发方共同维护，交接记录都在 `handoff/` 文件夹里，分工如下（详细规则写在 `handoff/HANDOFF.md`）：
+
+- `handoff/claude-to-codex.md` — **Claude 做的改动，Codex 请读取**；
+- `handoff/codex-to-claude.md` — **Codex 做的改动，Claude 请读取**；
+- `handoff/master-notes.md` — 主人的直接指令，**双方都读**，优先级最高；
+- 改动前请先读 `AGENTS.md`；本目录已建立 git 仓库，重要改动应提交 git 以便回退。
+
+**归档约定**：谁读完对方写的全部记录，就把那份文件整体移进 `handoff/archive/`，文件名注明日期和谁做的、谁归档的（如 `2026-11-05_claude-by-codex.md`），然后给对方留一个空文件重新开始。归档 = "已读完"的信号，archive 里的记录不再改动。
 
 ## 开发与验证
 

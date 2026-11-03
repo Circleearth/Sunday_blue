@@ -1,13 +1,25 @@
-# Sunday_Blue 共同交接文件夹（Claude ↔ Codex）
+# Sunday_Blue 共同交接（Claude ↔ Codex）
 
-本文件夹是 Claude 与 Codex 两个开发方共用的交接区。规则：
+本文件夹是 Claude 与 Codex 两个开发方共用的交接区。
+**记录分三份，各只有一个写入方和一个阅读方；本文件只放规则和索引，不再放记录。**
 
-- **每个开发方每完成一批有意义的改动，就来这里追加一节**，格式见下方模板。不要删除或改写对方已写的记录，只追加。
-- 记录要写清：改了哪些文件、为什么改、当前状态（完成/进行中/遗留问题）、下一步给对方的建议。
-- 涉及构建/打包/测试结果的，附上运行过的命令和结果。
-- 如果一方发现会破坏整个应用的改法（例如打包参数、目录结构、数据布局），先在这里留一条"风险预警"，再动手。
+## 文件分工
 
-## 模板
+| 文件 | 谁写 | 谁读 | 说明 |
+|---|---|---|---|
+| `claude-to-codex.md` | Claude | Codex | Claude 做的改动，写给 Codex 看 |
+| `codex-to-claude.md` | Codex | Claude | Codex 做的改动，写给 Claude 看 |
+| `master-notes.md` | 主人（可代为整理） | **双方** | 主人的直接指令，优先级最高 |
+| `archive/` | 阅读方归档 | 不再读 | 已读完的记录，只进不出 |
+
+## 记录规则（写入方遵守）
+
+1. **只写自己的 to- 文件**，不要改对方文件的记录；`master-notes.md` 只有主人（或其授权）可以写。
+2. 每次完成一批有意义的改动就追加一节，用下面的模板，**新记录加在文件顶部（`---` 之后）**，旧的往下沉。
+3. 涉及构建/打包/测试的，附上跑过的命令和结果；会破坏整个应用的改法（打包参数、目录结构、数据布局），先写一条"风险预警"再动手。
+4. 改完代码要跑 `python -m unittest discover -s tests -v`，改完文件要 `git add -A && git commit && git push`（提交署名用主人全局 git 身份：环状地球 / 2294104744@qq.com）。
+
+### 记录模板
 
 ```markdown
 ## YYYY-MM-DD HH:MM — <Claude | Codex>
@@ -18,83 +30,27 @@
 验证：<跑过的测试/构建命令与结果>
 ```
 
----
+## 归档规则（阅读方遵守）
 
-## 2026-11-03 19:09 — Claude（UI 小修 + /compact 指令 + 主题切换）
+**读完对方全部记录后，要归档，并把归档当作"我已读完"的信号。**
 
-改动：`sunday_blue/theme.py`、`sunday_blue/ui.py`、`sunday_blue/agent.py`、`sunday_blue/storage.py`、`tests/test_core.py`
-目的：主人要修 4 个小问题。逐条说明：
+1. 读完对方 to- 文件里的**每一条**记录（含所有风险预警和下一步）后，执行归档：
+   - 把对方文件**全部记录内容**移入 `handoff/archive/`，文件名：
+     `YYYY-MM-DD_<作者>-by-<归档人>.md`，例如 `2026-11-05_claude-by-codex.md`
+     （日期 = 归档当天；`作者` = 记录谁写的；`归档人` = 谁读完结账）。
+   - 文件里只含记录正文 + 一行归档头（`# 归档 · 原 <原文件名> · 归档于 <日期> by <归档人>`），**记录内容一字不改**。
+   - 然后在原位置新建一个空的同名 to- 文件，只保留顶部的"谁写/谁读"头部说明，给对方重新开始用。
+2. 归档 = 你已读完并对其中指示做了处理或确认；之后对方只需读新文件，不必再翻 archive。
+3. archive 里的文件任何情况下**不修改、不删除**（git 历史就是最终备份）。
+4. 不要归档还没读完的内容——只要还剩一条没处理，就把整份留在 to- 文件里，等下一轮。
 
-1. **角色对话框开头两个空行** — 根因是模型返回/历史里存的助手文本带前导 `\n\n`（以及 CRLF）。新增 `agent._clean()`（`replace('\r\n','\n').replace('\r','\n').lstrip()`），在「存压缩摘要」「把旧摘要拼进 system」「`Bubble.set_text()` 渲染每条气泡前」三处统一调用。旧会话里已存的前导空行，重开软件渲染时也会被 `Bubble.set_text` 清掉，所以历史对话不会再顶部开两个空行。
-2. **压缩改成指令、删掉"上下文"查看按钮** — 删掉 `ui.context_dialog()` 方法及顶栏"上下文"按钮；压缩不再靠 `ui.compact()`/`compact_button`（该按钮和 `compact` 方法都删了）。改为在输入框直接发 `/compact`（也接受 `/ compact`、`/Compact：` 这类大小写/全角变体），由 `agent.is_compact_command()` 识别后**在宿主侧拦截**：`/compact` 这条本身作为新的 `summarized_through` 边界被排除出后续模型上下文，不会发给模型当指令，也不会污染记录。仅当**最后一条**消息是裸 `/compact` 才触发（`messages[-1]`），避免把 `/compact` 出现在正文里也误触发。输入框 placeholder 已提示"输入 /compact 可压缩当前上下文"。
-3. **分支按钮改 Claude Code 风格** — 顶栏原"分支"按钮换成竖排三点 `⋮`（`session_button`），点击弹出 `QMenu`（"创建分支"）。同时给左侧会话列表加了右键菜单（`_sidebar_context_menu`），对**任意一条**历史会话右键也能建分支（`_menu_fork` 用 `_menu_fork_target` 记录目标会话 ID，不再只分当前会话）。`fork_session()` 保留为公共入口供测试/默认行为，等价于对当前会话建分支。分支功能逻辑不变（`store.fork` 未动）。
-4. **设置旁加 月亮/太阳 主题切换按钮** — `theme.py` 原来只有一个 `STYLE`（暗色），拆成 `DARK_STYLE`（=原样式，保持为默认/回退）+ 新建 `LIGHT_STYLE`（文件夹背景那种白，选择器逐条镜像暗色：底色 `#f6f7f9`、卡片白、边框浅灰、文字深灰、主按钮蓝）。新增 `style_for(name)`。顶栏"⚙ 设置"旁加 `theme_button`（暗色时显示 `☀  浅色`，浅色时显示 `☾  暗色`，点一下翻转），写入 `config.value['ui_theme']` 并 `config.save()`，下次启动记住。`Bubble` 气泡按主题换浅色配色（`light=True`）。`ui_theme` 已加进 `Config` 默认值和读取分支（默认 `dark`）。
+## 版本/方案分歧（主人定的原则）
 
-对方需要知道 / 风险预警：
-- **打包仍暂停**（沿用主人指令，本轮没动打包/EXE/.cmd）。
-- 改动集中在 `theme.py`/`ui.py`/`agent.py`/`storage.py`，**没有改** `provider.py`/`files.py`/`extensions.py` 的数据与工具路径，也不影响数据布局。`ui_theme` 是新键，老 `data/settings.json` 没有它时回退 `dark`，向后兼容。
-- Codex 若要继续做主题（比如加第三个配色或跟随系统），在 `theme.py` 里加新常量+`style_for` 分支即可，别动 `DARK_STYLE`（它是默认回退，也是主人"目前颜色"的基准）。
-- 测试基线现在 **24 passed**（原 22 + 新增 2 个 `/compact` 拦截测试：`test_slash_compact_command_intercepted`、`test_slash_compact_ignores_non_bare_command`）。
+- 同一处我们两个用了不同方案/不同版本：**优先以 Codex 的为准**；只有确认 Codex 的做法有明确错误或不清楚，Claude 才允许修复。
+- 改动前先看对方最近一次 git 提交（`git log -5`）和对方的 to- 文件；分歧结论写进自己的 to- 文件并同步 `master-notes.md` 由主人知晓。
 
-验证：`python -m unittest discover -s tests` → **24 OK（11.06s）**；另跑了一次 offscreen 冒烟：`MainWindow` 正常启动、主题按钮翻转 dark↔light、`⋮` 菜单建分支正常、`data/settings.json` 正确写入 `ui_theme`（冒烟产生的临时分支与设置键已手工还原回 `dark` + 原会话）。
+## 索引
 
----
-
-## 2026-11-03 18:52 — Claude（cmd 启动修复）
-
-改动：`Start Sunday Blue.cmd`
-- 根因：本机 PATH 里 `python` 先解析到 WindowsApps 的 Microsoft Store 别名（`C:\...\WindowsApps\python.exe`），执行时静默失败退出，cmd 窗口随之关闭——看起来像"秒退"，实际软件从没启动过。`pythonw` 不受该别名影响，直接指向真实 Python 3.14。
-- 现逻辑：有 `SundayBlue.exe` → 启动它；否则 `start pythonw main.py`，等 3 秒后 `tasklist` 检查 `pythonw.exe` 是否存活，不存活则提示"可能启动失败，请跑 `py main.py` 看控制台报错"。
-- 已验证：`pythonw main.py` 直接启动后进程存活（PID 820，正常占用），无崩溃。
-- Codex 注意：若后续做 EXE 打包，打包成功后 .cmd 会走 EXE 分支，该回退逻辑不碍事；但如果 Codex 想改用 `py` launcher 或其他启动方式，保留"启动失败给可诊断提示"这一点。
-
----
-
-## 2026-11-03 18:06 — Claude（第二轮回信）
-
-**给 Codex 的约定（重要，先看这段）：**
-1. **先不要打包。** 当前还在调整阶段，主人明确说暂时不用跑 `build.ps1`。日常启动一律用 `Start Sunday Blue.cmd` 或 `python main.py`（源码模式），数据照常落 `data/`，两套模式路径解析一致（`storage.root_path()` 已支持），不会把源码模式下的数据弄丢。
-2. 本目录已推送到 GitHub 远端 `Circleearth/Sunday_blue`（origin）。双方改完都要 `git add -A && git commit && git push`，防止文件被改坏时没法回退。
-3. **版本分歧原则（主人定的）**：我们两个如果用了不同方案/不同版本处理同一处，**优先以 Codex 的为准**；只有确认 Codex 的做法有明确错误或不清楚的地方，才允许我修复。改动前先看对方最近一次提交和下面记录。
-4. 我这边把"注意到的维护问题"已顺手修掉，见下方改动清单。如果 Codex 对打包有更先进的方案（比如换 Nuitka / 单文件 / 别的 spec 写法），直接推翻我这套，但同步更新 `build.ps1` 和本记录。
-
-改动：
-- 新建根目录 `SundayBlue.spec`（纳入 git）：修掉上次打包失败的根因——spec 中 `icon` 与 `main.py` 路径改为基于 `SPECPATH` 解析的绝对路径，不再依赖 PyInstaller 的 cwd；`pathex` 指向项目根。
-- `build.ps1`：不再用 CLI 参数让 PyInstaller 重新生成 spec（那样 spec 落在 `build/` 下、被 gitignore、参数容易漂移），改为直接 `python -m PyInstaller --clean --distpath build/dist --workpath build/work SundayBlue.spec`。
-- `Start Sunday Blue.cmd`：根目录有 `SundayBlue.exe` 就启动它，没有就回退 `python main.py`。这样未打包期间双击 .cmd 也能直接用。
-- 推送 GitHub：`git remote add origin https://github.com/Circleearth/Sunday_blue.git`，`push -u origin main` 成功。
-
-状态：完成（打包流程已修好但**暂不运行**；源码模式启动不受影响）。
-
-对方需要知道 / 下一步：
-- 打包想验证时：`pwsh build.ps1`（或 `powershell -File build.ps1`）→ 生成根目录 `SundayBlue.exe` + `_internal/` → 用 `.cmd` 启动做独立检查 → 结果追加到本文件。
-- 维护约定（我提的，Codex 认可或反对都请在这里回话）：新增 UI 组件不要继续堆进 `ui.py` 的 `MainWindow`，拆独立模块；`settings.py` 的 Settings 类同理。
-- 每次改完跑 `python -m unittest discover -s tests -v`（当前基线 22 passed）。
-
-验证：spec 路径解析逻辑（SPECPATH 绝对化）+ 测试基线未重跑（未改业务代码）；.cmd 回退逻辑目检。
-
----
-
-## 2026-11-03 17:04 — Claude
-
-
-改动：
-- 初始化本地 git 仓库（`D:\Sunday_Blue\.git`，分支 `main`），提交基线。`.gitignore` 已排除 `data/`、`build/`、`_internal/`、`*.exe`、`__pycache__/`、`tests/sunday-test-*/`、`tests/ui-test-*/`。
-- 新建本交接文件夹 `handoff/`。
-- 在 `README.md` 增加对本文件夹的指引（见"共同交接"一节）。
-
-目的：
-- 主人要求 Codex 也来维护本目录，双方修改文件时避免把整个 APP 改坏。git 仓库用于保护：任何改动前先有可回退的基线，改坏了可以 `git diff` 对照、`git checkout` 恢复。
-
-当前状态：**进行中**。
-
-对方（Codex）需要知道：
-1. 打包尚未完成。`build/work/SundayBlue/` 里只有构建中间产物，`build/dist/` 为空，根目录没有 `SundayBlue.exe`。上次构建在"Copying icon to EXE"失败：`FileNotFoundError: D:\Sunday_Blue\build\assets/app.ico`。
-   - 根因：`build/SundayBlue.spec` 第 35 行写的是相对路径 `icon=['assets/app.ico']`，而 `build.ps1` 用 `--specpath build` 让 PyInstaller 生成的 spec 落在 `build/` 目录，PyInstaller 解析相对路径时以 spec 所在目录（`build/`）为基准，于是找 `build/assets/app.ico`（不存在）。
-   - 修复方向（任选其一）：spec 中 icon 改为绝对路径或用 `os.path` 拼到项目根；或构建时 cwd 保持在根目录且 spec 路径相对方式调整。修复后重跑 `build.ps1 -Python python`，确认根目录生成 `SundayBlue.exe` + `_internal/`，并用 `Start Sunday Blue.cmd` 启动做独立检查。
-2. 改动前后请跑 `python -m unittest discover -s tests -v`（上次 22 项全部通过，见 `docs/test-results.txt`）。
-3. 遵守 `AGENTS.md`：不依赖旧项目（Great_blue/RedOS/Sunday），不读旧数据库，测试用本机 HTTP/MCP 假服务，不触碰真实 API Key 与 `data/` 中的用户会话。
-4. git 提交时保留本交接文件夹，提交信息写清动了什么；提交署名按主人全局 git 身份（环状地球 / 2294104744@qq.com）。
-
-验证：
-- `git init` + 首次提交（见 git log）。测试基线沿用上轮 `docs/test-results.txt`（22 passed，7.998s）。
+- 当前待读：`claude-to-codex.md`（有 5 节记录，最新 2026-11-03 20:06）；`codex-to-claude.md`（空，待 Codex 首条）；`master-notes.md`（1 节，双方都读）。
+- 历史归档：见 `archive/`（目前没有）。
+- 规则之外的背景（旧 HANDOFF.md 已拆分迁入上述三份文件，本文件不再承载记录）。
