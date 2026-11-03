@@ -167,4 +167,27 @@ class UITests(unittest.TestCase):
         self.assertEqual(chat_font(self.root,loaded).pointSize(),16)
         dlg.deleteLater()
 
+    def test_native_plugin_checkboxes_are_role_scoped_and_persist(self):
+        dlg=Settings(self.config,'rui',self.window)
+        items={dlg.plugins.item(i).data(Qt.ItemDataRole.UserRole)[1]:dlg.plugins.item(i) for i in range(dlg.plugins.count())}
+        self.assertIn('time-context',items);self.assertIn('daypart-greetings',items)
+        items['time-context'].setCheckState(Qt.CheckState.Unchecked)
+        dlg.plugin_role.setCurrentIndex(1)
+        self.assertEqual(dlg.plugins.item(0).checkState(),Qt.CheckState.Checked)
+        dlg.night_interval.setValue(20);dlg.save()
+        from sunday_blue.native_plugins import enabled
+        saved=Config(self.root).value
+        self.assertFalse(enabled(saved,'rui','time-context'));self.assertTrue(enabled(saved,'red','time-context'))
+        self.assertEqual(saved['greetings']['night_interval_minutes'],20)
+        dlg.deleteLater()
+
+    def test_local_greeting_visible_but_not_in_api_history(self):
+        from datetime import datetime,timezone
+        mid=self.window.store.add(self.window.sid,'user','hello')
+        self.window.greetings.on_message(self.config.value,'rui',self.window.sid,mid,datetime(2026,11,3,8,tzinfo=timezone.utc))
+        self.window.render();QTest.qWait(80)
+        self.assertEqual(len(self.window.chat_bubbles),2)
+        self.assertIn('早上',self.window.chat_bubbles[-1].raw)
+        self.assertEqual(len(self.window.store.messages(self.window.sid,True)),1)
+
 if __name__=='__main__':unittest.main()

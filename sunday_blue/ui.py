@@ -9,7 +9,8 @@ from PySide6.QtWidgets import (QApplication, QWidget, QFrame, QLabel, QPushButto
     QVBoxLayout, QListWidget, QListWidgetItem, QScrollArea, QPlainTextEdit, QTextBrowser,
     QProgressBar, QDialog, QMessageBox, QInputDialog, QFileDialog, QSizeGrip, QSizePolicy, QMenu)
 from .storage import ROLES, Store, plain
-from .agent import Agent
+from .agent import Agent, is_compact_command
+from .daypart_greetings import Greetings
 from .settings import Settings
 from .theme import style_for
 from .chat_presentation import segments, delay, options, chat_font, tool_failure
@@ -22,6 +23,7 @@ class MainWindow(QWidget):
         super().__init__()
         self.config=config; self.store=Store(config.data)
         self.store.recover_interrupted_tools()
+        self.greetings=Greetings(config.data)
         self.role='rui'; self.sid=None
         self.current_by_role={}
         for rid,sid in config.value.get('active_sessions',{}).items():
@@ -257,6 +259,7 @@ class MainWindow(QWidget):
             self.chat_layout.addWidget(welcome)
         if len(messages)>self.history_limit:
             self.chat_layout.addWidget(button(f'加载更早的消息（还有 {len(messages)-self.history_limit} 条）',self.more_history,'ghost'))
+        greetings=self.greetings.for_session(self.sid)
         for m in messages[-self.history_limit:]:
             text=plain(m['content']).strip()
             if text:
@@ -268,6 +271,7 @@ class MainWindow(QWidget):
                 for block in m['content']:
                     failure=tool_failure(block)
                     if failure:self.add_bubble(failure)
+            if m['id'] in greetings:self.add_bubble(greetings[m['id']],local=True)
         self.chat_layout.addStretch(1)
         worker=self.workers.get(self.sid)
         if worker and getattr(worker,'live_text',''):
@@ -293,13 +297,14 @@ class MainWindow(QWidget):
     def resize_bubbles(self):
         for bubble in self.chat_bubbles:bubble.set_available_width(self._chat_width())
 
-    def add_bubble(self,text,user=False):
+    def add_bubble(self,text,user=False,local=False):
         if not text.strip():return None
         row=QWidget(); line=QHBoxLayout(row); line.setContentsMargins(0,0,0,0)
         row.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Maximum)
         col=QVBoxLayout(); col.setSpacing(5)
         col.setAlignment(Qt.AlignmentFlag.AlignTop)
         name='你' if user else next(r[1] for r in ROLES if r[0]==self.role)
+        if local:name+=' · 时段寒暄'
         caption=text_label(name,'muted'); caption.setFixedHeight(20); caption.setAlignment(Qt.AlignmentFlag.AlignRight if user else Qt.AlignmentFlag.AlignLeft); col.addWidget(caption)
         bubble=Bubble(text,user,light=self.ui_theme=='light',width=self._chat_width(),font=chat_font(self.config.root,self.config.value.get('chat_display',{})))
         col.addWidget(bubble,0,Qt.AlignmentFlag.AlignRight if user else Qt.AlignmentFlag.AlignLeft)
@@ -326,7 +331,10 @@ class MainWindow(QWidget):
         if not text:return
         if not self.config.value['api']['model']:
             self.settings(); return
-        self.store.add(self.sid,'user',text)
+        mid=self.store.add(self.sid,'user',text)
+        if not is_compact_command(text):
+            try:self.greetings.on_message(self.config.value,self.role,self.sid,mid)
+            except Exception as exc:self.store.audit(self.role,self.sid,'greetings_failed',type(exc).__name__)
         if self.store.session(self.sid)['title']=='新对话':self.store.update(self.sid,title=text.replace('\n',' ')[:26])
         self.input.clear(); self.drafts[self.sid]=''; self.render(); self.start_worker()
 

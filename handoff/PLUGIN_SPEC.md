@@ -48,9 +48,9 @@ UTF-8 JSON，文件名与 id 一致，ID 使用小写字母、数字、短横线
 5. 执行生命周期明确：每轮、每次模型请求或启动时，三者不能混用；停止、异常、资源回收分别测试。
 6. 增加单测和必要集成测试，更新本规范、维护地图、自己的交接记录；不需要为无副作用常量堆叠测试。
 
-### 已实现示例：time-context 1.0.0
+### 已实现示例：time-context 1.1.0
 
-入口 `sunday_blue/time_context.py:time_context(moment=None)`；由 `agent.system_prompt` 显式调用。所有九个角色默认常驻，**不是设置中可勾选的 JSON 插件**，当前没有开关。无需改用户 settings.json。
+入口 `sunday_blue/time_context.py:time_context(moment=None)`；由 `agent.system_prompt` 显式调用。由 `native_plugins.py` 显式登记，在设置→插件中显示，按角色独立启停；默认启用。角色配置 `native_plugins/time-context` 保存布尔值，旧配置缺省兼容。它仍是宿主 Python 插件，不是提示词 JSON 插件，不动态执行用户代码。
 
 时间取操作系统本地时钟与时区，精确到分钟，包含 YYYY-MM-DD、星期、HH:MM、UTC 偏移。每次开始处理用户消息/重试构建 system 时刷新；同一轮工具往返保留该轮时间快照，不承诺每个工具请求重新采样。空闲时无需午夜定时器，午夜后的下一轮自动换日。压缩整理器不需要当前时间，不注入它，避免把历史“今天”错改成当前日期。历史气泡、数据库消息均不增加时间元消息。
 
@@ -89,3 +89,13 @@ UTF-8 JSON，文件名与 id 一致，ID 使用小写字母、数字、短横线
 - https://docs.astrbot.app/use/plugin.html
 - https://docs.astrbot.app/dev/star/plugin-new.html
 - https://github.com/AstrBotDevs/AstrBot/blob/master/astrbot/core/platform/astr_message_event.py
+
+## 7. 已实现示例：daypart-greetings 1.0.0
+
+入口 `daypart_greetings.Greetings.on_message(config, role, sid, message_id, moment=None)`。UI 在保存普通用户输入后调用；`/compact`、重试、工具轮次不调用。无网络、无模型调用、无提示词注入。`native_plugins.py` 登记名称版本，设置插件列表基于 itemData 区分 native/prompt，不能把 native ID 当 JSON 文件名读取。
+
+时段表及本地文案位于 daypart_greetings.py；首次键为 role+local date+period，同角色会话共享。凌晨每次主动消息可提醒，配置 greetings/night_repeat 与 night_interval_minutes（默认 true/0）；其余时段仅首次。单条用户消息以 session+message_id 保证幂等；SQLite BEGIN IMMEDIATE 保证并发互斥。独立插件库 `data/plugins/daypart-greetings/state.sqlite3` 存 seen/events，不改主数据库 schema，不进入 memory/system/messages。插件库失败只写 audit，不阻塞模型请求；不自动重试生成重复气泡。
+
+宿主 UI 在对应用户消息之后展示本地气泡，并标明来源。关闭插件保留历史，设置从下一条消息生效。当前分支和 Markdown 导出不含本地气泡；重新开启不清空当天首次记录。后台无独立推送或定时催睡。文案是本地固定模板，不宣称由 LLM 生成。
+
+新增类似插件时仍需独立模块、显式注册、按角色配置、明确调用点与数据归属；禁止为了展示寒暄把事件混入模型消息。备份保留 data/plugins；卸载/关闭不能连带删除用户会话。测试覆盖边界、跨日、角色隔离、跨会话/重启、幂等、间隔、开关独立性、UI可见性及模型历史不含插件文案。

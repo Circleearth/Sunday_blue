@@ -2,7 +2,7 @@
 from datetime import datetime
 
 PLUGIN_ID = 'time-context'
-VERSION = '1.0.0'
+VERSION = '1.1.0'
 
 def time_context(moment=None):
     # OS local timezone is authoritative; never label UTC as user local time.

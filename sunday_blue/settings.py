@@ -14,6 +14,7 @@ from .provider import Provider, endpoint
 from .extensions import validate_servers
 from .files import no_links, inside
 from .chat_preferences import ChatPreferences
+from .native_plugins import PLUGINS, enabled
 
 def label(text):
     w = QLabel(text)
@@ -180,7 +181,7 @@ class Settings(QDialog):
 
     def _plugins_page(self):
         layout = self.page('插件')
-        layout.addWidget(label('内置能力开关 + 可导入的提示词插件。程序代码扩展由 MCP 承担；不会执行插件包内的 Python 脚本。'))
+        layout.addWidget(label('独立插件按所选角色启停；时间上下文与本地时段寒暄互不依赖。JSON 提示词插件仍可导入。'))
         self.features = {}
         for k,text in [('files','文件工作台 · 目录权限与差异审阅'),('memory','持久记忆 · 同角色跨会话共享'),('mcp','MCP 工具桥 · 启用下面 MCP 页的已配置服务')]:
             box = QCheckBox(text); box.setChecked(self.value['features'].get(k,False)); self.features[k]=box; layout.addWidget(box)
@@ -189,20 +190,41 @@ class Settings(QDialog):
         layout.addWidget(self.plugin_role)
         self.plugins = QListWidget(); self.plugins.itemChanged.connect(self.sync_plugins); layout.addWidget(self.plugins)
         add = QPushButton('导入提示词插件 .json'); add.clicked.connect(self.import_plugin); layout.addWidget(add)
+        self.night_repeat=QCheckBox('凌晨继续对话时重复提醒休息（本地文案，不调用模型）')
+        self.night_repeat.setChecked(self.value.get('greetings',{}).get('night_repeat',True))
+        layout.addWidget(self.night_repeat)
+        self.night_interval=QSpinBox();self.night_interval.setRange(0,180)
+        self.night_interval.setValue(self.value.get('greetings',{}).get('night_interval_minutes',0))
+        self.night_interval.setSuffix(' 分钟（0 = 每次发送；对所有角色生效）')
+        layout.addWidget(self.night_interval)
+        layout.addWidget(label('寒暄按角色 × 本地日期 × 时段记忆；同角色多会话共享首次记录。只有你发送消息才触发，空闲时不主动打扰。'))
         self.load_plugins()
 
     def load_plugins(self):
         self.plugins.blockSignals(True); self.plugins.clear()
-        enabled = self.value['roles'][self.plugin_role.currentData()]['plugins']
+        selected = self.value['roles'][self.plugin_role.currentData()]['plugins']
+        for pid,meta in PLUGINS.items():
+            item=QListWidgetItem(meta['name']+' · '+meta['version'])
+            item.setData(Qt.ItemDataRole.UserRole,('native',pid));item.setToolTip(meta['description'])
+            item.setFlags(item.flags()|Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Checked if enabled(self.value,self.plugin_role.currentData(),pid) else Qt.CheckState.Unchecked)
+            self.plugins.addItem(item)
         for p in sorted((self.config.root/'extensions'/'plugins').glob('*.json')):
             item = QListWidgetItem(p.stem)
+            item.setData(Qt.ItemDataRole.UserRole,('prompt',p.stem))
             item.setFlags(item.flags()|Qt.ItemFlag.ItemIsUserCheckable)
-            item.setCheckState(Qt.CheckState.Checked if p.stem in enabled else Qt.CheckState.Unchecked)
+            item.setCheckState(Qt.CheckState.Checked if p.stem in selected else Qt.CheckState.Unchecked)
             self.plugins.addItem(item)
         self.plugins.blockSignals(False)
 
     def sync_plugins(self):
-        self.value['roles'][self.plugin_role.currentData()]['plugins'] = [self.plugins.item(i).text() for i in range(self.plugins.count()) if self.plugins.item(i).checkState()==Qt.CheckState.Checked]
+        role=self.value['roles'][self.plugin_role.currentData()]
+        role['plugins']=[];role['native_plugins']={}
+        for i in range(self.plugins.count()):
+            item=self.plugins.item(i);kind,pid=item.data(Qt.ItemDataRole.UserRole)
+            checked=item.checkState()==Qt.CheckState.Checked
+            if kind=='native':role['native_plugins'][pid]=checked
+            elif checked:role['plugins'].append(pid)
 
     def import_plugin(self):
         path,_ = QFileDialog.getOpenFileName(self,'导入插件',filter='JSON (*.json)')
@@ -286,6 +308,7 @@ class Settings(QDialog):
     def save(self):
         try:
             self.value['chat_display']=self.chat_preferences.value()
+            self.value['greetings']={'night_repeat':self.night_repeat.isChecked(),'night_interval_minutes':self.night_interval.value()}
             self.value['api']=self.api_value()
             self.value['mcp_servers']=validate_servers(json.loads(self.mcp.toPlainText()))
             self.value['features']={k:w.isChecked() for k,w in self.features.items()}

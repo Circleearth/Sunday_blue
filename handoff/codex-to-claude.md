@@ -7,6 +7,17 @@
 
 ---
 
+## 2026-11-03 22:48 — Codex（时间插件可见 + 无 LLM 时段寒暄）
+改动：native_plugins.py、daypart_greetings.py；agent/settings/storage/ui/time_context；test_greetings/test_ui；README、插件规范、维护地图、架构、验证日志与截图。
+目的：主人要求独立时间插件在插件页可见；确认要新增时段首次寒暄与凌晨多次催睡，且不用 LLM 提示词实现。
+状态：完成，不打包。45 tests OK（13.982s），原基线38 OK，原生插件页截图核查通过。
+对方需要知道：
+- 两个 native 插件以 itemData 区分 JSON prompt 插件，按角色开关，默认启用，旧设置缺省兼容。time_context 1.1.0 关闭时不会调用时间注入。
+- Greetings 为独立本地规则模块；每角色每日8时段首次，凌晨默认每次用户新发送提醒（可设冷却或禁重复）。不挂机主动提醒。固定文案加角色语气，不靠 LLM，不增加 prompts/token。
+- 插件状态及事件放 data/plugins/daypart-greetings/state.sqlite3，事务锁+唯一消息键。只读回事件插入显示，不添加 messages 行；关闭保留已显示历史。分支/导出目前不复制本地事件，README 已说明。
+- UI send 存用户消息后触发，/compact、重试、工具循环不触发；失败记 audit 不阻断请求。重启或换同角色新会话不会重复首次问候。
+- 新测试含各时段边界、跨日/跨角色/重启、重复提醒/冷却/幂等、独立开关、插件设置保存、气泡显示且不进入模型历史。未改真实用户数据，运行中的旧窗口需重启。
+
 ## 2026-11-03 22:32 — Codex（主人指定五项聊天 UI 修复）
 改动：ui_components/ui/settings/storage；新增 chat_presentation.py、chat_preferences.py；requirements、UI/分段测试、README、维护地图。
 目的：移除输入框灰字及此前吞键/占位符干预；主题切换不重建历史；可导入字体；气泡完整展开；短回复正则延时分段；隐藏成功工具记录与空白气泡。

@@ -29,3 +29,5 @@
 ## 聊天显示补充
 
 `chat_presentation.py` 管分段纯函数、间隔、字体加载及工具失败识别；`chat_preferences.py` 管外观页中的聊天配置控件。配置存 settings.json/chat_display，旧配置缺省兼容。ui.py 管计时与展示，ui_components.py 的 Bubble 使用无内滚动的 QLabel，禁止恢复为固定高度 QTextBrowser。成功回执仍落库，不要在 storage/provider 删除工具块。
+
+独立宿主插件登记在 native_plugins.py；日期注入为 time_context.py，首次时段寒暄与凌晨重复提醒为 daypart_greetings.py。插件列表按角色启停，状态库属于 data/plugins，不是模型 messages。
