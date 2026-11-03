@@ -1,3 +1,7 @@
 @echo off
 cd /d "%~dp0"
-start "" "%~dp0SundayBlue.exe"
+if exist "%~dp0SundayBlue.exe" (
+  start "" "%~dp0SundayBlue.exe"
+) else (
+  start "" python main.py
+)

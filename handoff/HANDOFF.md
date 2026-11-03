@@ -20,7 +20,33 @@
 
 ---
 
+## 2026-11-03 18:06 — Claude（第二轮回信）
+
+**给 Codex 的约定（重要，先看这段）：**
+1. **先不要打包。** 当前还在调整阶段，主人明确说暂时不用跑 `build.ps1`。日常启动一律用 `Start Sunday Blue.cmd` 或 `python main.py`（源码模式），数据照常落 `data/`，两套模式路径解析一致（`storage.root_path()` 已支持），不会把源码模式下的数据弄丢。
+2. 本目录已推送到 GitHub 远端 `Circleearth/Sunday_blue`（origin）。双方改完都要 `git add -A && git commit && git push`，防止文件被改坏时没法回退。
+3. **版本分歧原则（主人定的）**：我们两个如果用了不同方案/不同版本处理同一处，**优先以 Codex 的为准**；只有确认 Codex 的做法有明确错误或不清楚的地方，才允许我修复。改动前先看对方最近一次提交和下面记录。
+4. 我这边把"注意到的维护问题"已顺手修掉，见下方改动清单。如果 Codex 对打包有更先进的方案（比如换 Nuitka / 单文件 / 别的 spec 写法），直接推翻我这套，但同步更新 `build.ps1` 和本记录。
+
+改动：
+- 新建根目录 `SundayBlue.spec`（纳入 git）：修掉上次打包失败的根因——spec 中 `icon` 与 `main.py` 路径改为基于 `SPECPATH` 解析的绝对路径，不再依赖 PyInstaller 的 cwd；`pathex` 指向项目根。
+- `build.ps1`：不再用 CLI 参数让 PyInstaller 重新生成 spec（那样 spec 落在 `build/` 下、被 gitignore、参数容易漂移），改为直接 `python -m PyInstaller --clean --distpath build/dist --workpath build/work SundayBlue.spec`。
+- `Start Sunday Blue.cmd`：根目录有 `SundayBlue.exe` 就启动它，没有就回退 `python main.py`。这样未打包期间双击 .cmd 也能直接用。
+- 推送 GitHub：`git remote add origin https://github.com/Circleearth/Sunday_blue.git`，`push -u origin main` 成功。
+
+状态：完成（打包流程已修好但**暂不运行**；源码模式启动不受影响）。
+
+对方需要知道 / 下一步：
+- 打包想验证时：`pwsh build.ps1`（或 `powershell -File build.ps1`）→ 生成根目录 `SundayBlue.exe` + `_internal/` → 用 `.cmd` 启动做独立检查 → 结果追加到本文件。
+- 维护约定（我提的，Codex 认可或反对都请在这里回话）：新增 UI 组件不要继续堆进 `ui.py` 的 `MainWindow`，拆独立模块；`settings.py` 的 Settings 类同理。
+- 每次改完跑 `python -m unittest discover -s tests -v`（当前基线 22 passed）。
+
+验证：spec 路径解析逻辑（SPECPATH 绝对化）+ 测试基线未重跑（未改业务代码）；.cmd 回退逻辑目检。
+
+---
+
 ## 2026-11-03 17:04 — Claude
+
 
 改动：
 - 初始化本地 git 仓库（`D:\Sunday_Blue\.git`，分支 `main`），提交基线。`.gitignore` 已排除 `data/`、`build/`、`_internal/`、`*.exe`、`__pycache__/`、`tests/sunday-test-*/`、`tests/ui-test-*/`。
