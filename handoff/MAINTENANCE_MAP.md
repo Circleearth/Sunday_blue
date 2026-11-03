@@ -25,3 +25,7 @@
 职责归代码模块，不永久分配给 Claude/Codex。双方修改同一区域先确认 git 状态及交接，保留对方未提交改动。文档单一权威：README 管用户操作；本文件管定位；PLUGIN_SPEC 管扩展合同；HANDOFF 管协作规则；各 to- 文件管此次事实。docs/ARCHITECTURE.md 管跨层关系，变更时链接定位地图，避免复制多份规范。
 
 维护完成：检查 diff（尤其数据/凭据）→全量 tests→写自己的交接→提交→push。只提交本轮明确文件，不把用户资料随 git add -A 带出去。暂停打包，除非主人重新要求。文档记录“已实现/规划/未验证”，不能混写。
+
+## 聊天显示补充
+
+`chat_presentation.py` 管分段纯函数、间隔、字体加载及工具失败识别；`chat_preferences.py` 管外观页中的聊天配置控件。配置存 settings.json/chat_display，旧配置缺省兼容。ui.py 管计时与展示，ui_components.py 的 Bubble 使用无内滚动的 QLabel，禁止恢复为固定高度 QTextBrowser。成功回执仍落库，不要在 storage/provider 删除工具块。

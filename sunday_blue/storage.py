@@ -78,6 +78,7 @@ class Config:
             'features': {'files': True, 'memory': True, 'mcp': False},
             'mcp_servers': [],
             'ui_theme': 'dark',
+            'chat_display': {},
         }
         if self.path.exists():
             loaded = json.loads(self.path.read_text(encoding='utf-8'))
@@ -89,6 +90,7 @@ class Config:
             self.value['last_role'] = loaded.get('last_role', 'rui')
             self.value['active_sessions'] = loaded.get('active_sessions', {})
             self.value['ui_theme'] = loaded.get('ui_theme', 'dark')
+            self.value['chat_display'] = loaded.get('chat_display', {})
         for role in ROLE_IDS:
             p = self.data / 'memory' / role / 'long_term.md'
             p.parent.mkdir(parents=True, exist_ok=True)

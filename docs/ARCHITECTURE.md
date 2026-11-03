@@ -46,3 +46,6 @@ PyInstaller onedir，Python/Qt/requests 放在 `_internal`；assets/personas/ext
 ## 2026-11-03 维护导航更新
 
 UI 组件实现已移至 `sunday_blue/ui_components.py`，主窗口协调仍在 ui.py。时间注入在 time_context.py，由 Agent 的 system_prompt 调用；不写 messages。插件合同见 [PLUGIN_SPEC](../handoff/PLUGIN_SPEC.md)，职责定位见 [维护地图](../handoff/MAINTENANCE_MAP.md)。当前不打包；AstrBot 桥接属于评估方案，尚未实现。
+
+
+聊天展示更新：Bubble 已改为无内滚动的 QLabel；短消息分段/延时只影响展示，不改变 messages 内容。chat_presentation.py 负责纯显示策略，chat_preferences.py 提供设置控件；ui.py 管线程信号和非阻塞分段计时。主题更新现有组件，避免重建历史后跳动。

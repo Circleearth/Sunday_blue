@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import math
+import time
 from pathlib import Path
 from PySide6.QtCore import Qt, QTimer, Signal, QSize
 from PySide6.QtGui import QIcon, QPixmap, QColor, QPainter, QPen, QLinearGradient, QFont, QTextOption
@@ -11,6 +12,7 @@ from .storage import ROLES, Store, plain
 from .agent import Agent
 from .settings import Settings
 from .theme import style_for
+from .chat_presentation import segments, delay, options, chat_font, tool_failure
 
 # Re-export names for existing imports/tests; implementation lives in ui_components.
 from .ui_components import text_label, button, TitleBar, Composer, Portrait, Bubble
@@ -28,6 +30,8 @@ class MainWindow(QWidget):
         self.workers={}; self.statuses={}; self.drafts={}; self.errors={}
         self.pending=None; self.pending_text=''; self.history_limit=120
         self.chat_bubbles=[]
+        self.reveals={}
+        self.reveal_timer=QTimer(self);self.reveal_timer.setInterval(80);self.reveal_timer.timeout.connect(self.advance_segments);self.reveal_timer.start()
         self.setWindowTitle('Sunday Blue')
         self.setWindowIcon(QIcon(str(config.root/'assets'/'app.ico')))
         self.setWindowFlags(Qt.WindowType.Window|Qt.WindowType.FramelessWindowHint)
@@ -68,7 +72,7 @@ class MainWindow(QWidget):
         self.ui_theme = 'light' if self.ui_theme == 'dark' else 'dark'
         self._apply_theme()
         self.refresh_art()
-        self.render()
+        for bubble in self.chat_bubbles:bubble.set_theme(self.ui_theme=='light')
         self.config.value['ui_theme'] = self.ui_theme
         self.config.save()
 
@@ -105,7 +109,7 @@ class MainWindow(QWidget):
         self.chat_scroll.setWidget(self.chat_content); layout.addWidget(self.chat_scroll,1)
         self.notice=text_label('','muted'); self.notice.setWordWrap(True); self.notice.hide(); layout.addWidget(self.notice)
         composer=QFrame(); composer.setObjectName('composer'); c=QVBoxLayout(composer); c.setContentsMargins(14,10,14,10)
-        self.input=Composer(); self.input.setObjectName('input'); self.input.setPlaceholderText('今天想聊些什么？也可以交给我一项任务。输入 /compact 可压缩当前上下文。')
+        self.input=Composer(); self.input.setObjectName('input'); self.input.setPlaceholderText('')
         self.input.setFixedHeight(80); self.input.send.connect(self.send); c.addWidget(self.input)
         actions=QHBoxLayout(); actions.addWidget(text_label('Enter 发送  ·  Shift + Enter 换行','muted')); actions.addStretch()
         self.retry_button=button('重试',self.retry,'ghost'); actions.addWidget(self.retry_button)
@@ -238,7 +242,8 @@ class MainWindow(QWidget):
                 item.widget().hide()
                 item.widget().deleteLater()
 
-    def render(self):
+    def render(self, preserve=False):
+        bar=self.chat_scroll.verticalScrollBar();position=bar.value();at_bottom=position>=bar.maximum()-20
         self.clear_chat(); self.notice.hide()
         messages=self.store.messages(self.sid)
         if not messages:
@@ -253,40 +258,54 @@ class MainWindow(QWidget):
         if len(messages)>self.history_limit:
             self.chat_layout.addWidget(button(f'加载更早的消息（还有 {len(messages)-self.history_limit} 条）',self.more_history,'ghost'))
         for m in messages[-self.history_limit:]:
-            text=plain(m['content'])
-            if text:self.add_bubble(text,m['role']=='user')
+            text=plain(m['content']).strip()
+            if text:
+                parts=[text] if m['role']=='user' else segments(text,self.config.value.get('chat_display',{}))
+                reveal=self.reveals.get((self.sid,m['id']))
+                if reveal:parts=parts[:reveal['count']]
+                for part in parts:self.add_bubble(part,m['role']=='user')
             if isinstance(m['content'],list):
                 for block in m['content']:
-                    if block['type']=='tool_use':
-                        self.add_tool('↳ '+block['name'],json.dumps(block['input'],ensure_ascii=False,indent=2))
-                    elif block['type']=='tool_result':
-                        self.add_tool('✓ 工具回执' if not block.get('is_error') else '! 工具错误',block['content'])
+                    failure=tool_failure(block)
+                    if failure:self.add_bubble(failure)
         self.chat_layout.addStretch(1)
         worker=self.workers.get(self.sid)
         if worker and getattr(worker,'live_text',''):
             self.on_text(self.sid,'',restore=worker.live_text)
-        QTimer.singleShot(30,self.scroll_bottom)
+        target=None if not preserve or at_bottom else position
+        expected=self.sid
+        def restore_scroll():
+            if self.sid==expected:
+                bar.setValue(bar.maximum() if target is None else target)
+        QTimer.singleShot(30,restore_scroll)
         self.update_context()
 
     def more_history(self):
         self.history_limit+=120; self.render()
 
     def _chat_width(self):
-        # Usable chat column: full dialog minus the fixed side panels.
-        return max(320, self.width() - 224 - 292 - 108)
+        return max(100,self.chat_scroll.viewport().width()-10)
+
+    def resizeEvent(self,event):
+        super().resizeEvent(event)
+        if hasattr(self,'chat_scroll'):QTimer.singleShot(0,self.resize_bubbles)
+
+    def resize_bubbles(self):
+        for bubble in self.chat_bubbles:bubble.set_available_width(self._chat_width())
 
     def add_bubble(self,text,user=False):
+        if not text.strip():return None
         row=QWidget(); line=QHBoxLayout(row); line.setContentsMargins(0,0,0,0)
         row.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Maximum)
         col=QVBoxLayout(); col.setSpacing(5)
         col.setAlignment(Qt.AlignmentFlag.AlignTop)
         name='你' if user else next(r[1] for r in ROLES if r[0]==self.role)
         caption=text_label(name,'muted'); caption.setFixedHeight(20); caption.setAlignment(Qt.AlignmentFlag.AlignRight if user else Qt.AlignmentFlag.AlignLeft); col.addWidget(caption)
-        bubble=Bubble(text,user,light=self.ui_theme=='light',width=self._chat_width())
+        bubble=Bubble(text,user,light=self.ui_theme=='light',width=self._chat_width(),font=chat_font(self.config.root,self.config.value.get('chat_display',{})))
         col.addWidget(bubble,0,Qt.AlignmentFlag.AlignRight if user else Qt.AlignmentFlag.AlignLeft)
         self.chat_bubbles.append(bubble)
         if user:line.addStretch(1)
-        line.addLayout(col,7)
+        line.addLayout(col)
         if not user:line.addStretch(1)
         self.chat_layout.insertWidget(max(0,self.chat_layout.count()-1) if self.chat_layout.count() and self.chat_layout.itemAt(self.chat_layout.count()-1).spacerItem() else self.chat_layout.count(),row)
         return bubble
@@ -322,7 +341,7 @@ class MainWindow(QWidget):
         sid=self.sid
         self.errors.pop(sid,None)
         worker=Agent(self.config.root,self.config.snapshot(),self.store,sid)
-        worker.live_text=''; self.workers[sid]=worker
+        worker.live_text=''; worker.start_after=max((m['id'] for m in self.store.messages(sid)),default=0); self.workers[sid]=worker
         worker.text.connect(self.on_text); worker.status.connect(self.on_status); worker.changed.connect(self.on_changed)
         worker.failed.connect(self.on_error); worker.approval.connect(self.on_approval)
         worker.finished.connect(lambda s=sid,w=worker:self.on_finished(s,w))
@@ -332,15 +351,35 @@ class MainWindow(QWidget):
         worker=self.workers.get(sid)
         if worker and restore is None:worker.live_text+=text
         if sid!=self.sid:return
-        if self.pending is None:self.pending=self.add_bubble('…')
-        self.pending_text=restore if restore is not None else self.pending_text+text
-        self.pending.set_text(self.pending_text)
-        self.scroll_bottom()
+        current=restore if restore is not None else (worker.live_text if worker else self.pending_text+text)
+        self.pending_text=current
+        c=options(self.config.value.get('chat_display',{}))
+        if not current.strip() or (c['segmented'] and len(current.strip())<c['threshold']):return
+        bar=self.chat_scroll.verticalScrollBar();follow=bar.value()>=bar.maximum()-20
+        if self.pending is None:self.pending=self.add_bubble(current)
+        else:self.pending.set_text(current)
+        if follow:QTimer.singleShot(0,self.scroll_bottom)
 
     def on_changed(self,sid):
         worker=self.workers.get(sid)
-        if worker:worker.live_text=''
-        if sid==self.sid:self.render()
+        if worker:
+            worker.live_text=''
+            c=self.config.value.get('chat_display',{})
+            for m in self.store.messages(sid):
+                key=(sid,m['id'])
+                if m['id']<=worker.start_after or m['role']!='assistant' or key in self.reveals:continue
+                parts=segments(plain(m['content']).strip(),c)
+                if len(parts)>1:self.reveals[key]={'parts':parts,'count':1,'next':time.monotonic()+delay(parts[0],c),'config':dict(c)}
+        if sid==self.sid:self.render(preserve=True)
+
+    def advance_segments(self):
+        changed=False
+        for (sid,mid),state in self.reveals.items():
+            if state['count']<len(state['parts']) and time.monotonic()>=state['next']:
+                state['count']+=1
+                state['next']=time.monotonic()+delay(state['parts'][state['count']-1],state['config'])
+                changed=changed or sid==self.sid
+        if changed:self.render(preserve=True)
 
     def on_status(self,sid,text):
         self.statuses[sid]=text
@@ -359,7 +398,7 @@ class MainWindow(QWidget):
     def on_finished(self,sid,worker):
         self.workers.pop(sid,None)
         if sid==self.sid:
-            self.render()
+            self.render(preserve=True)
             if getattr(worker,'error_text',None):self.show_notice(worker.error_text)
         self.refresh_sessions(); self.update_state(); worker.deleteLater()
 
@@ -414,7 +453,8 @@ class MainWindow(QWidget):
 
     def settings(self):
         dlg=Settings(self.config,self.role,self)
-        if dlg.exec()==QDialog.DialogCode.Accepted:self.update_state();self.render()
+        if dlg.exec()==QDialog.DialogCode.Accepted:
+            self.reveals.clear();self.update_state();self.render(preserve=True)
 
     def closeEvent(self,event):
         if self.workers:

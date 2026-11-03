@@ -8,11 +8,12 @@ from PySide6.QtCore import Qt, QThread, Signal, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QTabWidget, QWidget,
     QFormLayout, QLineEdit, QComboBox, QSpinBox, QCheckBox, QLabel, QPushButton,
-    QListWidget, QListWidgetItem, QFileDialog, QMessageBox, QPlainTextEdit, QInputDialog)
+    QListWidget, QListWidgetItem, QFileDialog, QMessageBox, QPlainTextEdit, QInputDialog, QScrollArea)
 from .storage import ROLES, protect, atomic_json
 from .provider import Provider, endpoint
 from .extensions import validate_servers
 from .files import no_links, inside
+from .chat_preferences import ChatPreferences
 
 def label(text):
     w = QLabel(text)
@@ -269,7 +270,11 @@ class Settings(QDialog):
         except Exception as exc: QMessageBox.warning(self,'导入失败',str(exc))
 
     def _appearance_page(self):
-        layout = self.page('外观 / 数据')
+        outer = self.page('外观 / 数据')
+        scroll=QScrollArea();scroll.setWidgetResizable(True);outer.addWidget(scroll)
+        content=QWidget();layout=QVBoxLayout(content);scroll.setWidget(content)
+        self.chat_preferences=ChatPreferences(self.config.root,self.value.get('chat_display',{}))
+        layout.addWidget(self.chat_preferences)
         layout.addWidget(label('头像与立绘是普通 PNG 文件，不需要重新编译软件。替换后点击主界面的“刷新素材”。'))
         layout.addWidget(QLabel('assets/roles/<角色 ID>/avatar.png\n推荐：512 × 512，正方形\n\nassets/roles/<角色 ID>/portrait.png\n推荐：1200 × 1800，透明背景，人物居中\n\n软件会等比例缩放；头像建议避免边缘重要内容。'))
         for title,relative in [('打开素材目录','assets/roles'),('打开数据目录','data'),('打开使用说明','README.md')]:
@@ -280,6 +285,7 @@ class Settings(QDialog):
 
     def save(self):
         try:
+            self.value['chat_display']=self.chat_preferences.value()
             self.value['api']=self.api_value()
             self.value['mcp_servers']=validate_servers(json.loads(self.mcp.toPlainText()))
             self.value['features']={k:w.isChecked() for k,w in self.features.items()}

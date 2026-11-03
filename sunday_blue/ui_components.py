@@ -30,33 +30,15 @@ class Composer(QPlainTextEdit):
     send = Signal()
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._composing=False; self.clearing=False; self._placeholder=''
-        self.textChanged.connect(self._sync_placeholder)
-    def _sync_placeholder(self,*args):
-        # While an IME (pinyin) candidate is still pending, the real text is empty and the
-        # built-in placeholder would sit under the composing text, so hide it; any actual
-        # commit or deletion re-evaluates visibility.
-        if self.clearing:return
-        self.clearing=True
-        try:
-            super(Composer,self).setPlaceholderText(' ' if (self._composing and not self.toPlainText().strip()) else self._placeholder)
-        finally:
-            self.clearing=False
-    def setPlaceholderText(self,text):
-        self._placeholder=text; self._sync_placeholder()
+        self._composing = False
+    def inputMethodEvent(self, event):
+        self._composing = bool(event.preeditString())
+        super().inputMethodEvent(event)
     def keyPressEvent(self,event):
-        if self._composing:
-            # Enter/Space belong to the pinyin candidate selection; let the IME commit first.
-            if event.key() in (Qt.Key.Key_Return,Qt.Key.Key_Enter,Qt.Key.Key_Space):return
-        elif event.key() in (Qt.Key.Key_Return,Qt.Key.Key_Enter) and not event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
-            self.send.emit(); return
+        if not self._composing and event.key() in (Qt.Key.Key_Return,Qt.Key.Key_Enter) and not event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+            self.send.emit()
+            return
         super().keyPressEvent(event)
-    def event(self,e):
-        from PySide6.QtGui import QInputMethodEvent
-        if isinstance(e,QInputMethodEvent):
-            self._composing=not e.hasCommit()
-            if not e.hasCommit():self._sync_placeholder()
-        return super().event(e)
 
 class Portrait(QFrame):
     def __init__(self,root):
@@ -87,54 +69,49 @@ class Portrait(QFrame):
         p.setPen(QColor('#677d9a'))
         p.drawText(self.rect().adjusted(22,0,-22,-17),Qt.AlignmentFlag.AlignBottom|Qt.AlignmentFlag.AlignHCenter,'S U N D A Y   B L U E')
 
-class Bubble(QTextBrowser):
-    def __init__(self,text,user=False,tool=False,light=False,width=0):
+class Bubble(QLabel):
+    """A selectable label, never a nested scroll view. Height follows wrapped text."""
+    def __init__(self,text,user=False,tool=False,light=False,width=0,font=None):
         super().__init__()
-        self.raw=text
-        self.setOpenExternalLinks(False)
-        self.setOpenLinks(False)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setWordWrapMode(QTextOption.WrapMode.WrapAnywhere)
-        self.setSizePolicy(self.sizePolicy().horizontalPolicy(),self.sizePolicy().verticalPolicy())
-        if light:
-            background='#dbe7fb' if user else ('#f2f4f7' if tool else '#eef1f5')
-            border='#b9cdea' if user else '#d0d5dd'
-            color='#1f2937'
-        else:
-            background='#294761' if user else ('#152236' if tool else '#1b2a40')
-            border='#42637f' if user else '#31435c'
-            color='#e0e8f3'
-        self.setStyleSheet(f'QTextBrowser {{ background:{background}; border:1px solid {border}; border-radius:11px; padding:11px; font-size:14px; color:{color}; }}')
-        self.setMinimumWidth(64)
-        # width = live chat-panel width (dialog size); short replies stay narrow,
-        # long ones wrap at the dialog instead of stretching to a fixed cap.
-        self._fit_cap = min(560, (width - 40) if width else 560)
-        self._cap = self._fit_cap
+        self.user=user
+        self.raw=''
+        self._available=width or 600
+        self.chat_font=font or QFont('Microsoft YaHei UI',12)
+        self.setTextFormat(Qt.TextFormat.PlainText)
+        self.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse | Qt.TextInteractionFlag.TextSelectableByKeyboard)
+        self.setWordWrap(True)
+        self.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        self.setMargin(12)
+        self.set_theme(light)
         self.set_text(text)
-        self.document().documentLayout().documentSizeChanged.connect(self.fit)
+
+    def set_theme(self,light):
+        background=('#dbe7fb' if self.user else '#eef1f5') if light else ('#294761' if self.user else '#1b2a40')
+        border='#b9cdea' if light else '#42637f'
+        color='#1f2937' if light else '#e0e8f3'
+        family=self.chat_font.family().replace('"','').replace('\\','')
+        size=self.chat_font.pointSizeF()
+        weight=int(self.chat_font.weight())
+        self.setStyleSheet(f'QLabel {{background:{background}; border:1px solid {border}; border-radius:11px; color:{color}; font-family:"{family}"; font-size:{size}pt; font-weight:{weight};}}')
+        self.setFont(self.chat_font)
+        self.ensurePolished()
+        self.fit()
 
     def set_text(self,text):
-        text=(text or '').replace('\r\n','\n').replace('\r','\n').lstrip()
-        self.raw=text
-        self._cap = min(self._fit_cap, max(160, self._fit_width(text)))
-        self.setMaximumWidth(self._cap)
-        # Plain text intentionally avoids external image loads from model-supplied HTML.
-        self.setPlainText(text)
+        self.raw=(text or '').replace('\r\n','\n').replace('\r','\n').strip()
+        self.setText(self.raw)
         self.fit()
 
-    def _fit_width(self,text):
-        # Measure with a per-line cap so short replies stay narrow instead of
-        # stretching toward the full dialog width.
-        longest=max((self.fontMetrics().horizontalAdvance(line[:420]) for line in text.splitlines()),default=120)
-        return longest+40
+    def set_available_width(self,width):
+        self._available=width
+        self.fit()
 
     def fit(self,*args):
-        self.setFixedHeight(max(58,int(self.document().size().height())+26))
+        cap=max(64,int(self._available*.8))
+        longest=max((self.fontMetrics().horizontalAdvance(line) for line in self.raw.splitlines()),default=20)
+        target=min(cap,max(64,longest+30))
+        self.setFixedWidth(target)
+        self.setFixedHeight(max(46,self.heightForWidth(target)+4))
 
-    def resizeEvent(self,event):
-        # Re-wrap against the live width (window resize) so the bubble tracks the dialog
-        # instead of holding its old height.
-        super().resizeEvent(event)
-        self.document().setTextWidth(max(50,self.width()-32))
-        self.fit()
+    def toPlainText(self):
+        return self.raw

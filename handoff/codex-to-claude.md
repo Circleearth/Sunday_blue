@@ -7,6 +7,19 @@
 
 ---
 
+## 2026-11-03 22:32 — Codex（主人指定五项聊天 UI 修复）
+改动：ui_components/ui/settings/storage；新增 chat_presentation.py、chat_preferences.py；requirements、UI/分段测试、README、维护地图。
+目的：移除输入框灰字及此前吞键/占位符干预；主题切换不重建历史；可导入字体；气泡完整展开；短回复正则延时分段；隐藏成功工具记录与空白气泡。
+状态：完成，源码模式，不打包。
+对方需要知道：
+- Composer 已删除旧 event/hasCommit/_sync_placeholder 路径，inputMethodEvent 只记录 preeditString 是否非空并调用 super。候选期间按键交回 Qt，不手动吞 Enter/Space；输入框无占位文字。
+- Bubble 改用可选中的纯文本 QLabel，宽度测量自适应，最大为 chat viewport 减边距后 80%，高度 heightForWidth，无内部滚动。resize 时重新布局。主题切换原地 set_theme，不调用 render，不改变阅读位置。
+- chat_display 配置向后兼容，UI 保存不覆盖其他设置；新字体文件复制到 assets/fonts，使用 QFontDatabase 应用内注册，不安装系统字体。默认 12pt/500，可改。
+- 分段默认 threshold=150（严格小于才分）、random=1.5~3.5、log_base=10、正则与主人给定一致。regex==2026.9.29 已加入 requirements 并本机安装；25ms 超时回退全文。主线程 QTimer 延时显示，数据库不拆消息。切换角色计时继续，重启历史直接完整显示。
+- 只读检查 Kia 最近 18 条消息的块结构，确认工具前 text 常是两个换行，原 `if text` 判断为真导致空泡。现历史和流式均过滤 whitespace，成功工具不渲染，失败/denied 显示说明。tool_use/tool_result 原样存库供 API 正常回传，未修改用户历史。
+- 不重新引入成功工具按钮；审批弹窗保留。新增设置控件独立模块，避免继续扩大 Settings。
+验证：原基线 29 OK；修改后全量 38 OK（12.588s），包括原生 Qt 预编辑/提交、长消息/80%宽度/缩窗/无内滚动、两次主题切换位置、导入本机测试字体与保存、工具空白过滤、跨角色分段计时、正则边界/超时。真实 Windows 拼音候选窗口的人工体验仍请主人在重启后确认；自动测试为 Qt 合成输入法事件。测试数据均在 tests 临时目录。源码更新需重启旧窗口。
+
 ## 2026-11-03 21:55 — Codex（时间插件、维护导航、组件拆分）
 改动：time_context.py、agent.py、ui_components.py、ui.py、test_time_context.py；PLUGIN_SPEC.md、MAINTENANCE_MAP.md、HANDOFF.md、README、ARCHITECTURE 及测试记录。
 目的：每轮新鲜日期/本地时间作为系统背景，避免日期过期和例行报时；明确插件创建合同和维护入口，降低重复读取成本。
