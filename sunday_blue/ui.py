@@ -36,10 +36,35 @@ class TitleBar(QFrame):
 
 class Composer(QPlainTextEdit):
     send = Signal()
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._composing=False; self.clearing=False; self._placeholder=''
+        self.textChanged.connect(self._sync_placeholder)
+    def _sync_placeholder(self,*args):
+        # While an IME (pinyin) candidate is still pending, the real text is empty and the
+        # built-in placeholder would sit under the composing text, so hide it; any actual
+        # commit or deletion re-evaluates visibility.
+        if self.clearing:return
+        self.clearing=True
+        try:
+            super(Composer,self).setPlaceholderText(' ' if (self._composing and not self.toPlainText().strip()) else self._placeholder)
+        finally:
+            self.clearing=False
+    def setPlaceholderText(self,text):
+        self._placeholder=text; self._sync_placeholder()
     def keyPressEvent(self,event):
-        if event.key() in (Qt.Key.Key_Return,Qt.Key.Key_Enter) and not event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+        if self._composing:
+            # Enter/Space belong to the pinyin candidate selection; let the IME commit first.
+            if event.key() in (Qt.Key.Key_Return,Qt.Key.Key_Enter,Qt.Key.Key_Space):return
+        elif event.key() in (Qt.Key.Key_Return,Qt.Key.Key_Enter) and not event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
             self.send.emit(); return
         super().keyPressEvent(event)
+    def event(self,e):
+        from PySide6.QtGui import QInputMethodEvent
+        if isinstance(e,QInputMethodEvent):
+            self._composing=not e.hasCommit()
+            if not e.hasCommit():self._sync_placeholder()
+        return super().event(e)
 
 class Portrait(QFrame):
     def __init__(self,root):
@@ -71,7 +96,7 @@ class Portrait(QFrame):
         p.drawText(self.rect().adjusted(22,0,-22,-17),Qt.AlignmentFlag.AlignBottom|Qt.AlignmentFlag.AlignHCenter,'S U N D A Y   B L U E')
 
 class Bubble(QTextBrowser):
-    def __init__(self,text,user=False,tool=False,light=False):
+    def __init__(self,text,user=False,tool=False,light=False,width=0):
         super().__init__()
         self.raw=text
         self.setOpenExternalLinks(False)
@@ -89,25 +114,38 @@ class Bubble(QTextBrowser):
             border='#42637f' if user else '#31435c'
             color='#e0e8f3'
         self.setStyleSheet(f'QTextBrowser {{ background:{background}; border:1px solid {border}; border-radius:11px; padding:11px; font-size:14px; color:{color}; }}')
-        self.setMinimumWidth(170)
-        self.setMaximumWidth(760)
+        self.setMinimumWidth(64)
+        # width = live chat-panel width (dialog size); short replies stay narrow,
+        # long ones wrap at the dialog instead of stretching to a fixed cap.
+        self._fit_cap = min(560, (width - 40) if width else 560)
+        self._cap = self._fit_cap
         self.set_text(text)
         self.document().documentLayout().documentSizeChanged.connect(self.fit)
 
     def set_text(self,text):
         text=(text or '').replace('\r\n','\n').replace('\r','\n').lstrip()
         self.raw=text
-        longest=max((self.fontMetrics().horizontalAdvance(line[:1000]) for line in text.splitlines()),default=150)
-        self.setMaximumWidth(min(760,max(180,longest+48)))
+        self._cap = min(self._fit_cap, max(160, self._fit_width(text)))
+        self.setMaximumWidth(self._cap)
         # Plain text intentionally avoids external image loads from model-supplied HTML.
         self.setPlainText(text)
         self.fit()
+
+    def _fit_width(self,text):
+        # Measure with a per-line cap so short replies stay narrow instead of
+        # stretching toward the full dialog width.
+        longest=max((self.fontMetrics().horizontalAdvance(line[:420]) for line in text.splitlines()),default=120)
+        return longest+40
 
     def fit(self,*args):
         self.setFixedHeight(max(58,int(self.document().size().height())+26))
 
     def resizeEvent(self,event):
-        super().resizeEvent(event); self.fit()
+        # Re-wrap against the live width (window resize) so the bubble tracks the dialog
+        # instead of holding its old height.
+        super().resizeEvent(event)
+        self.document().setTextWidth(max(50,self.width()-32))
+        self.fit()
 
 class MainWindow(QWidget):
     def __init__(self,config):
@@ -121,6 +159,7 @@ class MainWindow(QWidget):
             if saved and saved['role']==rid:self.current_by_role[rid]=sid
         self.workers={}; self.statuses={}; self.drafts={}; self.errors={}
         self.pending=None; self.pending_text=''; self.history_limit=120
+        self.chat_bubbles=[]
         self.setWindowTitle('Sunday Blue')
         self.setWindowIcon(QIcon(str(config.root/'assets'/'app.ico')))
         self.setWindowFlags(Qt.WindowType.Window|Qt.WindowType.FramelessWindowHint)
@@ -160,6 +199,8 @@ class MainWindow(QWidget):
     def toggle_theme(self):
         self.ui_theme = 'light' if self.ui_theme == 'dark' else 'dark'
         self._apply_theme()
+        self.refresh_art()
+        self.render()
         self.config.value['ui_theme'] = self.ui_theme
         self.config.save()
 
@@ -322,7 +363,7 @@ class MainWindow(QWidget):
         except OSError as exc: QMessageBox.warning(self,'导出失败',str(exc))
 
     def clear_chat(self):
-        self.pending=None; self.pending_text=''
+        self.pending=None; self.pending_text=''; self.chat_bubbles.clear()
         while self.chat_layout.count():
             item=self.chat_layout.takeAt(0)
             if item.widget():
@@ -362,6 +403,10 @@ class MainWindow(QWidget):
     def more_history(self):
         self.history_limit+=120; self.render()
 
+    def _chat_width(self):
+        # Usable chat column: full dialog minus the fixed side panels.
+        return max(320, self.width() - 224 - 292 - 108)
+
     def add_bubble(self,text,user=False):
         row=QWidget(); line=QHBoxLayout(row); line.setContentsMargins(0,0,0,0)
         row.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Maximum)
@@ -369,7 +414,9 @@ class MainWindow(QWidget):
         col.setAlignment(Qt.AlignmentFlag.AlignTop)
         name='你' if user else next(r[1] for r in ROLES if r[0]==self.role)
         caption=text_label(name,'muted'); caption.setFixedHeight(20); caption.setAlignment(Qt.AlignmentFlag.AlignRight if user else Qt.AlignmentFlag.AlignLeft); col.addWidget(caption)
-        bubble=Bubble(text,user,light=self.ui_theme=='light'); col.addWidget(bubble,0,Qt.AlignmentFlag.AlignRight if user else Qt.AlignmentFlag.AlignLeft)
+        bubble=Bubble(text,user,light=self.ui_theme=='light',width=self._chat_width())
+        col.addWidget(bubble,0,Qt.AlignmentFlag.AlignRight if user else Qt.AlignmentFlag.AlignLeft)
+        self.chat_bubbles.append(bubble)
         if user:line.addStretch(1)
         line.addLayout(col,7)
         if not user:line.addStretch(1)

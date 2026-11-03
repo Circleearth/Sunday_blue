@@ -4,6 +4,7 @@ import difflib
 import hashlib
 import json
 import os
+import shutil
 from pathlib import Path
 import stat
 import threading
@@ -152,6 +153,78 @@ class FileTools:
             self.audit('write', json.dumps(result, ensure_ascii=False))
             return result
 
+    def _check_move_dest(self, source, dest):
+        # Destination must stay inside an authorized directory, never above its source.
+        dest = Path(dest)
+        if not dest.is_absolute() or '..' in dest.parts:
+            raise PermissionError('请提供已授权目录内的绝对路径。')
+        if str(dest).startswith(('\\\\', '//')) or ':' in str(dest)[len(dest.drive):]:
+            raise PermissionError('不支持网络路径、设备路径或 NTFS 备用数据流。')
+        dest = dest.resolve()
+        if inside(source, dest):
+            raise PermissionError('目标不能位于源目录内部。')
+        try:
+            self.check(str(dest), True)
+        except PermissionError:
+            return None
+        if dest.is_dir():
+            return dest / source.name
+        return dest
+
+    def create_directory(self, path):
+        self.check(path, True)
+        detail = f'在 {path} 创建文件夹（含中间层级）。'
+        if not self.approve('创建文件夹', path, detail):
+            self.audit('mkdir_denied', str(path))
+            return {'status': 'denied', 'path': str(path)}
+        p = self.check(str(path), True)
+        p.mkdir(parents=True, exist_ok=True)
+        self.audit('mkdir', json.dumps({'path': str(p)}, ensure_ascii=False))
+        return {'status': 'created', 'path': str(p)}
+
+    def delete_directory(self, path):
+        p = self.check(str(path), True)
+        if p.is_file() or not p.is_dir():
+            raise ValueError('目标必须是文件夹。')
+        affected = [str(p)]
+        count = 0
+        for current, dirs, files in os.walk(p, topdown=False):
+            count += len(dirs) + len(files)
+            affected += [str(Path(current) / name) for name in dirs]
+        affected = affected[:50]
+        more = '' if count <= 49 else f'（另有 {max(0, count - 49)} 项未逐条列出）'
+        detail = (f'将递归删除以下文件夹及其全部内容，且不可恢复：\n'
+                  + '\n'.join(affected) + more + f'\n共约 {count + 1} 项。')
+        if not self.approve('删除文件夹', str(p), detail):
+            self.audit('rmdir_denied', str(p))
+            return {'status': 'denied', 'path': str(p)}
+        with WRITE_LOCK:
+            no_links(p)
+            if not p.is_dir():
+                raise RuntimeError('文件夹已不存在或类型已变化，本次未删除。')
+            shutil.rmtree(p)
+        self.audit('rmdir', json.dumps({'path': str(p), 'items': count + 1}, ensure_ascii=False))
+        return {'status': 'deleted', 'path': str(p), 'items': count + 1}
+
+    def move(self, source, destination):
+        src = self.check(str(source), True)
+        dest = self._check_move_dest(src, destination)
+        if dest is None:
+            return {'status': 'denied', 'path': str(destination), 'reason': '目标目录未授权写入。'}
+        detail = f'将 {src} 移动到 {dest}（同卷改名移动；目标已存在时会被拒绝）。'
+        if not self.approve('移动文件/文件夹', str(src), detail):
+            self.audit('move_denied', f'{src} -> {dest}')
+            return {'status': 'denied', 'source': str(src), 'destination': str(dest)}
+        with WRITE_LOCK:
+            no_links(src)
+            if not src.exists():
+                raise RuntimeError('源已不存在，本次未移动。')
+            if dest.exists():
+                raise ValueError('目标已存在，请换一个名称；避免覆盖。')
+            os.rename(src, dest)
+        self.audit('move', json.dumps({'source': str(src), 'destination': str(dest)}, ensure_ascii=False))
+        return {'status': 'moved', 'source': str(src), 'destination': str(dest)}
+
 def schema(name, description, props, required):
     return {'name': name, 'description': description, 'input_schema': {'type': 'object', 'properties': props, 'required': required, 'additionalProperties': False}}
 
@@ -162,6 +235,9 @@ FILE_SCHEMAS = [
     schema('search_files', '在已授权目录搜索文本，跳过常见依赖目录，最多 1500 文件/100 命中。', {'path': S, 'query': S}, ['path', 'query']),
     schema('write_file', '新建或覆盖 UTF-8 文件，必须在可写目录；用户将审阅差异。优先 edit_file。', {'path': S, 'content': S}, ['path', 'content']),
     schema('edit_file', '精确替换一处文本并展示差异；old_text 必须唯一匹配。', {'path': S, 'old_text': S, 'new_text': S}, ['path', 'old_text', 'new_text']),
+    schema('create_directory', '在可写目录内新建文件夹（可含中间层级）。', {'path': S}, ['path']),
+    schema('delete_directory', '递归删除整个文件夹（含内容，不可恢复）；用户将看到将被删除项清单并确认。', {'path': S}, ['path']),
+    schema('move', '移动文件或文件夹；目标必须在可写目录内，目标已存在会被拒绝。', {'source': S, 'destination': S}, ['source', 'destination']),
 ]
 MEMORY_SCHEMAS = [
     schema('memory_read', '读取当前角色的持久记忆，同一角色所有会话共享。', {}, []),

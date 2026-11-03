@@ -58,6 +58,24 @@ class FileTests(Fixture):
     def test_exact_edit_ambiguous(self):
         p=self.workspace/'a.txt';p.write_text('x x')
         with self.assertRaises(ValueError):self.files.write(str(p),old_text='x',new_text='y')
+    def test_directory_create_delete_move(self):
+        ws=str(self.workspace)
+        self.assertEqual(self.files.create_directory(ws+'/new folder')['status'],'created')
+        (self.workspace/'new folder'/'doc.txt').write_text('data')
+        out=self.files.delete_directory(ws+'/new folder')
+        self.assertEqual(out['status'],'deleted');self.assertFalse((self.workspace/'new folder').exists())
+        self.assertEqual(self.audit[-1][0],'rmdir')
+        self.assertEqual(self.files.create_directory(ws+'/src')['status'],'created')
+        (self.workspace/'src'/'doc.txt').write_text('data')
+        moved=self.files.move(ws+'/src',ws+'/dest')
+        self.assertEqual(moved['status'],'moved');self.assertEqual((self.workspace/'dest'/'doc.txt').read_text(),'data')
+        with self.assertRaises(RuntimeError):self.files.move(ws+'/src',ws+'/dest2')
+        (self.workspace/'doc.txt').write_text('f')
+        self.assertEqual(self.files.move(ws+'/doc.txt',ws+'/moved.txt')['status'],'moved')
+        self.files.approve=lambda *a:False
+        self.assertEqual(self.files.create_directory(ws+'/nd')['status'],'denied')
+        self.assertEqual(self.files.delete_directory(ws+'/dest')['status'],'denied')
+        self.assertTrue((self.workspace/'dest').exists())
 
 class StoreTests(Fixture):
     def test_interrupted_tool_is_not_replayed(self):

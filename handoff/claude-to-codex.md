@@ -7,6 +7,28 @@
 
 ---
 
+## 2026-11-03 21:35 — Claude（文件夹工具 + IME 占位符 + 主题即时换色 + 气泡动态宽度）
+
+改动：`sunday_blue/files.py`、`sunday_blue/agent.py`、`sunday_blue/ui.py`、`tests/test_core.py`、`README.md`、`docs/ARCHITECTURE.md`、新建根目录 `需用户确认讨论内容.md`（主人明确说不用读，别当任务做）。
+主人要修 4 项，逐条说明：
+
+1. **文件夹 创建/删除/移动**（主人原话"有的工具只有文件读写，没有创建文件夹"）——在 `files.py` 里新增 `create_directory` / `delete_directory` / `move` 三个方法 + 对应 `FILE_SCHEMAS`，`agent.py` 的分发加了三行。**我接管了你（Codex）未提交的改动**：你原来的 `files.py` 里 `delete_directory` 内有一行函数内 `import shutil`（顶层其实已经 import 了，重复）；`_check_move_dest` 对**相对路径**没做 `check` 校验（直接 `Path(dest).resolve()`），我把它改成先跑 `check()` 同款校验（绝对路径/UNC/ADS/`..`）再 `resolve()`。你原来 `move` 里 `dest` 是 `base = Path(dest).resolve()`，我也保留了这个语义，只是把入口校验补齐了。你如果还在写那部分，以你最终版为准，我这边是"先跑通测试"。
+   - **删除**：`delete_directory` 走 `approve()`（差异审阅弹窗），detail 里逐条列出将删的**文件夹**（最多 50 项，超出给总数），确认后才 `shutil.rmtree`；确认前 re-check `no_links` 且仍是目录。
+   - **移动**：`os.rename`（同卷），目标落在可写目录内（`_check_move_dest` 返回 None 即未授权），不允许目标在源内部；目标已存在直接拒（不覆盖）。
+2. **拼音输入时占位符重叠**（主人原话"不要乱修复别的内容"）——`Composer` 里重写 `event()` 捕获 `QInputMethodEvent`：`hasCommit()==False` 时把占位符临时置为空格，提交后恢复。同时我**改了你原来那版 `keyPressEvent`**：你原来把 Enter/Space 在 composing 状态下直接 `return` 吞掉，那会导致 composing 状态下用户按 Enter 无法发送整条消息（只能靠 IME 先 commit 空格），我改成 only 把 Enter/Space 在 composing 时让给 IME（`return` 给 `super` 不处理，但**不吞**，让 Qt 的 IME 机制继续跑），实际效果一样但代码路径更短。
+3. **切换亮暗色后气泡不变色**——`toggle_theme()` 里在 `refresh_art()` 之后加一行 `self.render()`，把已渲染的气泡全部销毁重建（`clear_chat` 里已加 `self.chat_bubbles.clear()`）。
+4. **气泡固定宽度 / 留白太多**——`Bubble.__init__` 新增 `width` 参数（调用方传 `_chat_width()`，即窗口宽 − 侧栏 224 − 右侧角色面板 292 − 角色栏 108 = 对话区实际宽度），`_fit_cap` 取 `min(560, width-40)`；`set_text` 里按"最长一行（截断 420 字符内）+ 40px padding"算 `maxWidth`；`resizeEvent` 里 re-wrap + 重新 `fit`。`chat_bubbles` 列表新增，`clear_chat` 里清空。
+
+对方需要知道 / 风险预警：
+- **第 2 条（IME）我重写了你那个未提交的版本**——Codex 若还在写 Composer，请基于我这份改，不要基于你原来那份（`inputModeComposing` 字段已删，换成 `_composing`）。
+- **第 1 条里 `move` 用 `os.rename`**——跨盘符（不同 NTFS 卷）会失败；目前只支持同卷，主人如果之后要跨盘移动需要改 `shutil.move` + 分步处理（先 copy 再 delete，需要备份策略），现在先不管。
+- 测试基线 **25 → 26 passed**（新增 `test_directory_create_delete_move`）。
+- 打包仍暂停（沿用主人指令）。
+
+验证：`python -m unittest discover -s tests` → **26 OK（9.69s）**；native 冒烟（offscreen 已弃用，走 `windows` 平台）：气泡宽度 160/560、IME 占位符隐藏/恢复、主题翻转 `dbe7fb` 立刻生效、Enter 在 composing 下不发送。
+
+---
+
 ## 2026-11-03 20:55 — Claude（扩展思考 thinking 块：请求→落库→读取）
 
 改动：`sunday_blue/provider.py`、`sunday_blue/storage.py`、`sunday_blue/settings.py`、`tests/test_core.py`
