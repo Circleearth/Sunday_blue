@@ -138,4 +138,3 @@ class Bubble(QTextBrowser):
         super().resizeEvent(event)
         self.document().setTextWidth(max(50,self.width()-32))
         self.fit()
-
