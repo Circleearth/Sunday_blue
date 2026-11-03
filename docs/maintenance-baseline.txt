@@ -1,0 +1,31 @@
+test_conflict_after_review (test_core.FileTests.test_conflict_after_review) ... ok
+test_denial_does_not_write (test_core.FileTests.test_denial_does_not_write) ... ok
+test_denied_outside_readonly_traversal_internal_ads (test_core.FileTests.test_denied_outside_readonly_traversal_internal_ads) ... ok
+test_directory_create_delete_move (test_core.FileTests.test_directory_create_delete_move) ... ok
+test_exact_edit_ambiguous (test_core.FileTests.test_exact_edit_ambiguous) ... ok
+test_hardlink_denied (test_core.FileTests.test_hardlink_denied) ... ok
+test_scoped_read_and_write_backup (test_core.FileTests.test_scoped_read_and_write_backup) ... ok
+test_search_and_memory_isolation (test_core.FileTests.test_search_and_memory_isolation) ... ok
+test_invalid_roles (test_core.MCPTests.test_invalid_roles) ... ok
+test_stdio_handshake_list_call (test_core.MCPTests.test_stdio_handshake_list_call) ... ok
+test_agent_denial_and_compaction_preserve_history (test_core.ProviderTests.test_agent_denial_and_compaction_preserve_history) ... ok
+test_agent_tool_loop_writes_with_review (test_core.ProviderTests.test_agent_tool_loop_writes_with_review) ... ok
+test_both_protocols_stream_and_json (test_core.ProviderTests.test_both_protocols_stream_and_json) ... ok
+test_endpoint_normalization (test_core.ProviderTests.test_endpoint_normalization) ... ok
+test_incomplete_stream_rejected (test_core.ProviderTests.test_incomplete_stream_rejected) ... ok
+test_slash_compact_command_intercepted (test_core.ProviderTests.test_slash_compact_command_intercepted) ... ok
+test_slash_compact_ignores_non_bare_command (test_core.ProviderTests.test_slash_compact_ignores_non_bare_command) ... ok
+test_thinking_blocks_are_captured_and_stored (test_core.ProviderTests.test_thinking_blocks_are_captured_and_stored) ... ok
+test_tool_conversion (test_core.ProviderTests.test_tool_conversion) ... ok
+test_config_credentials (test_core.StoreTests.test_config_credentials) ... ok
+test_extension_role_allowlist (test_core.StoreTests.test_extension_role_allowlist) ... ok
+test_fork_summary_and_role_isolation (test_core.StoreTests.test_fork_summary_and_role_isolation) ... ok
+test_interrupted_tool_is_not_replayed (test_core.StoreTests.test_interrupted_tool_is_not_replayed) ... ok
+test_concurrent_streams_and_real_review_dialog (test_ui.UITests.test_concurrent_streams_and_real_review_dialog) ... ok
+test_role_drafts_history_and_fork (test_ui.UITests.test_role_drafts_history_and_fork) ... ok
+test_settings_tabs_save_and_role_scopes (test_ui.UITests.test_settings_tabs_save_and_role_scopes) ... ok
+
+----------------------------------------------------------------------
+Ran 26 tests in 9.414s
+
+OK

@@ -51,6 +51,7 @@
 
 ## 索引
 
-- 当前待读：`claude-to-codex.md`（有 5 节记录，最新 2026-11-03 20:06）；`codex-to-claude.md`（空，待 Codex 首条）；`master-notes.md`（1 节，双方都读）。
-- 历史归档：见 `archive/`（目前没有）。
-- 规则之外的背景（旧 HANDOFF.md 已拆分迁入上述三份文件，本文件不再承载记录）。
+- [插件创建规范](PLUGIN_SPEC.md)：扩展合同、内置时间插件、AstrBot 复用路线。
+- [维护地图](MAINTENANCE_MAP.md)：任务对应模块、拆分原则、验证入口。
+- 当前待读数量以各 to- 文件实际内容为准，不在这里维护容易过期的计数。
+- 主人指令见 master-notes.md；历史记录见 archive/，已结账内容无需重读。

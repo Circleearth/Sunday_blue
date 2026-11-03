@@ -9,6 +9,7 @@ from .provider import Provider, Cancelled
 from .files import FileTools, FILE_SCHEMAS, MEMORY_SCHEMAS
 from .extensions import MCPClient, extension_text
 from .storage import plain, now
+from .time_context import time_context
 
 _COMPACT = re.compile(r'^\s*/\s*compact\b[\s:：]*$', re.IGNORECASE)
 
@@ -29,7 +30,7 @@ class Approval:
 def system_prompt(root, role, config):
     root = Path(root)
     persona = root / 'personas' / role
-    parts = [f'你是 Sunday Blue 中的 {role}。保持以下人格。当前时间 {now()}。']
+    parts = [f'你是 Sunday Blue 中的 {role}。保持以下人格。', time_context()]
     # Preserve personality/voice; legacy host-specific workflow files are reference only.
     for name in ('identity.md', 'personality.md', 'voice.md', 'expertise.md', 'relationships.md'):
         p = persona / name

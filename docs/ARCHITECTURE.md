@@ -41,3 +41,8 @@ MCP 是用户选择运行的本机程序，进程拥有操作系统用户权限�
 PyInstaller onedir，Python/Qt/requests 放在 `_internal`；assets/personas/extensions/data 外置，定位以 EXE 所在目录为准。开发模式以 main.py 的项目根定位。构建输出在 build 内，再复制 EXE 与 `_internal` 到根。
 
 不绑定旧项目的 Python 路径。不复制第三方已有项目源码。人格是已授权复制的项目内容；Qt/PySide6、Python、requests 等第三方库使用各自许可证，随依赖包保留许可证资料。公开分发前应审查对应许可证义务。
+
+
+## 2026-11-03 维护导航更新
+
+UI 组件实现已移至 `sunday_blue/ui_components.py`，主窗口协调仍在 ui.py。时间注入在 time_context.py，由 Agent 的 system_prompt 调用；不写 messages。插件合同见 [PLUGIN_SPEC](../handoff/PLUGIN_SPEC.md)，职责定位见 [维护地图](../handoff/MAINTENANCE_MAP.md)。当前不打包；AstrBot 桥接属于评估方案，尚未实现。
