@@ -1,0 +1,169 @@
+"""Allowlisted text file tools, reparse/hardlink checks, reviewed atomic writes."""
+from __future__ import annotations
+import difflib
+import hashlib
+import json
+import os
+from pathlib import Path
+import stat
+import threading
+import uuid
+
+WRITE_LOCK = threading.Lock()
+MAX_FILE = 1024 * 1024
+
+def inside(path, root):
+    return path == root or root in path.parents
+
+def no_links(path):
+    for node in (path, *path.parents):
+        try:
+            s = node.lstat()
+        except FileNotFoundError:
+            continue
+        if node.is_symlink() or getattr(s, 'st_file_attributes', 0) & 0x400:
+            raise PermissionError('不允许通过符号链接或 Windows 联接点访问文件。')
+        if node == path and stat.S_ISREG(s.st_mode) and s.st_nlink > 1:
+            raise PermissionError('不允许访问硬链接文件。')
+
+class FileTools:
+    def __init__(self, root, role, rules, approve, audit):
+        self.root = Path(root).resolve()
+        self.role = role
+        self.rules = rules
+        self.approve = approve
+        self.audit = audit
+
+    def check(self, value, write=False):
+        p = Path(value)
+        if not p.is_absolute() or '..' in p.parts:
+            raise PermissionError('请提供已授权目录内的绝对路径。')
+        # Forbid UNC/device paths and NTFS alternate streams.
+        if str(p).startswith(('\\\\', '//')) or ':' in str(p)[len(p.drive):]:
+            raise PermissionError('不支持网络路径、设备路径或 NTFS 备用数据流。')
+        no_links(p)
+        resolved = p.resolve()
+        if inside(resolved, self.root):
+            raise PermissionError('软件自身文件由设置界面管理；持久记忆请使用 memory 工具。')
+        for rule in self.rules:
+            base = Path(rule['path'])
+            no_links(base)
+            if base.is_absolute() and inside(resolved, base.resolve()) and (not write or rule.get('write')):
+                return resolved
+        raise PermissionError('该路径未在此角色的文件权限中授权' + ('写入。' if write else '读取。'))
+
+    def read(self, path):
+        p = self.check(path)
+        if p.stat().st_size > MAX_FILE:
+            raise ValueError('单文件最多读取 1 MiB UTF-8 文本。')
+        return p.read_text(encoding='utf-8-sig')
+
+    def list(self, path):
+        p = self.check(path)
+        items = []
+        for f in sorted(p.iterdir(), key=lambda x: x.name.lower())[:300]:
+            try:
+                self.check(str(f))
+                items.append({'name': f.name, 'directory': f.is_dir(), 'size': f.stat().st_size if f.is_file() else None})
+            except (OSError, ValueError):
+                continue
+        return items
+
+    def search(self, path, query):
+        if not query:
+            raise ValueError('搜索词不能为空。')
+        base = self.check(path)
+        matches, scanned, visited = [], 0, 0
+        for current, dirs, files in os.walk(base, followlinks=False):
+            dirs[:] = sorted(d for d in dirs if d not in {'.git', 'node_modules', '.venv', '__pycache__'})
+            safe_dirs = []
+            for d in dirs:
+                try:
+                    self.check(str(Path(current) / d))
+                    safe_dirs.append(d)
+                except (OSError, ValueError):
+                    pass
+            dirs[:] = safe_dirs
+            for name in sorted(files):
+                visited += 1
+                if visited > 1500:
+                    return {'matches': matches, 'truncated': True, 'scanned': scanned}
+                p = Path(current) / name
+                try:
+                    text = self.read(str(p))
+                    scanned += 1
+                except (OSError, ValueError, UnicodeError):
+                    continue
+                for n, line in enumerate(text.splitlines(), 1):
+                    if query.casefold() in line.casefold():
+                        matches.append({'path': str(p), 'line': n, 'text': line[:500]})
+                        if len(matches) >= 100:
+                            return {'matches': matches, 'truncated': True, 'scanned': scanned}
+        return {'matches': matches, 'truncated': False, 'scanned': scanned}
+
+    def write(self, path, content=None, old_text=None, new_text=None, memory=False):
+        if memory:
+            p = self.root / 'data' / 'memory' / self.role / 'long_term.md'
+            no_links(p)
+        else:
+            p = self.check(path, True)
+        if p.exists() and p.stat().st_size > MAX_FILE:
+            raise ValueError('文件过大，当前编辑器仅处理 1 MiB 内的 UTF-8 文本。')
+        original = p.read_bytes() if p.exists() else None
+        before = original.decode('utf-8-sig') if original is not None else ''
+        if old_text is not None:
+            if not old_text or before.count(old_text) != 1:
+                raise ValueError('精确替换必须恰好匹配一处非空文本；请先读取文件。')
+            content = before.replace(old_text, new_text, 1)
+        if not isinstance(content, str) or len(content.encode('utf-8')) > MAX_FILE:
+            raise ValueError('写入内容必须是 1 MiB 内的文本。')
+        if content == before and original is not None:
+            return {'status': 'unchanged', 'path': str(p)}
+        diff = ''.join(difflib.unified_diff(before.splitlines(True), content.splitlines(True), fromfile=str(p), tofile=str(p)))
+        if not self.approve('持久记忆更新' if memory else '文件修改', str(p), diff):
+            self.audit('write_denied', str(p))
+            return {'status': 'denied', 'path': str(p)}
+        with WRITE_LOCK:
+            if not memory:
+                self.check(str(p), True)
+            no_links(p)
+            current = p.read_bytes() if p.exists() else None
+            if current != original:
+                raise RuntimeError('文件在确认期间发生变化，本次未写入；请重新读取并审阅。')
+            backup = None
+            if original is not None:
+                backup = self.root / 'data' / 'backups' / (uuid.uuid4().hex + '.bak')
+                backup.parent.mkdir(parents=True, exist_ok=True)
+                backup.write_bytes(original)
+            p.parent.mkdir(parents=True, exist_ok=True)
+            no_links(p.parent)
+            tmp = p.with_name('.' + p.name + '.' + uuid.uuid4().hex + '.tmp')
+            try:
+                data = content.encode('utf-8')
+                if original and original.startswith(b'\xef\xbb\xbf'):
+                    data = b'\xef\xbb\xbf' + data
+                tmp.write_bytes(data)
+                no_links(p)
+                os.replace(tmp, p)
+            finally:
+                tmp.unlink(missing_ok=True)
+            result = {'status': 'written', 'path': str(p), 'backup': str(backup) if backup else None,
+                      'sha256': hashlib.sha256(data).hexdigest()}
+            self.audit('write', json.dumps(result, ensure_ascii=False))
+            return result
+
+def schema(name, description, props, required):
+    return {'name': name, 'description': description, 'input_schema': {'type': 'object', 'properties': props, 'required': required, 'additionalProperties': False}}
+
+S = {'type': 'string'}
+FILE_SCHEMAS = [
+    schema('list_files', '列出角色已授权目录的直接子项，不递归。必须用绝对路径。', {'path': S}, ['path']),
+    schema('read_file', '读取已授权的 UTF-8 文本，最大 1 MiB。', {'path': S}, ['path']),
+    schema('search_files', '在已授权目录搜索文本，跳过常见依赖目录，最多 1500 文件/100 命中。', {'path': S, 'query': S}, ['path', 'query']),
+    schema('write_file', '新建或覆盖 UTF-8 文件，必须在可写目录；用户将审阅差异。优先 edit_file。', {'path': S, 'content': S}, ['path', 'content']),
+    schema('edit_file', '精确替换一处文本并展示差异；old_text 必须唯一匹配。', {'path': S, 'old_text': S, 'new_text': S}, ['path', 'old_text', 'new_text']),
+]
+MEMORY_SCHEMAS = [
+    schema('memory_read', '读取当前角色的持久记忆，同一角色所有会话共享。', {}, []),
+    schema('memory_write', '更新当前角色持久记忆；保留其他有效事实和来源，用户确认后保存。', {'content': S}, ['content']),
+]

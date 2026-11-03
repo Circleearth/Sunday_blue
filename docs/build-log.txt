@@ -1,0 +1,138 @@
+331 INFO: PyInstaller: 6.22.3, contrib hooks: 2026.8
+331 INFO: Python: 3.14.0
+365 INFO: Platform: Windows-11-10.0.26200-SP0
+365 INFO: Python environment: C:\Users\zsc18\AppData\Local\Programs\Python\Python314
+366 INFO: wrote build\SundayBlue.spec
+377 INFO: Module search paths (PYTHONPATH):
+['D:\\Sunday_Blue',
+ 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\python314.zip',
+ 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\DLLs',
+ 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib',
+ 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314',
+ 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages',
+ 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\win32',
+ 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\win32\\lib',
+ 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\pythonwin',
+ 'D:\\Sunday_Blue']
+pygame-ce 2.5.8 (SDL 2.32.10, Python 3.14.0)
+3161 INFO: checking Analysis
+3161 INFO: Building Analysis because Analysis-00.toc is non existent
+3161 INFO: Looking for Python shared library...
+3161 INFO: Using Python shared library: C:\Users\zsc18\AppData\Local\Programs\Python\Python314\python314.dll
+3161 INFO: Running Analysis Analysis-00.toc
+3161 INFO: Target bytecode optimization level: 0
+3161 INFO: Initializing module dependency graph...
+3165 INFO: Initializing module graph hook caches...
+3288 INFO: Analyzing modules for base_library.zip ...
+8897 INFO: Processing standard module hook 'hook-encodings.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+9929 INFO: Processing standard module hook 'hook-pickle.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+10526 INFO: Processing standard module hook 'hook-math.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+10749 INFO: Processing standard module hook 'hook-difflib.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+10770 INFO: Processing standard module hook 'hook-heapq.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+16248 INFO: Caching module dependency graph...
+16280 INFO: Analyzing D:\Sunday_Blue\main.py
+16289 INFO: Processing standard module hook 'hook-PySide6.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+17021 INFO: Processing standard module hook 'hook-shiboken6.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+17419 INFO: Processing standard module hook 'hook-PySide6.QtNetwork.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+22680 INFO: Processing standard module hook 'hook-PySide6.QtCore.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+29292 INFO: Processing standard module hook 'hook-PySide6.QtWidgets.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+36233 INFO: Processing standard module hook 'hook-PySide6.QtGui.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+89700 INFO: Processing standard module hook 'hook-_ctypes.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+89709 INFO: Processing standard module hook 'hook-sqlite3.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+90679 INFO: Processing standard module hook 'hook-platform.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+90756 INFO: Processing standard module hook 'hook-urllib3.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+90883 INFO: Processing pre-safe-import-module hook 'hook-backports.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+90887 INFO: SetuptoolsInfo: initializing cached setuptools info...
+92294 INFO: Setuptools: 'backports' appears to be a full setuptools-vendored copy - creating alias to 'setuptools._vendor.backports'!
+92318 INFO: Processing standard module hook 'hook-setuptools.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+92378 INFO: Processing pre-safe-import-module hook 'hook-distutils.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+92517 INFO: Processing standard module hook 'hook-sysconfig.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+92537 INFO: Processing pre-safe-import-module hook 'hook-jaraco.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+92539 INFO: Setuptools: 'jaraco' appears to be a full setuptools-vendored copy - creating alias to 'setuptools._vendor.jaraco'!
+92564 INFO: Processing pre-safe-import-module hook 'hook-more_itertools.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+92566 INFO: Setuptools: 'more_itertools' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.more_itertools'!
+92838 INFO: Processing standard module hook 'hook-_osx_support.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+92855 INFO: Processing pre-safe-import-module hook 'hook-typing_extensions.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+93168 INFO: Processing standard module hook 'hook-multiprocessing.util.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+93319 INFO: Processing standard module hook 'hook-xml.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+94353 INFO: Processing pre-safe-import-module hook 'hook-packaging.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+94859 INFO: Processing standard module hook 'hook-setuptools._vendor.jaraco.text.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+94861 INFO: Processing pre-safe-import-module hook 'hook-importlib_resources.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+96046 INFO: Processing pre-safe-import-module hook 'hook-tomli.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+96048 INFO: Setuptools: 'tomli' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.tomli'!
+97041 INFO: Processing pre-safe-import-module hook 'hook-wheel.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+97043 INFO: Setuptools: 'wheel' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.wheel'!
+97621 INFO: Processing standard module hook 'hook-certifi.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+97726 INFO: Processing standard module hook 'hook-charset_normalizer.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+98038 INFO: Processing module hooks (post-graph stage)...
+98448 INFO: Processing standard module hook 'hook-webbrowser.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+99191 INFO: Performing binary vs. data reclassification (125 entries)
+100023 INFO: Looking for ctypes DLLs
+100047 INFO: Analyzing run-time hooks ...
+100049 INFO: Including run-time hook 'pyi_rth_inspect.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+100062 INFO: Including run-time hook 'pyi_rth_setuptools.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+100074 INFO: Including run-time hook 'pyi_rth_pkgutil.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+100089 INFO: Including run-time hook 'pyi_rth_multiprocessing.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+100102 INFO: Including run-time hook 'pyi_rth_pyside6.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+100114 INFO: Processing pre-find-module-path hook 'hook-_pyi_rth_utils.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+100128 INFO: Processing standard module hook 'hook-_pyi_rth_utils.py' from 'C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+100173 INFO: Creating base_library.zip...
+100188 INFO: Looking for dynamic libraries
+101594 INFO: Extra DLL search directories (AddDllDirectory): ['C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\shiboken6']
+101594 INFO: Extra DLL search directories (PATH): ['C:\\Users\\zsc18\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\PySide6']
+103410 INFO: Warnings written to D:\Sunday_Blue\build\work\SundayBlue\warn-SundayBlue.txt
+103443 INFO: Graph cross-reference written to D:\Sunday_Blue\build\work\SundayBlue\xref-SundayBlue.html
+103508 INFO: checking PYZ
+103508 INFO: Building PYZ because PYZ-00.toc is non existent
+103508 INFO: Building PYZ (ZlibArchive) D:\Sunday_Blue\build\work\SundayBlue\PYZ-00.pyz
+103751 INFO: Building PYZ (ZlibArchive) D:\Sunday_Blue\build\work\SundayBlue\PYZ-00.pyz completed successfully.
+103760 INFO: checking PKG
+103760 INFO: Building PKG because PKG-00.toc is non existent
+103760 INFO: Building PKG (CArchive) SundayBlue.pkg
+103792 INFO: Building PKG (CArchive) SundayBlue.pkg completed successfully.
+103793 INFO: Bootloader C:\Users\zsc18\AppData\Local\Programs\Python\Python314\Lib\site-packages\PyInstaller\bootloader\Windows-64bit-intel\runw.exe
+103793 INFO: checking EXE
+103793 INFO: Building EXE because EXE-00.toc is non existent
+103793 INFO: Building EXE from EXE-00.toc
+103794 INFO: Copying bootloader EXE to D:\Sunday_Blue\build\work\SundayBlue\SundayBlue.exe
+103885 INFO: Copying icon to EXE
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\zsc18\AppData\Local\Programs\Python\Python314\Lib\site-packages\PyInstaller\__main__.py", line 321, in <module>
+    run()
+    ~~~^^
+  File "C:\Users\zsc18\AppData\Local\Programs\Python\Python314\Lib\site-packages\PyInstaller\__main__.py", line 215, in run
+    run_build(pyi_config, spec_file, **vars(args))
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\zsc18\AppData\Local\Programs\Python\Python314\Lib\site-packages\PyInstaller\__main__.py", line 70, in run_build
+    PyInstaller.building.build_main.main(pyi_config, spec_file, **kwargs)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\zsc18\AppData\Local\Programs\Python\Python314\Lib\site-packages\PyInstaller\building\build_main.py", line 1275, in main
+    build(specfile, distpath, workpath, clean_build)
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\zsc18\AppData\Local\Programs\Python\Python314\Lib\site-packages\PyInstaller\building\build_main.py", line 1213, in build
+    exec(code, spec_namespace)
+    ~~~~^^^^^^^^^^^^^^^^^^^^^^
+  File "build\SundayBlue.spec", line 19, in <module>
+    exe = EXE(
+        pyz,
+    ...<14 lines>...
+        icon=['assets/app.ico'],
+    )
+  File "C:\Users\zsc18\AppData\Local\Programs\Python\Python314\Lib\site-packages\PyInstaller\building\api.py", line 675, in __init__
+    self.__postinit__()
+    ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\zsc18\AppData\Local\Programs\Python\Python314\Lib\site-packages\PyInstaller\building\datastruct.py", line 184, in __postinit__
+    self.assemble()
+    ~~~~~~~~~~~~~^^
+  File "C:\Users\zsc18\AppData\Local\Programs\Python\Python314\Lib\site-packages\PyInstaller\building\api.py", line 788, in assemble
+    self._retry_operation(icon.CopyIcons, build_name, self.icon)
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\zsc18\AppData\Local\Programs\Python\Python314\Lib\site-packages\PyInstaller\building\api.py", line 1058, in _retry_operation
+    return func(*args)
+  File "C:\Users\zsc18\AppData\Local\Programs\Python\Python314\Lib\site-packages\PyInstaller\utils\win32\icon.py", line 206, in CopyIcons
+    srcpath = normalize_icon_type(srcpath, ("exe", "ico"), "ico", config.CONF["workpath"])
+  File "C:\Users\zsc18\AppData\Local\Programs\Python\Python314\Lib\site-packages\PyInstaller\building\icon.py", line 34, in normalize_icon_type
+    raise FileNotFoundError(f"Icon input file {icon_path} not found")
+FileNotFoundError: Icon input file D:\Sunday_Blue\build\assets/app.ico not found

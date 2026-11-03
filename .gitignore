@@ -1,0 +1,9 @@
+data/
+build/
+_internal/
+*.exe
+*.spec
+__pycache__/
+.venv/
+tests/sunday-test-*/
+tests/ui-test-*/

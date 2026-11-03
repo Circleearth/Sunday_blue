@@ -1,0 +1,291 @@
+from __future__ import annotations
+import copy
+import json
+from pathlib import Path
+import re
+import shutil
+from PySide6.QtCore import Qt, QThread, Signal, QUrl
+from PySide6.QtGui import QDesktopServices
+from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QTabWidget, QWidget,
+    QFormLayout, QLineEdit, QComboBox, QSpinBox, QCheckBox, QLabel, QPushButton,
+    QListWidget, QListWidgetItem, QFileDialog, QMessageBox, QPlainTextEdit, QInputDialog)
+from .storage import ROLES, protect, atomic_json
+from .provider import Provider, endpoint
+from .extensions import validate_servers
+from .files import no_links, inside
+
+def label(text):
+    w = QLabel(text)
+    w.setWordWrap(True)
+    w.setObjectName('muted')
+    return w
+
+class ConnectionTest(QThread):
+    result = Signal(str)
+    def __init__(self, api):
+        super().__init__()
+        self.api = api
+    def run(self):
+        try:
+            blocks, _, _ = Provider(self.api).complete('Reply briefly.', [{'role':'user','content':'Reply OK.'}], max_tokens=32)
+            self.result.emit('连接成功 · 已收到模型响应（此测试产生少量 API 用量）。')
+        except Exception as exc:
+            self.result.emit(str(exc))
+
+class Settings(QDialog):
+    def __init__(self, config, role, parent=None):
+        super().__init__(parent)
+        self.config = config
+        self.value = config.snapshot()
+        self.current_role = role
+        self.test_worker = None
+        self.setWindowTitle('Sunday Blue · 设置')
+        self.resize(860, 690)
+        layout = QVBoxLayout(self)
+        heading = QLabel('设置 / CONTROL ROOM')
+        heading.setObjectName('title')
+        layout.addWidget(heading)
+        self.tabs = QTabWidget()
+        layout.addWidget(self.tabs)
+        self._api_page()
+        self._permissions_page()
+        self._plugins_page()
+        self._mcp_page()
+        self._skills_page()
+        self._appearance_page()
+        row = QHBoxLayout()
+        row.addWidget(label('设置从下一次发送生效；运行中的任务使用启动时的配置。'))
+        row.addStretch()
+        cancel, save = QPushButton('取消'), QPushButton('保存设置')
+        save.setObjectName('primary')
+        cancel.clicked.connect(self.reject)
+        save.clicked.connect(self.save)
+        row.addWidget(cancel); row.addWidget(save)
+        layout.addLayout(row)
+
+    def page(self, title):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(16, 18, 16, 16)
+        layout.setSpacing(12)
+        self.tabs.addTab(page, title)
+        return layout
+
+    def role_combo(self, selected=None):
+        combo = QComboBox()
+        for rid, name, desc, _ in ROLES:
+            combo.addItem(f'{name} · {desc}', rid)
+        combo.setCurrentIndex(next(i for i,r in enumerate(ROLES) if r[0] == (selected or self.current_role)))
+        return combo
+
+    def _api_page(self):
+        layout = self.page('API 连接')
+        layout.addWidget(label('直接连接你的 API 服务或中转站。可填写与 cc-switch 相同的地址、密钥和模型 ID；无需运行 Claude Desktop。'))
+        form = QFormLayout()
+        self.protocol = QComboBox()
+        self.protocol.addItem('Anthropic Messages（Claude 接口）', 'anthropic')
+        self.protocol.addItem('OpenAI 兼容 Chat Completions', 'openai')
+        api = self.value['api']
+        self.protocol.setCurrentIndex(0 if api['protocol']=='anthropic' else 1)
+        self.url = QLineEdit(api['base_url'])
+        self.key = QLineEdit()
+        self.key.setEchoMode(QLineEdit.EchoMode.Password)
+        self.key.setPlaceholderText('已有加密密钥，留空保持' if api.get('key_encrypted') else '输入 API Key（本地代理可留空）')
+        self.clear_key = QCheckBox('清除已保存的密钥')
+        self.auth = QComboBox()
+        self.auth.addItem('x-api-key（Anthropic 默认）','x-api-key')
+        self.auth.addItem('Authorization: Bearer（中转站）','bearer')
+        self.auth.setCurrentIndex(1 if api.get('auth')=='bearer' else 0)
+        self.model = QLineEdit(api['model']); self.model.setPlaceholderText('填写服务商提供的准确模型 ID')
+        self.tokens = QSpinBox(); self.tokens.setRange(256, 128000); self.tokens.setValue(api['max_tokens'])
+        self.context = QSpinBox(); self.context.setRange(1024, 2000000); self.context.setSingleStep(1000); self.context.setValue(api['context_limit'])
+        self.stream = QCheckBox('流式显示回复'); self.stream.setChecked(api.get('stream',True))
+        for title,w in [('接口协议',self.protocol),('请求地址',self.url),('API Key',self.key),('鉴权方式',self.auth),('模型 ID',self.model),('最大输出 token',self.tokens),('上下文容量（手动）',self.context)]:
+            form.addRow(title,w)
+        form.addRow('',self.clear_key); form.addRow('',self.stream)
+        layout.addLayout(form)
+        self.test_status = label('密钥使用 Windows DPAPI 加密保存；请求地址可填根地址、/v1 或完整端点。')
+        self.test_button = QPushButton('测试连接 · 发送少量请求')
+        self.test_button.clicked.connect(self.test)
+        layout.addWidget(self.test_button); layout.addWidget(self.test_status); layout.addStretch()
+
+    def api_value(self):
+        api = dict(self.value['api'])
+        api.update(protocol=self.protocol.currentData(), base_url=self.url.text().strip(), model=self.model.text().strip(),
+                   auth=self.auth.currentData(), max_tokens=self.tokens.value(), context_limit=self.context.value(), stream=self.stream.isChecked())
+        endpoint(api['base_url'], api['protocol'])
+        if self.clear_key.isChecked(): api['key_encrypted'] = ''
+        if self.key.text().strip(): api['key_encrypted'] = protect(self.key.text().strip())
+        return api
+
+    def test(self):
+        try:
+            api = self.api_value()
+            self.test_worker = ConnectionTest(api)
+            self.test_button.setEnabled(False)
+            self.test_status.setText('正在连接…')
+            self.test_worker.result.connect(self.test_status.setText)
+            self.test_worker.finished.connect(lambda: self.test_button.setEnabled(True))
+            self.test_worker.start()
+        except Exception as exc:
+            QMessageBox.warning(self,'配置有误',str(exc))
+
+    def _permissions_page(self):
+        layout = self.page('角色权限')
+        layout.addWidget(label('默认不允许读取或修改任何外部目录。授权仅对选中的角色生效；“可写”目录也可读取。每次写入仍需审阅差异。'))
+        self.permission_role = self.role_combo()
+        self.permission_role.currentIndexChanged.connect(self.load_roots)
+        layout.addWidget(self.permission_role)
+        self.roots = QListWidget()
+        layout.addWidget(self.roots)
+        row = QHBoxLayout()
+        read, write, remove = QPushButton('＋ 只读目录'), QPushButton('＋ 可写目录'), QPushButton('移除所选')
+        read.clicked.connect(lambda:self.add_root(False)); write.clicked.connect(lambda:self.add_root(True)); remove.clicked.connect(self.remove_root)
+        for w in (read,write,remove): row.addWidget(w)
+        layout.addLayout(row)
+        layout.addWidget(label('内置工具：列目录、读取、文本搜索、创建和精确编辑文件。暂不提供终端、任意脚本执行或删除文件。软件自身目录不可作为外部工作区授权。'))
+        self.load_roots()
+
+    def load_roots(self):
+        self.roots.clear()
+        for root in self.value['roles'][self.permission_role.currentData()]['roots']:
+            self.roots.addItem(('读写  ' if root.get('write') else '只读  ') + root['path'])
+
+    def add_root(self, write):
+        path = QFileDialog.getExistingDirectory(self,'选择该角色可访问的目录')
+        if not path: return
+        try:
+            p = Path(path).resolve()
+            no_links(Path(path))
+            if inside(p,self.config.root) or inside(self.config.root,p):
+                raise ValueError('请选择软件目录以外的具体工作目录，不能授权软件自身或其上层目录。')
+            if str(p).startswith('\\\\'):
+                raise ValueError('暂不支持网络目录。')
+            roots = self.value['roles'][self.permission_role.currentData()]['roots']
+            roots[:] = [r for r in roots if Path(r['path'])!=p]
+            roots.append({'path':str(p),'write':write})
+            self.load_roots()
+        except Exception as exc:
+            QMessageBox.warning(self,'无法授权',str(exc))
+
+    def remove_root(self):
+        index = self.roots.currentRow()
+        if index >= 0:
+            del self.value['roles'][self.permission_role.currentData()]['roots'][index]
+            self.load_roots()
+
+    def _plugins_page(self):
+        layout = self.page('插件')
+        layout.addWidget(label('内置能力开关 + 可导入的提示词插件。程序代码扩展由 MCP 承担；不会执行插件包内的 Python 脚本。'))
+        self.features = {}
+        for k,text in [('files','文件工作台 · 目录权限与差异审阅'),('memory','持久记忆 · 同角色跨会话共享'),('mcp','MCP 工具桥 · 启用下面 MCP 页的已配置服务')]:
+            box = QCheckBox(text); box.setChecked(self.value['features'].get(k,False)); self.features[k]=box; layout.addWidget(box)
+        self.plugin_role = self.role_combo()
+        self.plugin_role.currentIndexChanged.connect(self.load_plugins)
+        layout.addWidget(self.plugin_role)
+        self.plugins = QListWidget(); self.plugins.itemChanged.connect(self.sync_plugins); layout.addWidget(self.plugins)
+        add = QPushButton('导入提示词插件 .json'); add.clicked.connect(self.import_plugin); layout.addWidget(add)
+        self.load_plugins()
+
+    def load_plugins(self):
+        self.plugins.blockSignals(True); self.plugins.clear()
+        enabled = self.value['roles'][self.plugin_role.currentData()]['plugins']
+        for p in sorted((self.config.root/'extensions'/'plugins').glob('*.json')):
+            item = QListWidgetItem(p.stem)
+            item.setFlags(item.flags()|Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Checked if p.stem in enabled else Qt.CheckState.Unchecked)
+            self.plugins.addItem(item)
+        self.plugins.blockSignals(False)
+
+    def sync_plugins(self):
+        self.value['roles'][self.plugin_role.currentData()]['plugins'] = [self.plugins.item(i).text() for i in range(self.plugins.count()) if self.plugins.item(i).checkState()==Qt.CheckState.Checked]
+
+    def import_plugin(self):
+        path,_ = QFileDialog.getOpenFileName(self,'导入插件',filter='JSON (*.json)')
+        if not path: return
+        try:
+            p = Path(path)
+            if p.stat().st_size > 65536: raise ValueError('插件文件最大 64 KiB。')
+            obj = json.loads(p.read_text(encoding='utf-8-sig'))
+            name = obj.get('id','')
+            if not re.fullmatch(r'[A-Za-z0-9_-]+',name) or not isinstance(obj.get('prompt'),str): raise ValueError('需要 id（字母数字短横线）和 prompt 字符串。')
+            dest = self.config.root/'extensions'/'plugins'/(name+'.json')
+            if dest.exists(): raise ValueError('相同 ID 已存在，请先修改 ID。')
+            atomic_json(dest,obj)
+            self.load_plugins()
+        except Exception as exc: QMessageBox.warning(self,'导入失败',str(exc))
+
+    def _mcp_page(self):
+        layout = self.page('MCP')
+        layout.addWidget(label('本地 stdio MCP 配置（JSON 数组）。仅对 roles 中列出的角色启用。启动服务及每次工具调用均需确认。外部进程不受内置目录权限沙箱约束。'))
+        self.mcp = QPlainTextEdit(json.dumps(self.value['mcp_servers'],ensure_ascii=False,indent=2))
+        self.mcp.setPlaceholderText('[{"name":"my-server","command":"C:/path/node.exe","args":["C:/path/server.js"],"roles":["rui"],"enabled":true}]')
+        layout.addWidget(self.mcp)
+        layout.addWidget(label('字段：name、command、args、roles、enabled；可选 cwd、env。env 会以明文存储，请优先让服务自行读取系统凭据。本版支持 tools/list、tools/call；不支持远程 HTTP、OAuth、resources、prompts。'))
+        example = QPushButton('插入禁用的配置示例')
+        def insert():
+            try:
+                data = json.loads(self.mcp.toPlainText())
+                data.append({'name':'example','command':'C:/path/to/node.exe','args':['C:/path/to/server.js'],'roles':['rui'],'enabled':False})
+                self.mcp.setPlainText(json.dumps(data,ensure_ascii=False,indent=2))
+            except Exception as exc: QMessageBox.warning(self,'JSON 格式错误',str(exc))
+        example.clicked.connect(insert); layout.addWidget(example)
+
+    def _skills_page(self):
+        layout = self.page('Skills')
+        layout.addWidget(label('导入包含 SKILL.md 的文件夹，副本保存在本软件 extensions/skills。勾选后，角色在下一次发送时加载指令。当前版本只加载 SKILL.md，不自动执行脚本或读取引用附件。'))
+        self.skill_role = self.role_combo(); self.skill_role.currentIndexChanged.connect(self.load_skills); layout.addWidget(self.skill_role)
+        self.skills = QListWidget(); self.skills.itemChanged.connect(self.sync_skills); layout.addWidget(self.skills)
+        add = QPushButton('＋ 导入 Skill 文件夹'); add.clicked.connect(self.import_skill); layout.addWidget(add)
+        self.load_skills()
+
+    def load_skills(self):
+        self.skills.blockSignals(True); self.skills.clear()
+        enabled = self.value['roles'][self.skill_role.currentData()]['skills']
+        for p in sorted((self.config.root/'extensions'/'skills').glob('*/SKILL.md')):
+            item = QListWidgetItem(p.parent.name); item.setFlags(item.flags()|Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Checked if p.parent.name in enabled else Qt.CheckState.Unchecked); self.skills.addItem(item)
+        self.skills.blockSignals(False)
+
+    def sync_skills(self):
+        self.value['roles'][self.skill_role.currentData()]['skills'] = [self.skills.item(i).text() for i in range(self.skills.count()) if self.skills.item(i).checkState()==Qt.CheckState.Checked]
+
+    def import_skill(self):
+        folder = QFileDialog.getExistingDirectory(self,'选择含 SKILL.md 的文件夹')
+        if not folder: return
+        try:
+            p=Path(folder); no_links(p/'SKILL.md')
+            if not (p/'SKILL.md').is_file(): raise ValueError('未找到 SKILL.md。')
+            if not re.fullmatch(r'[A-Za-z0-9_-]+',p.name): raise ValueError('文件夹名请使用字母、数字、短横线或下划线。')
+            if (p/'SKILL.md').stat().st_size>65536: raise ValueError('SKILL.md 最大 64 KiB。')
+            dest=self.config.root/'extensions'/'skills'/p.name
+            if dest.exists(): raise ValueError('同名 Skill 已存在，请改名后导入。')
+            # Only the supported entry point is copied; no external runtime dependency.
+            dest.mkdir(); shutil.copy2(p/'SKILL.md',dest/'SKILL.md')
+            self.load_skills()
+        except Exception as exc: QMessageBox.warning(self,'导入失败',str(exc))
+
+    def _appearance_page(self):
+        layout = self.page('外观 / 数据')
+        layout.addWidget(label('头像与立绘是普通 PNG 文件，不需要重新编译软件。替换后点击主界面的“刷新素材”。'))
+        layout.addWidget(QLabel('assets/roles/<角色 ID>/avatar.png\n推荐：512 × 512，正方形\n\nassets/roles/<角色 ID>/portrait.png\n推荐：1200 × 1800，透明背景，人物居中\n\n软件会等比例缩放；头像建议避免边缘重要内容。'))
+        for title,relative in [('打开素材目录','assets/roles'),('打开数据目录','data'),('打开使用说明','README.md')]:
+            button=QPushButton(title)
+            button.clicked.connect(lambda checked=False,p=relative:QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.config.root/p)))); layout.addWidget(button)
+        layout.addWidget(label('聊天数据库、角色记忆、备份、设置都在 data 内。备份时关闭软件并复制整个 Sunday_Blue 文件夹。API 密钥只能由原 Windows 账户解密。'))
+        layout.addStretch()
+
+    def save(self):
+        try:
+            self.value['api']=self.api_value()
+            self.value['mcp_servers']=validate_servers(json.loads(self.mcp.toPlainText()))
+            self.value['features']={k:w.isChecked() for k,w in self.features.items()}
+            self.config.save(self.value)
+            self.accept()
+        except Exception as exc: QMessageBox.warning(self,'无法保存',str(exc))
+
+    def done(self, result):
+        if self.test_worker and self.test_worker.isRunning():
+            QMessageBox.information(self,'正在测试','请等待连接测试结束后关闭设置。')
+            return
+        super().done(result)
