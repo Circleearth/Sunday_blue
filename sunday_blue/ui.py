@@ -31,6 +31,9 @@ class MainWindow(QWidget):
             if saved and saved['role']==rid:self.current_by_role[rid]=sid
         self.workers={}; self.statuses={}; self.drafts={}; self.errors={}
         self.pending=None; self.pending_text=''; self.history_limit=120
+        self._shown=None; self._shown_until=0; self._reveal_shown={}; self._greeted_shown=set()
+        self._more_button=None; self._welcome_shown=False; self._stretch_added=False
+        self._force_rebuild=False; self._auto_follow=False
         self.chat_bubbles=[]
         self.reveals={}
         self.reveal_timer=QTimer(self);self.reveal_timer.setInterval(80);self.reveal_timer.timeout.connect(self.advance_segments);self.reveal_timer.start()
@@ -109,6 +112,12 @@ class MainWindow(QWidget):
         self.chat_content=QWidget(); self.chat_content.setObjectName('chatContent'); self.chat_content.setStyleSheet('QWidget#chatContent { background:transparent; }')
         self.chat_layout=QVBoxLayout(self.chat_content); self.chat_layout.setContentsMargins(0,12,5,12); self.chat_layout.setSpacing(18)
         self.chat_scroll.setWidget(self.chat_content); layout.addWidget(self.chat_scroll,1)
+        self.chat_scroll.verticalScrollBar().valueChanged.connect(self._on_bar_moved)
+        self.chat_scroll.verticalScrollBar().rangeChanged.connect(lambda *a:self._update_follow_button())
+        # Floating "back to latest" hint: a child of the scroll area (never of the panel
+        # layout), so showing/hiding it cannot reflow the chat column and cause a flash.
+        self.follow_button=button('⌄  查看最新消息',self._follow_clicked,'ghost'); self.follow_button.setFixedHeight(32)
+        self.follow_button.setParent(self.chat_scroll); self.follow_button.hide()
         self.notice=text_label('','muted'); self.notice.setWordWrap(True); self.notice.hide(); layout.addWidget(self.notice)
         composer=QFrame(); composer.setObjectName('composer'); c=QVBoxLayout(composer); c.setContentsMargins(14,10,14,10)
         self.input=Composer(); self.input.setObjectName('input'); self.input.setPlaceholderText('')
@@ -244,11 +253,40 @@ class MainWindow(QWidget):
                 item.widget().hide()
                 item.widget().deleteLater()
 
+    def _is_at_bottom(self,tolerance=20):
+        bar=self.chat_scroll.verticalScrollBar()
+        return bar.value()>=max(0,bar.maximum()-tolerance)
+
     def render(self, preserve=False):
-        bar=self.chat_scroll.verticalScrollBar();position=bar.value();at_bottom=position>=bar.maximum()-20
-        self.clear_chat(); self.notice.hide()
+        # Two paths:
+        #  - rebuild: a different session is shown, the first render, or display prefs
+        #    changed (settings) so every bubble must be recreated.
+        #  - append: same session, new content landed (streaming tick, tool receipt,
+        #    segment reveal, a new assistant/user message). New bubbles are inserted
+        #    right before the bottom spacer; nothing already on screen is deleted or
+        #    re-laid-out, so the view is left exactly where it is (WeChat-style:
+        #    reading history is never disturbed; only programmatic actions at the
+        #    bottom keep the view pinned to the latest message).
+        force=self._force_rebuild
+        rebuilding=self._shown is None or self._shown!=self.sid or force
+        follow=None
+        was_at_bottom=self._is_at_bottom()
+        if rebuilding:
+            self._force_rebuild=False
+            if force or (preserve and self._shown==self.sid):
+                # same-session forced rebuild (settings) or switch_role: keep position
+                follow=None if was_at_bottom else self.chat_scroll.verticalScrollBar().value()
+                self._auto_follow=was_at_bottom
+            else:
+                # switching/selecting/sending into a session: start at the bottom
+                follow=None
+                self._auto_follow=True
+            self.clear_chat()
+            self._shown=self.sid; self._shown_until=0; self._reveal_shown={}; self._greeted_shown=set()
+            self._more_button=None; self._welcome_shown=False; self._stretch_added=False
+        if self.notice.isVisible():self.notice.hide()
         messages=self.store.messages(self.sid)
-        if not messages:
+        if not messages and not self._welcome_shown:
             welcome=QFrame(); col=QVBoxLayout(welcome); col.setContentsMargins(24,70,24,35); col.setSpacing(20)
             name=next(r[1] for r in ROLES if r[0]==self.role)
             col.addWidget(text_label('A LITTLE SPACE, JUST FOR YOU','eyebrow'))
@@ -256,33 +294,88 @@ class MainWindow(QWidget):
             intro=text_label('日常、计划，或一个还没整理好的想法。\n从这里开始，记忆会慢慢延续。','muted'); intro.setWordWrap(True); col.addWidget(intro)
             if not self.config.value['api']['model']:
                 col.addWidget(button('设置你的 API 连接  →',self.settings,'primary'))
-            self.chat_layout.addWidget(welcome)
-        if len(messages)>self.history_limit:
-            self.chat_layout.addWidget(button(f'加载更早的消息（还有 {len(messages)-self.history_limit} 条）',self.more_history,'ghost'))
+            self.chat_layout.addWidget(welcome); self._welcome_shown=True
+        if len(messages)>self.history_limit and self._more_button is None:
+            self._more_button=button('',self.more_history,'ghost'); self._more_button.setMaximumWidth(430)
+            self.chat_layout.insertWidget(max(0,self.chat_layout.count()-1),self._more_button)
+        if self._more_button is not None:
+            self._more_button.setVisible(len(messages)>self.history_limit)
+            self._more_button.setText(f'加载更早的消息（还有 {len(messages)-self.history_limit} 条）')
         greetings=self.greetings.for_session(self.sid)
+        added=False
         for m in messages[-self.history_limit:]:
-            text=plain(m['content']).strip()
-            if text:
-                parts=[text] if m['role']=='user' else segments(text,self.config.value.get('chat_display',{}))
-                reveal=self.reveals.get((self.sid,m['id']))
-                if reveal:parts=parts[:reveal['count']]
-                for part in parts:self.add_bubble(part,m['role']=='user')
-            if isinstance(m['content'],list):
-                for block in m['content']:
-                    failure=tool_failure(block)
-                    if failure:self.add_bubble(failure)
-            if m['id'] in greetings:self.add_bubble(greetings[m['id']],local=True)
-        self.chat_layout.addStretch(1)
+            if m['id']<=self._shown_until:
+                if m['id'] in greetings and m['id'] not in self._greeted_shown:
+                    self.add_bubble(greetings[m['id']],local=True); self._greeted_shown.add(m['id'])
+                continue
+            self._add_message_widgets(m)
+            self._shown_until=m['id']; added=True
+            if m['id'] in greetings and m['id'] not in self._greeted_shown:
+                self.add_bubble(greetings[m['id']],local=True); self._greeted_shown.add(m['id'])
+        if not self._stretch_added:self.chat_layout.addStretch(1); self._stretch_added=True
         worker=self.workers.get(self.sid)
         if worker and getattr(worker,'live_text',''):
             self.on_text(self.sid,'',restore=worker.live_text)
-        target=None if not preserve or at_bottom else position
-        expected=self.sid
-        def restore_scroll():
-            if self.sid==expected:
-                bar.setValue(bar.maximum() if target is None else target)
-        QTimer.singleShot(30,restore_scroll)
+        if rebuilding:
+            expected=self.sid
+            def _restore_rebuild(expected=expected,follow=follow):
+                if self.sid!=expected:return
+                bar=self.chat_scroll.verticalScrollBar()
+                bar.setValue(bar.maximum() if follow is None else min(follow,bar.maximum()))
+                self._update_follow_button()
+            QTimer.singleShot(30,lambda:_restore_rebuild())
+        elif not was_at_bottom:
+            # Reading history: do NOT pull the view down; the hint button offers it.
+            self._auto_follow=False
+            self._update_follow_button()
+        else:
+            # At the bottom before this render: keep pinned to the latest message.
+            self._auto_follow=True
+            if added:
+                expected=self.sid
+                def _follow(expected=expected):
+                    if self.sid==expected:
+                        self.scroll_bottom(); self._update_follow_button()
+                # 30ms: wait for Qt's deferred layout so maximum() already includes
+                # the rows just appended (same reason Codex's rebuild restore uses 30ms).
+                QTimer.singleShot(30,lambda:_follow())
         self.update_context()
+
+    def _update_follow_button(self):
+        bar=self.chat_scroll.verticalScrollBar()
+        show=bar.maximum()>0 and not self._is_at_bottom()
+        self._place_follow_button()
+        self.follow_button.setVisible(show)
+
+    def _place_follow_button(self):
+        self.follow_button.move(max(0,(self.chat_scroll.viewport().width()-self.follow_button.width())//2),
+            max(6,self.chat_scroll.height()-self.follow_button.height()-8))
+
+    def _on_bar_moved(self,value=None):
+        self._update_follow_button()
+
+    def _follow_clicked(self):
+        self.follow_button.hide()
+        self._auto_follow=True
+        self.scroll_bottom()
+
+    def _add_message_widgets(self,m):
+        text=plain(m['content']).strip()
+        if text:
+            parts=[text] if m['role']=='user' else segments(text,self.config.value.get('chat_display',{}))
+            reveal=self.reveals.get((self.sid,m['id']))
+            if reveal:
+                shown=self._reveal_shown.get((self.sid,m['id']),0)
+                parts=parts[:reveal['count']]
+                if reveal['count']>shown:
+                    for part in parts[shown:]:self.add_bubble(part,m['role']=='user')
+                    self._reveal_shown[(self.sid,m['id'])]=reveal['count']
+            else:
+                for part in parts:self.add_bubble(part,m['role']=='user')
+        if isinstance(m['content'],list):
+            for block in m['content']:
+                failure=tool_failure(block)
+                if failure:self.add_bubble(failure)
 
     def more_history(self):
         self.history_limit+=120; self.render()
@@ -293,6 +386,7 @@ class MainWindow(QWidget):
     def resizeEvent(self,event):
         super().resizeEvent(event)
         if hasattr(self,'chat_scroll'):QTimer.singleShot(0,self.resize_bubbles)
+        if hasattr(self,'follow_button'):QTimer.singleShot(0,lambda:self._place_follow_button() if self.follow_button.isVisible() else None)
 
     def resize_bubbles(self):
         for bubble in self.chat_bubbles:bubble.set_available_width(self._chat_width())
@@ -360,10 +454,9 @@ class MainWindow(QWidget):
         self.pending_text=current
         c=options(self.config.value.get('chat_display',{}))
         if not current.strip() or (c['segmented'] and len(current.strip())<c['threshold']):return
-        bar=self.chat_scroll.verticalScrollBar();follow=bar.value()>=bar.maximum()-20
         if self.pending is None:self.pending=self.add_bubble(current)
         else:self.pending.set_text(current)
-        if follow:QTimer.singleShot(0,self.scroll_bottom)
+        if self._auto_follow:QTimer.singleShot(0,self.scroll_bottom)
 
     def on_changed(self,sid):
         worker=self.workers.get(sid)
@@ -459,7 +552,7 @@ class MainWindow(QWidget):
     def settings(self):
         dlg=Settings(self.config,self.role,self)
         if dlg.exec()==QDialog.DialogCode.Accepted:
-            self.reveals.clear();self.update_state();self.render(preserve=True)
+            self.reveals.clear();self.update_state();self._force_rebuild=True;self.render(preserve=True)
 
     def closeEvent(self,event):
         if self.workers:
