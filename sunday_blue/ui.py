@@ -19,6 +19,17 @@ from .chat_presentation import segments, delay, options, chat_font, tool_failure
 from .ui_components import text_label, button, TitleBar, Composer, Portrait, Bubble
 
 class MainWindow(QWidget):
+    """Main window: sidebar sessions, chat view, character panel, role rail.
+
+    Functional areas (search by these names):
+    - session switching: switch_role / refresh_sessions / select_history / new_session / fork / rename / export
+    - chat display (incremental): clear_chat / render / _add_message_widgets / add_bubble / more_history
+    - scroll & follow: scroll_bottom / _update_follow_button / _follow_clicked / _on_bar_moved / _place_follow_button
+    - worker coordination: send / retry / start_worker / on_text / on_changed / advance_segments / on_status /
+      on_error / on_finished / on_approval / stop
+    - status & context: update_state / update_context
+    - display prefs: settings / toggle_theme / _apply_theme
+    """
     def __init__(self,config):
         super().__init__()
         self.config=config; self.store=Store(config.data)
