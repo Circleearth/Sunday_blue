@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import re
 import shutil
-from PySide6.QtCore import Qt, QThread, Signal, QUrl
+from PySide6.QtCore import Qt, QThread, Signal, QUrl, QSize
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QTabWidget, QWidget,
     QFormLayout, QLineEdit, QComboBox, QSpinBox, QCheckBox, QLabel, QPushButton,
@@ -14,7 +14,9 @@ from .provider import Provider, endpoint
 from .extensions import validate_servers
 from .files import no_links, inside
 from .chat_preferences import ChatPreferences
-from .native_plugins import PLUGINS, enabled
+from .native_plugins import enabled
+from .plugin_runtime import discover,parameters
+from .plugin_preferences import PluginPreferences,PluginRowDelegate
 
 def label(text):
     w = QLabel(text)
@@ -137,7 +139,7 @@ class Settings(QDialog):
 
     def _permissions_page(self):
         layout = self.page('角色权限')
-        layout.addWidget(label('默认不允许读取或修改任何外部目录。授权仅对选中的角色生效；“可写”目录也可读取。每次写入仍需审阅差异。'))
+        layout.addWidget(label('权限仅对所选角色生效。“信任”目录内的文件修改、创建、移动及删除自动确认，仍校验路径并备份修改/删除；普通可写目录逐次确认。'))
         self.permission_role = self.role_combo()
         self.permission_role.currentIndexChanged.connect(self.load_roots)
         layout.addWidget(self.permission_role)
@@ -148,13 +150,22 @@ class Settings(QDialog):
         read.clicked.connect(lambda:self.add_root(False)); write.clicked.connect(lambda:self.add_root(True)); remove.clicked.connect(self.remove_root)
         for w in (read,write,remove): row.addWidget(w)
         layout.addLayout(row)
-        layout.addWidget(label('内置工具：列目录、读取、文本搜索、创建和精确编辑文件。暂不提供终端、任意脚本执行或删除文件。软件自身目录不可作为外部工作区授权。'))
+        trust=QPushButton('信任 / 取消信任所选工作区');trust.clicked.connect(self.toggle_trust);layout.addWidget(trust)
+        layout.addWidget(label('内置工具支持文件/文件夹删除，删除前备份。信任不适用于持久记忆更新或 MCP。无终端或任意脚本工具；软件自身目录不可授权。'))
         self.load_roots()
 
     def load_roots(self):
         self.roots.clear()
         for root in self.value['roles'][self.permission_role.currentData()]['roots']:
-            self.roots.addItem(('读写  ' if root.get('write') else '只读  ') + root['path'])
+            self.roots.addItem(('信任 · 自动确认  ' if root.get('trusted') and root.get('write') else '读写 · 需确认  ' if root.get('write') else '只读  ') + root['path'])
+
+    def toggle_trust(self):
+        index=self.roots.currentRow()
+        if index<0:return
+        root=self.value['roles'][self.permission_role.currentData()]['roots'][index]
+        if not root.get('write'):
+            QMessageBox.information(self,'只读目录','请先添加为可写目录，再设置信任。');return
+        root['trusted']=not root.get('trusted',False);self.load_roots();self.roots.setCurrentRow(index)
 
     def add_root(self, write):
         path = QFileDialog.getExistingDirectory(self,'选择该角色可访问的目录')
@@ -189,33 +200,55 @@ class Settings(QDialog):
         self.plugin_role.currentIndexChanged.connect(self.load_plugins)
         layout.addWidget(self.plugin_role)
         self.plugins = QListWidget(); self.plugins.itemChanged.connect(self.sync_plugins); layout.addWidget(self.plugins)
+        self.plugins.setItemDelegate(PluginRowDelegate(self.plugins))
+        self.plugins.setStyleSheet('QListWidget::item {padding:6px 4px; margin:2px 0;} QListWidget::indicator {width:0; height:0;}')
         add = QPushButton('导入提示词插件 .json'); add.clicked.connect(self.import_plugin); layout.addWidget(add)
-        self.night_repeat=QCheckBox('凌晨继续对话时重复提醒休息（融入角色的正常回复）')
-        self.night_repeat.setChecked(self.value.get('greetings',{}).get('night_repeat',True))
-        layout.addWidget(self.night_repeat)
-        self.night_interval=QSpinBox();self.night_interval.setRange(0,180)
-        self.night_interval.setValue(self.value.get('greetings',{}).get('night_interval_minutes',0))
-        self.night_interval.setSuffix(' 分钟（0 = 每次发送；对所有角色生效）')
-        layout.addWidget(self.night_interval)
-        layout.addWidget(label('寒暄按角色 × 本地日期 × 时段记忆；同角色多会话共享首次记录。只有你发送消息才触发，空闲时不主动打扰。'))
+        layout.addWidget(label('每行设置按钮打开该角色的插件参数。保存设置后，下一条消息生效。Python 插件拥有当前用户权限，仅安装信任的插件。'))
         self.load_plugins()
 
     def load_plugins(self):
         self.plugins.blockSignals(True); self.plugins.clear()
         selected = self.value['roles'][self.plugin_role.currentData()]['plugins']
-        for pid,meta in PLUGINS.items():
+        for pid,meta in discover(self.config.root).items():
             item=QListWidgetItem(meta['name']+' · '+meta['version'])
             item.setData(Qt.ItemDataRole.UserRole,('native',pid));item.setToolTip(meta['description'])
             item.setFlags(item.flags()|Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(Qt.CheckState.Checked if enabled(self.value,self.plugin_role.currentData(),pid) else Qt.CheckState.Unchecked)
             self.plugins.addItem(item)
+            self.plugin_row(item,meta,lambda p=pid:self.configure_plugin(p))
         for p in sorted((self.config.root/'extensions'/'plugins').glob('*.json')):
             item = QListWidgetItem(p.stem)
             item.setData(Qt.ItemDataRole.UserRole,('prompt',p.stem))
             item.setFlags(item.flags()|Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(Qt.CheckState.Checked if p.stem in selected else Qt.CheckState.Unchecked)
             self.plugins.addItem(item)
+            self.plugin_row(item,{'name':p.stem,'version':'提示词','description':'按角色启用与配置提示词'},lambda pid=p.stem:self.configure_prompt(pid))
         self.plugins.blockSignals(False)
+
+    def plugin_row(self,item,meta,configure_callback):
+        row=QWidget(self.plugins.viewport());line=QHBoxLayout(row);line.setContentsMargins(6,2,6,2)
+        checkbox=QCheckBox(meta['name']+' · '+meta['version']);checkbox.setChecked(item.checkState()==Qt.CheckState.Checked)
+        checkbox.setToolTip(meta['description']);checkbox.setEnabled(not meta.get('error'))
+        checkbox.toggled.connect(lambda checked,i=item:i.setCheckState(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked))
+        line.addWidget(checkbox,1)
+        configure=QPushButton('设置');configure.setEnabled(not meta.get('error'));configure.clicked.connect(lambda:configure_callback());line.addWidget(configure)
+        item.setText('');item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsUserCheckable)
+        row.ensurePolished();item.setSizeHint(row.sizeHint()+QSize(0,16));self.plugins.setItemWidget(item,row)
+
+    def configure_prompt(self,pid):
+        try:
+            role=self.value['roles'][self.plugin_role.currentData()]
+            source=json.loads((self.config.root/'extensions/plugins'/(pid+'.json')).read_text(encoding='utf-8-sig'))
+            meta={'name':pid,'schema':{'prompt':{'type':'text','description':'该角色使用的提示词','default':source.get('prompt','')}}}
+            dialog=PluginPreferences(meta,role.get('plugin_settings',{}).get(pid,{'prompt':source.get('prompt','')}),self)
+            if dialog.exec()==QDialog.DialogCode.Accepted:role.setdefault('plugin_settings',{})[pid]=dialog.values
+        except (ValueError,OSError) as exc:QMessageBox.warning(self,'插件配置错误',str(exc))
+
+    def configure_plugin(self,pid):
+        role=self.plugin_role.currentData();meta=discover(self.config.root)[pid]
+        dialog=PluginPreferences(meta,parameters(self.value,role,pid,self.config.root),self)
+        if dialog.exec()==QDialog.DialogCode.Accepted:
+            self.value['roles'][role].setdefault('plugin_settings',{})[pid]=dialog.values
 
     def sync_plugins(self):
         role=self.value['roles'][self.plugin_role.currentData()]
@@ -236,7 +269,7 @@ class Settings(QDialog):
             name = obj.get('id','')
             if not re.fullmatch(r'[A-Za-z0-9_-]+',name) or not isinstance(obj.get('prompt'),str): raise ValueError('需要 id（字母数字短横线）和 prompt 字符串。')
             dest = self.config.root/'extensions'/'plugins'/(name+'.json')
-            if dest.exists(): raise ValueError('相同 ID 已存在，请先修改 ID。')
+            if dest.exists() or dest.with_suffix('').exists(): raise ValueError('相同 ID 已存在，请先修改 ID。')
             atomic_json(dest,obj)
             self.load_plugins()
         except Exception as exc: QMessageBox.warning(self,'导入失败',str(exc))
@@ -297,6 +330,9 @@ class Settings(QDialog):
         content=QWidget();layout=QVBoxLayout(content);scroll.setWidget(content)
         self.chat_preferences=ChatPreferences(self.config.root,self.value.get('chat_display',{}))
         layout.addWidget(self.chat_preferences)
+        self.close_to_tray=QCheckBox('关闭窗口后留在系统托盘，继续后台运行')
+        self.close_to_tray.setChecked(self.value.get('close_to_tray',False));layout.addWidget(self.close_to_tray)
+        layout.addWidget(label('无需打包；托盘可重新打开或退出。电脑休眠、注销或关机不会继续生成回复。'))
         layout.addWidget(label('头像与立绘是普通 PNG 文件，不需要重新编译软件。替换后点击主界面的“刷新素材”。'))
         layout.addWidget(QLabel('assets/roles/<角色 ID>/avatar.png\n推荐：512 × 512，正方形\n\nassets/roles/<角色 ID>/portrait.png\n推荐：1200 × 1800，透明背景，人物居中\n\n软件会等比例缩放；头像建议避免边缘重要内容。'))
         for title,relative in [('打开素材目录','assets/roles'),('打开数据目录','data'),('打开使用说明','README.md')]:
@@ -308,7 +344,7 @@ class Settings(QDialog):
     def save(self):
         try:
             self.value['chat_display']=self.chat_preferences.value()
-            self.value['greetings']={'night_repeat':self.night_repeat.isChecked(),'night_interval_minutes':self.night_interval.value()}
+            self.value['close_to_tray']=self.close_to_tray.isChecked()
             self.value['api']=self.api_value()
             self.value['mcp_servers']=validate_servers(json.loads(self.mcp.toPlainText()))
             self.value['features']={k:w.isChecked() for k,w in self.features.items()}

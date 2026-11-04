@@ -4,7 +4,7 @@
 
 - `storage.py`：应用路径、角色元数据、原子 JSON、Windows DPAPI、SQLite。每次数据库操作独立连接、事务、确定关闭；WAL 支持多会话线程。
 - `provider.py`：统一内部消息（text / tool_use / tool_result），转换 Anthropic Messages 与 OpenAI Chat Completions。支持 JSON 和 SSE；必须收到结束标记才算完整。禁止重定向转发凭据；网络错误不记录密钥或服务端原始响应体。
-- `files.py`：目录授权、路径检查、文本读取/搜索、差异生成、审阅后再次验证、冲突检测、旧字节备份、同目录临时文件 + 原子替换。文件锁串行化软件内写入。另提供文件夹级工具：`create_directory`（建目录，含中间层）、`delete_directory`（递归删除，审阅时逐条列出将删清单，最多 50 项 + 总数，删除前 re-check `no_links` 与仍为目录）、`move`（同卷 `os.rename`，目标须在可写目录内、不得位于源内部、已存在则拒绝不覆盖）。
+- `files.py`：目录授权、路径检查、文本读取/搜索、差异生成、审阅后再次验证、冲突检测、旧字节备份、同目录临时文件 + 原子替换。文件锁串行化软件内写入。信任目录按角色配置自动确认，普通写目录审阅。提供创建、同卷移动、文件/目录删除；删除完整备份、目标清单前后核验，禁止删除授权根目录。
 - `extensions.py`：声明式提示词插件、Skill 文本加载、MCP stdio 进程及 JSON-RPC。每个 Agent 独立连接，任务结束关闭服务。仅初始化/列工具/调用工具，不提供 sampling。
 - `agent.py`：每会话 QThread。构建人格/记忆/扩展提示词 → 请求 → 保存模型输出 → 工具审阅/调用 → 保存回执 → 下一轮。最多 16 轮，避免无限工具循环。
 - `ui.py`：frameless Qt Widgets 界面、会话选择、流式气泡、工具回执、上下文/记忆查看、差异审阅。线程信号传递 UI 更新，`threading.Event` 传回审阅结果。
@@ -22,7 +22,7 @@ SQLite `sessions`：角色、标题、创建/修改时间、父会话、摘要�
 
 ## 权限边界
 
-目录授权由程序检查，不依赖人格自觉。外部文件工具不能修改软件自身及其他角色记忆。没有任意 shell 工具；删除能力仅限已授权目录内的文件夹递归删除，必须经审阅并列出将删清单。模型工具名必须在本轮启用列表中。Skill 和插件不能直接扩大目录授权。
+目录授权由程序检查，不依赖人格自觉。外部文件工具不能修改软件自身及其他角色记忆。没有任意 shell 工具；删除文件/目录限已授权可写子路径，信任目录自动批准，否则审阅。模型工具名必须在本轮启用列表中。Skill 和声明式 JSON 插件不能直接扩大目录授权；Python 插件与 MCP 属于可信本机代码，具有当前用户权限。
 
 MCP 是用户选择运行的本机程序，进程拥有操作系统用户权限；启动和调用审阅不等于操作系统沙箱。文件工具的重解析点检查、硬链接拒绝和写入前重新验证，不能提供对本机恶意并发进程的完整 race-free 防御。
 
@@ -43,13 +43,14 @@ PyInstaller onedir，Python/Qt/requests 放在 `_internal`；assets/personas/ext
 不绑定旧项目的 Python 路径。不复制第三方已有项目源码。人格是已授权复制的项目内容；Qt/PySide6、Python、requests 等第三方库使用各自许可证，随依赖包保留许可证资料。公开分发前应审查对应许可证义务。
 
 
-## 2026-11-03 维护导航更新
+## 插件与 UI 生命周期（2026-11-04）
 
-UI 组件实现已移至 `sunday_blue/ui_components.py`，主窗口协调仍在 ui.py。时间注入在 time_context.py，由 Agent 的 system_prompt 调用；不写 messages。插件合同见 [PLUGIN_SPEC](../handoff/PLUGIN_SPEC.md)，职责定位见 [维护地图](../handoff/MAINTENANCE_MAP.md)。当前不打包；AstrBot 桥接属于评估方案，尚未实现。
+plugin_runtime 扫描 extensions/plugins/*/plugin.json，读取 _conf_schema.json 并加载 main.py；plugin_preferences 生成按角色参数表单。time-context 和 daypart-greetings 均已外置。旧模块只兼容导入。完整合同见 [PLUGIN_SPEC](../handoff/PLUGIN_SPEC.md)，定位见 [维护地图](../handoff/MAINTENANCE_MAP.md)。未实现 AstrBot Runtime 兼容。
 
+时段事件仅在需要时进入当前模型请求，不写 messages；实际问候由正常模型回复保存。activity 记录最近用户发送时刻，默认 60 分钟连续聊天免寒暄；凌晨规则独立。失败/取消无正文释放预留。旧 events 保留只读显示和按需请求重放。
 
-聊天展示更新：Bubble 已改为无内滚动的 QLabel；短消息分段/延时只影响展示，不改变 messages 内容。chat_presentation.py 负责纯显示策略，chat_preferences.py 提供设置控件；ui.py 管线程信号和非阻塞分段计时。主题更新现有组件，避免重建历史后跳动。
+聊天同会话增量追加；长流式气泡复用为落库气泡，分段插回对应消息行，不清空整个布局。用户滚动位置决定跟随状态，rangeChanged 只在跟随时调度置底。Bubble 高度计算先取消旧高度约束，防止主题/resize/流式累计增高。chat_presentation 提供纯显示分段、字体、失败提取；字体从字节载入，避免 Windows 文件占用。
 
-宿主插件更新：native_plugins 显式注册时间上下文与时段寒暄，Settings 按角色配置。Greetings 独立 SQLite 存首次状态及本地事件，UI 发送路径触发并显示，不注入模型 history/system，主聊天数据库 schema 不变。
+停止撤回：worker 先取消，完成信号后主线程事务移除该用户输入及后续本轮消息，原内容保留 audit，输入与新草稿合并。已执行工具操作不能回滚；摘要涉及撤回边界时清空摘要并恢复完整历史上下文。用户主动关闭到托盘时进程和任务保持运行，托盘可重开；退出仍要先结束任务。默认关闭到托盘不启用。没有 Windows 服务、开机自启或休眠运行。
 
-时段寒暄 v2 更新：触发入口已从 UI.send 移至 Agent._run，本地规则生成短暂控制信息，由同一次 LLM 回复表达并正常落库；不再添加本地固定气泡。旧 events 保留并按当前消息范围重放至请求/压缩历史，详细合同以 PLUGIN_SPEC 第7节为准。
+当前源码启动，不打包；用户实际数据与凭据不用于测试。

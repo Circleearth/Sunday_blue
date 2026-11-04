@@ -18,7 +18,7 @@ class ChatFollowTests(unittest.TestCase):
         shutil.copytree(project/'assets',self.root/'assets')
         shutil.copytree(project/'personas',self.root/'personas')
         (self.root/'extensions'/'skills').mkdir(parents=True)
-        (self.root/'extensions'/'plugins').mkdir(parents=True)
+        shutil.copytree(project/'extensions/plugins',self.root/'extensions/plugins')
         self.config.value['chat_display']={'segmented':False}
         self.window=MainWindow(self.config);self.window.show();APP.processEvents()
     def tearDown(self):

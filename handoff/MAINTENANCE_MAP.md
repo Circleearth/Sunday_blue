@@ -10,7 +10,9 @@
 | 深浅色 | sunday_blue/theme.py | 两种主题原生窗口 |
 | 设置页、导入、配置控件 | sunday_blue/settings.py | 设置保存/旧配置 |
 | 人格拼接、工具分发、压缩、取消 | sunday_blue/agent.py | test_core Agent 测试 |
-| 时间注入 | sunday_blue/time_context.py | test_time_context.py |
+| 时间注入 / 寒暄 | extensions/plugins/{time-context,daypart-greetings}/main.py | test_time_context.py / test_greetings.py / test_revision.py |
+| 插件发现 / 参数表单 | sunday_blue/plugin_runtime.py / plugin_preferences.py | test_revision.py |
+| 后台托盘 | sunday_blue/tray.py | test_revision.py |
 | API 协议、流式/思考块 | sunday_blue/provider.py | 两协议 mock 测试 |
 | 路径/权限、文件与目录操作 | sunday_blue/files.py | 权限、审阅、冲突测试 |
 | 数据库、配置、分支、凭据 | sunday_blue/storage.py | 持久化、分支、迁移测试 |
@@ -30,6 +32,6 @@
 
 `chat_presentation.py` 管分段纯函数、间隔、字体加载及工具失败识别；`chat_preferences.py` 管外观页中的聊天配置控件。配置存 settings.json/chat_display，旧配置缺省兼容。ui.py 管计时与展示，ui_components.py 的 Bubble 使用无内滚动的 QLabel，禁止恢复为固定高度 QTextBrowser。成功回执仍落库，不要在 storage/provider 删除工具块。
 
-独立宿主插件登记在 native_plugins.py；日期注入为 time_context.py，首次时段寒暄与凌晨重复提醒为 daypart_greetings.py。插件列表按角色启停，状态库属于 data/plugins，不是模型 messages。
+插件已外置到 extensions/plugins/<id>，不再在 native_plugins 写死登记。native_plugins/time_context/daypart_greetings 仅兼容旧入口；实际加载和配置读取器见 plugin_runtime，表单见 plugin_preferences。UI 的 legacy_greetings 只读旧气泡，不触发新问候。完整接口合同见 PLUGIN_SPEC。
 
-时段寒暄 v2 更新：触发入口已从 UI.send 移至 Agent._run，本地规则生成短暂控制信息，由同一次 LLM 回复表达并正常落库；不再添加本地固定气泡。旧 events 保留并按当前消息范围重放至请求/压缩历史，详细合同以 PLUGIN_SPEC 第7节为准。
+2026-11-04：ui.py 继续负责增量行和滚动状态，_message_rows 维持同消息延迟分段顺序；Bubble.fit 必须先解除旧固定高度再计算，防止每次增长 4 像素。不要重新引入 _diag_log 临时调试全局。停止先 cancel 再等待 finished 后 Store.withdraw_turn，避免跨线程删写竞争。后台关闭由 tray.py 管理，不运行服务、不打包。

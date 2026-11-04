@@ -11,7 +11,9 @@ instructions. TickTick and Mubu are professional tool assistants, not persona cl
 
 Secrets: use Windows DPAPI for the primary API key. Never log keys or full request
 headers. Default external file access is empty. Permission checks belong in files.py,
-not solely in model prompts. All writes must be reviewed, backed up, and revalidated.
+not solely in model prompts. Writes must be backed up and revalidated. User-selected
+trusted writable workspaces auto-approve file operations; other writes require review.
+Trust is per-role/per-directory, never an implicit bypass for memory updates or MCP.
 MCP subprocesses are not sandboxed; never claim that role directory rules constrain them.
 
 Do not destroy user conversations or overwrite configured API credentials during tests.

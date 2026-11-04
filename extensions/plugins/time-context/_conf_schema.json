@@ -1,0 +1,7 @@
+{
+  "include_time": {
+    "type": "bool",
+    "default": true,
+    "description": "同时注入具体时间（关闭时只注入日期）"
+  }
+}

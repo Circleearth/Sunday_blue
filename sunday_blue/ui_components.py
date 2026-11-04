@@ -111,6 +111,9 @@ class Bubble(QLabel):
         longest=max((self.fontMetrics().horizontalAdvance(line) for line in self.raw.splitlines()),default=20)
         target=min(cap,max(64,longest+30))
         self.setFixedWidth(target)
+        # QLabel heightForWidth otherwise clamps to the previous fixed minimum,
+        # adding four pixels on every theme/resize/stream update.
+        self.setMinimumHeight(0);self.setMaximumHeight(16777215)
         self.setFixedHeight(max(46,self.heightForWidth(target)+4))
 
     def toPlainText(self):

@@ -1,0 +1,9 @@
+{
+  "id": "daypart-greetings",
+  "name": "时段寒暄",
+  "version": "3.0.0",
+  "api_version": 1,
+  "entry": "main.py",
+  "description": "本地判断间隔，模型表达并记住寒暄",
+  "default_enabled": true
+}

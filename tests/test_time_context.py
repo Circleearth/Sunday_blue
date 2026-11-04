@@ -3,6 +3,7 @@ from datetime import datetime, timezone, timedelta
 from unittest.mock import patch
 from sunday_blue.time_context import time_context
 from sunday_blue.agent import system_prompt
+from sunday_blue.plugin_runtime import load
 from test_core import Fixture
 
 class TimeTests(Fixture):
@@ -19,11 +20,11 @@ class TimeTests(Fixture):
         for role in self.config.value['roles']:
             sid=self.store.create(role)
             self.store.add(sid,'user','hello')
-            with patch('sunday_blue.agent.time_context',return_value='UNIQUE_CLOCK_METADATA'):
+            with patch.object(load('time-context',self.root),'time_context',return_value='UNIQUE_CLOCK_METADATA'):
                 self.assertEqual(system_prompt(self.root,role,self.config.value).count('UNIQUE_CLOCK_METADATA'),1)
             self.assertNotIn('UNIQUE_CLOCK_METADATA',str(self.store.messages(sid)))
     def test_clock_resampled_and_quiet_policy(self):
-        with patch('sunday_blue.agent.time_context',side_effect=['CLOCK_A','CLOCK_B']):
+        with patch.object(load('time-context',self.root),'time_context',side_effect=['CLOCK_A','CLOCK_B']):
             self.assertIn('CLOCK_A',system_prompt(self.root,'rui',self.config.value))
             self.assertIn('CLOCK_B',system_prompt(self.root,'rui',self.config.value))
         self.assertIn('不要例行报时',time_context())

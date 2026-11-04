@@ -1,0 +1,9 @@
+{
+  "id": "time-context",
+  "name": "时间上下文",
+  "version": "3.0.0",
+  "api_version": 1,
+  "entry": "main.py",
+  "description": "隐藏注入本轮系统时间",
+  "default_enabled": true
+}

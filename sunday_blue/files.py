@@ -34,6 +34,19 @@ class FileTools:
         self.rules = rules
         self.approve = approve
         self.audit = audit
+        self.cancelled=lambda:False
+
+    def request(self,title,path,detail,other=None):
+        if self.cancelled():return False
+        def trusted(value):
+            p=self.check(str(value),True)
+            rules=[r for r in self.rules if inside(p,Path(r['path']).resolve())]
+            rule=max(rules,key=lambda r:len(Path(r['path']).parts))
+            return rule.get('write') and rule.get('trusted',False)
+        if trusted(path) and (other is None or trusted(other)):
+            self.audit('trusted_auto_approval',json.dumps({'action':title,'path':str(path),'destination':str(other) if other else None},ensure_ascii=False))
+            return True
+        return self.approve(title,str(path),detail)
 
     def check(self, value, write=False):
         p = Path(value)
@@ -121,7 +134,8 @@ class FileTools:
         if content == before and original is not None:
             return {'status': 'unchanged', 'path': str(p)}
         diff = ''.join(difflib.unified_diff(before.splitlines(True), content.splitlines(True), fromfile=str(p), tofile=str(p)))
-        if not self.approve('持久记忆更新' if memory else '文件修改', str(p), diff):
+        accepted=self.approve('持久记忆更新',str(p),diff) if memory else self.request('文件修改',p,diff)
+        if not accepted:
             self.audit('write_denied', str(p))
             return {'status': 'denied', 'path': str(p)}
         with WRITE_LOCK:
@@ -160,21 +174,22 @@ class FileTools:
             raise PermissionError('请提供已授权目录内的绝对路径。')
         if str(dest).startswith(('\\\\', '//')) or ':' in str(dest)[len(dest.drive):]:
             raise PermissionError('不支持网络路径、设备路径或 NTFS 备用数据流。')
+        no_links(dest)
         dest = dest.resolve()
-        if inside(source, dest):
+        if dest.is_dir():dest=dest/source.name
+        if inside(dest, source) or inside(source,dest):
             raise PermissionError('目标不能位于源目录内部。')
         try:
             self.check(str(dest), True)
         except PermissionError:
             return None
-        if dest.is_dir():
-            return dest / source.name
+        if source.drive.lower()!=dest.drive.lower():raise ValueError('暂只支持同卷移动。')
         return dest
 
     def create_directory(self, path):
         self.check(path, True)
         detail = f'在 {path} 创建文件夹（含中间层级）。'
-        if not self.approve('创建文件夹', path, detail):
+        if not self.request('创建文件夹', path, detail):
             self.audit('mkdir_denied', str(path))
             return {'status': 'denied', 'path': str(path)}
         p = self.check(str(path), True)
@@ -182,29 +197,46 @@ class FileTools:
         self.audit('mkdir', json.dumps({'path': str(p)}, ensure_ascii=False))
         return {'status': 'created', 'path': str(p)}
 
-    def delete_directory(self, path):
-        p = self.check(str(path), True)
-        if p.is_file() or not p.is_dir():
-            raise ValueError('目标必须是文件夹。')
-        affected = [str(p)]
-        count = 0
-        for current, dirs, files in os.walk(p, topdown=False):
-            count += len(dirs) + len(files)
-            affected += [str(Path(current) / name) for name in dirs]
-        affected = affected[:50]
-        more = '' if count <= 49 else f'（另有 {max(0, count - 49)} 项未逐条列出）'
-        detail = (f'将递归删除以下文件夹及其全部内容，且不可恢复：\n'
-                  + '\n'.join(affected) + more + f'\n共约 {count + 1} 项。')
-        if not self.approve('删除文件夹', str(p), detail):
-            self.audit('rmdir_denied', str(p))
-            return {'status': 'denied', 'path': str(p)}
+    def _inventory(self,path):
+        paths=[path]
+        if path.is_dir():
+            for current,dirs,files in os.walk(path,followlinks=False):
+                for name in dirs+files:
+                    p=Path(current)/name;self.check(str(p),True);paths.append(p)
+                    if len(paths)>10000:raise ValueError('一次删除最多 10000 项，请缩小范围。')
+        result={}
+        for p in paths:
+            self.check(str(p),True);s=p.stat()
+            result[str(p)]=(s.st_mode,s.st_size,s.st_mtime_ns,s.st_ino)
+        return result
+
+    def _delete(self,path,directory):
+        p=self.check(str(path),True)
+        if any(p==Path(r['path']).resolve() for r in self.rules):raise PermissionError('不能删除授权根目录本身。')
+        if (directory and not p.is_dir()) or (not directory and not p.is_file()):raise ValueError('目标类型不符或不存在。')
+        before=self._inventory(p)
+        if sum(v[1] for v in before.values() if stat.S_ISREG(v[0]))>512*1024*1024:raise ValueError('一次删除备份最多 512 MiB。')
+        title='删除文件夹' if directory else '删除文件'
+        detail='删除前会复制完整备份到 data/backups/deleted。\n'+'\n'.join(list(before)[:100])+f'\n共 {len(before)} 项。'
+        if not self.request(title,p,detail):return {'status':'denied','path':str(p)}
         with WRITE_LOCK:
-            no_links(p)
-            if not p.is_dir():
-                raise RuntimeError('文件夹已不存在或类型已变化，本次未删除。')
-            shutil.rmtree(p)
-        self.audit('rmdir', json.dumps({'path': str(p), 'items': count + 1}, ensure_ascii=False))
-        return {'status': 'deleted', 'path': str(p), 'items': count + 1}
+            self.check(str(p),True)
+            if self.cancelled():return {'status':'denied','path':str(p)}
+            if self._inventory(p)!=before:raise RuntimeError('目标在确认期间变化，请重新检查。')
+            backup=self.root/'data/backups/deleted'/uuid.uuid4().hex
+            backup.mkdir(parents=True)
+            if directory:shutil.copytree(p,backup/p.name)
+            else:shutil.copy2(p,backup/p.name)
+            (backup/'restore.json').write_text(json.dumps({'original':str(p),'backup':str(backup/p.name)},ensure_ascii=False),encoding='utf-8')
+            if self._inventory(p)!=before:raise RuntimeError('备份期间目标变化，本次未删除。')
+            if directory:shutil.rmtree(p)
+            else:p.unlink()
+        result={'status':'deleted','path':str(p),'backup':str(backup/p.name),'items':len(before)}
+        self.audit('rmdir' if directory else 'delete_file',json.dumps(result,ensure_ascii=False))
+        return result
+
+    def delete_directory(self,path):return self._delete(path,True)
+    def delete_file(self,path):return self._delete(path,False)
 
     def move(self, source, destination):
         src = self.check(str(source), True)
@@ -212,11 +244,12 @@ class FileTools:
         if dest is None:
             return {'status': 'denied', 'path': str(destination), 'reason': '目标目录未授权写入。'}
         detail = f'将 {src} 移动到 {dest}（同卷改名移动；目标已存在时会被拒绝）。'
-        if not self.approve('移动文件/文件夹', str(src), detail):
+        if not self.request('移动文件/文件夹', src, detail,other=dest):
             self.audit('move_denied', f'{src} -> {dest}')
             return {'status': 'denied', 'source': str(src), 'destination': str(dest)}
         with WRITE_LOCK:
-            no_links(src)
+            self.check(str(src),True);self.check(str(dest),True)
+            if any(src==Path(r['path']).resolve() for r in self.rules):raise PermissionError('不能移动授权根目录。')
             if not src.exists():
                 raise RuntimeError('源已不存在，本次未移动。')
             if dest.exists():
@@ -236,7 +269,8 @@ FILE_SCHEMAS = [
     schema('write_file', '新建或覆盖 UTF-8 文件，必须在可写目录；用户将审阅差异。优先 edit_file。', {'path': S, 'content': S}, ['path', 'content']),
     schema('edit_file', '精确替换一处文本并展示差异；old_text 必须唯一匹配。', {'path': S, 'old_text': S, 'new_text': S}, ['path', 'old_text', 'new_text']),
     schema('create_directory', '在可写目录内新建文件夹（可含中间层级）。', {'path': S}, ['path']),
-    schema('delete_directory', '递归删除整个文件夹（含内容，不可恢复）；用户将看到将被删除项清单并确认。', {'path': S}, ['path']),
+    schema('delete_directory', '删除授权目录内的子文件夹及内容，删除前完整备份；信任工作区自动批准。', {'path': S}, ['path']),
+    schema('delete_file', '删除授权可写目录内的文件，删除前备份；信任工作区自动批准。', {'path': S}, ['path']),
     schema('move', '移动文件或文件夹；目标必须在可写目录内，目标已存在会被拒绝。', {'source': S, 'destination': S}, ['source', 'destination']),
 ]
 MEMORY_SCHEMAS = [

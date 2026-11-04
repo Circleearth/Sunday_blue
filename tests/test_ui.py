@@ -25,7 +25,7 @@ class UITests(unittest.TestCase):
         shutil.copytree(project/'assets',self.root/'assets')
         shutil.copytree(project/'personas',self.root/'personas')
         (self.root/'extensions'/'skills').mkdir(parents=True)
-        (self.root/'extensions'/'plugins').mkdir(parents=True)
+        shutil.copytree(project/'extensions/plugins',self.root/'extensions/plugins')
         self.window=MainWindow(self.config);self.window.show();APP.processEvents()
     def tearDown(self):
         for worker in list(self.window.workers.values()):worker.stop();worker.wait(65000)
@@ -174,20 +174,22 @@ class UITests(unittest.TestCase):
         items['time-context'].setCheckState(Qt.CheckState.Unchecked)
         dlg.plugin_role.setCurrentIndex(1)
         self.assertEqual(dlg.plugins.item(0).checkState(),Qt.CheckState.Checked)
-        dlg.night_interval.setValue(20);dlg.save()
+        dlg.value['roles']['rui'].setdefault('plugin_settings',{})['daypart-greetings']={'night_interval_minutes':20};dlg.save()
         from sunday_blue.native_plugins import enabled
         saved=Config(self.root).value
         self.assertFalse(enabled(saved,'rui','time-context'));self.assertTrue(enabled(saved,'red','time-context'))
-        self.assertEqual(saved['greetings']['night_interval_minutes'],20)
+        self.assertEqual(saved['roles']['rui']['plugin_settings']['daypart-greetings']['night_interval_minutes'],20)
         dlg.deleteLater()
 
     def test_new_trigger_not_rendered_and_legacy_greeting_retained(self):
         from datetime import datetime,timezone
         mid=self.window.store.add(self.window.sid,'user','hello')
-        self.window.greetings.on_message(self.config.value,'rui',self.window.sid,mid,datetime(2026,11,3,8,tzinfo=timezone.utc))
+        from sunday_blue.daypart_greetings import Greetings
+        plugin=Greetings(self.config.data)
+        plugin.on_message(self.config.value,'rui',self.window.sid,mid,datetime(2026,11,3,8,tzinfo=timezone.utc))
         self.window.render();QTest.qWait(80)
         self.assertEqual(len(self.window.chat_bubbles),1)
-        with self.window.greetings.connection() as db:
+        with plugin.connection() as db:
             db.execute('INSERT INTO events VALUES(?,?,?,?)',(self.window.sid,mid,'早上好，旧版寒暄','2026-11-03'))
         self.window.render();self.assertEqual(len(self.window.chat_bubbles),2)
         self.assertIn('早上',self.window.chat_bubbles[-1].raw)

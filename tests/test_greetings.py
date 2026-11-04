@@ -3,6 +3,7 @@ from unittest.mock import patch
 from test_core import Fixture
 from sunday_blue.daypart_greetings import Greetings,period_at
 from sunday_blue.agent import system_prompt
+from sunday_blue.plugin_runtime import load
 
 class GreetingTests(Fixture):
     def at(self,hour,day=3,minute=0):return datetime(2026,11,day,hour,minute,tzinfo=timezone(timedelta(hours=8)))
@@ -36,14 +37,14 @@ class GreetingTests(Fixture):
     def test_plugins_independent_and_no_persistent_prompt(self):
         c=self.config.value;g=Greetings(self.config.data)
         c['roles']['rui']['native_plugins']={'time-context':False,'daypart-greetings':True}
-        with patch('sunday_blue.agent.time_context') as clock:
+        with patch.object(load('time-context',self.root),'time_context') as clock:
             prompt=system_prompt(self.root,'rui',c);clock.assert_not_called()
         sid=self.store.create('rui');mid=self.store.add(sid,'user','hello')
         greeting=g.on_message(c,'rui',sid,mid,self.at(8))
         self.assertNotIn(greeting,prompt)
         self.assertEqual(len(self.store.messages(sid,True)),1)
         c['roles']['rui']['native_plugins']={'time-context':True,'daypart-greetings':False}
-        with patch('sunday_blue.agent.time_context',return_value='clock token'):
+        with patch.object(load('time-context',self.root),'time_context',return_value='clock token'):
             self.assertIn('clock token',system_prompt(self.root,'rui',c))
         self.assertIsNone(g.on_message(c,'rui',sid,mid+1,self.at(11)))
 

@@ -27,7 +27,8 @@ def extension_text(root, role_config):
         p = base / 'plugins' / (name + '.json')
         no_links(p)
         obj = json.loads(p.read_text(encoding='utf-8-sig'))
-        parts.append('\n<plugin>\n' + str(obj.get('prompt', ''))[:65536] + '\n</plugin>')
+        prompt=role_config.get('plugin_settings',{}).get(name,{}).get('prompt',obj.get('prompt',''))
+        parts.append('\n<plugin>\n' + str(prompt)[:65536] + '\n</plugin>')
     result = '\n'.join(parts)
     if len(result) > 150000:
         raise ValueError('启用的扩展提示词过多，请减少 Skill / 插件。')

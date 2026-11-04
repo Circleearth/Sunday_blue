@@ -91,6 +91,7 @@ class Config:
             self.value['last_role'] = loaded.get('last_role', 'rui')
             self.value['active_sessions'] = loaded.get('active_sessions', {})
             self.value['ui_theme'] = loaded.get('ui_theme', 'dark')
+            self.value['close_to_tray'] = loaded.get('close_to_tray', False)
             self.value['chat_display'] = loaded.get('chat_display', {})
             self.value['greetings'].update(loaded.get('greetings', {}))
         for role in ROLE_IDS:
@@ -100,12 +101,14 @@ class Config:
                 p.write_text(f'# {role} · 持久记忆\n\n暂无已确认的用户事实。\n', encoding='utf-8')
 
     def save(self, value=None):
+        if value is not None:value={k:v for k,v in value.items() if k!='_plugin_root'}
         atomic_json(self.path, value if value is not None else self.value)
         if value is not None:
             self.value = copy.deepcopy(value)
 
     def snapshot(self):
-        return copy.deepcopy(self.value)
+        return copy.deepcopy(self.value) | {'_plugin_root':str(self.root)}
+
 
 class Store:
     def __init__(self, data):
@@ -185,6 +188,20 @@ class Store:
                 cursor = copied
         self.update(new, summary=old['summary'], summarized_through=cursor, usage=old['usage'])
         return new
+
+    def withdraw_turn(self,sid,message_id):
+        """Called only once the worker has finished. Preserve withdrawn text in audit."""
+        with self.connect() as db:
+            row=db.execute('SELECT * FROM messages WHERE session=? AND id=?',(sid,message_id)).fetchone()
+            if not row or row['role']!='user' or not isinstance(json.loads(row['content']),str):return ''
+            rows=[dict(r) for r in db.execute('SELECT * FROM messages WHERE session=? AND id>=?',(sid,message_id))]
+            role=self.session(sid)['role']
+            db.execute('INSERT INTO audit(at,role,session,action,detail) VALUES(?,?,?,?,?)',
+                (now(),role,sid,'withdraw_turn',json.dumps(rows,ensure_ascii=False)))
+            db.execute('DELETE FROM messages WHERE session=? AND id>=?',(sid,message_id))
+            db.execute("UPDATE sessions SET summary='',summarized_through=0 WHERE id=? AND summarized_through>=?",(sid,message_id))
+            db.execute("UPDATE sessions SET usage='{}',updated=? WHERE id=?",(now(),sid))
+            return json.loads(row['content'])
 
     def recover_interrupted_tools(self):
         """On application startup, do not replay operations with uncertain results."""

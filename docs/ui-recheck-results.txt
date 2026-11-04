@@ -1,0 +1,16 @@
+test_bubbles_expand_and_resize_without_inner_scroll (test_ui.UITests.test_bubbles_expand_and_resize_without_inner_scroll) ... ok
+test_concurrent_streams_and_real_review_dialog (test_ui.UITests.test_concurrent_streams_and_real_review_dialog) ... ok
+test_ime_preedit_and_empty_placeholder (test_ui.UITests.test_ime_preedit_and_empty_placeholder) ... ok
+test_import_font_and_persist_settings (test_ui.UITests.test_import_font_and_persist_settings) ... ok
+test_native_plugin_checkboxes_are_role_scoped_and_persist (test_ui.UITests.test_native_plugin_checkboxes_are_role_scoped_and_persist) ... ok
+test_new_trigger_not_rendered_and_legacy_greeting_retained (test_ui.UITests.test_new_trigger_not_rendered_and_legacy_greeting_retained) ... ok
+test_role_drafts_history_and_fork (test_ui.UITests.test_role_drafts_history_and_fork) ... ok
+test_settings_tabs_save_and_role_scopes (test_ui.UITests.test_settings_tabs_save_and_role_scopes) ... ok
+test_success_tools_and_blank_text_hidden (test_ui.UITests.test_success_tools_and_blank_text_hidden) ... ok
+test_theme_preserves_position_and_widgets (test_ui.UITests.test_theme_preserves_position_and_widgets) ... ok
+test_timed_segments_survive_role_switch (test_ui.UITests.test_timed_segments_survive_role_switch) ... ok
+
+----------------------------------------------------------------------
+Ran 11 tests in 14.540s
+
+OK

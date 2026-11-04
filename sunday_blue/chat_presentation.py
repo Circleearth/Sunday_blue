@@ -54,7 +54,7 @@ def chat_font(root,value):
         if p.is_relative_to(base) and p.is_file():
             key=(str(p),p.stat().st_mtime_ns)
             if key not in _font_cache:
-                fid=QFontDatabase.addApplicationFont(str(p))
+                fid=QFontDatabase.addApplicationFontFromData(p.read_bytes())
                 _font_cache[key]=QFontDatabase.applicationFontFamilies(fid) if fid>=0 else []
             if _font_cache[key]:family=_font_cache[key][0]
     f=QFont(family,c['font_size']);f.setWeight(QFont.Weight(c['font_weight']))

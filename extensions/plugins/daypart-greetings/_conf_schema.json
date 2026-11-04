@@ -1,0 +1,26 @@
+{
+  "idle_minutes": {
+    "type": "int",
+    "default": 60,
+    "description": "连续聊天免寒暄间隔（分钟）",
+    "hint": "距上次用户消息超过此间隔，重新寒暄；0 表示按时段首次",
+    "slider": {
+      "min": 0,
+      "max": 1440
+    }
+  },
+  "night_repeat": {
+    "type": "bool",
+    "default": true,
+    "description": "凌晨重复提醒休息"
+  },
+  "night_interval_minutes": {
+    "type": "int",
+    "default": 0,
+    "description": "凌晨提醒间隔（分钟，0 表示每轮）",
+    "slider": {
+      "min": 0,
+      "max": 180
+    }
+  }
+}

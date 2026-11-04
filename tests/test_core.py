@@ -1,3 +1,4 @@
+import shutil
 import json
 import os
 from pathlib import Path
@@ -19,6 +20,7 @@ class Fixture(unittest.TestCase):
         self.temp=tempfile.TemporaryDirectory(prefix='sunday-test-',dir=Path(__file__).parent)
         self.base=Path(self.temp.name);self.root=self.base/'app';self.workspace=self.base/'work';self.workspace.mkdir()
         self.config=Config(self.root);self.store=Store(self.config.data)
+        shutil.copytree(Path(__file__).resolve().parents[1]/'extensions/plugins',self.root/'extensions/plugins')
         self.audit=[]
         self.files=FileTools(self.root,'rui',[{'path':str(self.workspace),'write':True}],lambda *a:True,lambda *a:self.audit.append(a))
     def tearDown(self):self.temp.cleanup()

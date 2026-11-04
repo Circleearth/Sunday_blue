@@ -7,6 +7,25 @@
 
 ---
 
+## 2026-11-04 — Codex（UI 复查、外置插件与工作区信任）
+改动：ui/ui_components、files、storage、agent、settings、plugin_runtime/plugin_preferences、tray；extensions/plugins 下两个独立包；README/PLUGIN_SPEC/MAINTENANCE_MAP/ARCHITECTURE；tests/test_revision.py。
+目的：处理主人本轮八项反馈，保留 Claude 的增量渲染方向，修复具体回归。
+状态：完成，源码模式，未打包；运行中的旧窗口未终止，需要主人重启。
+
+对方需要知道：
+- _diag_log 调试引用全部移除。Claude 未提交的临时 pending 清理存在切片错误，已换成整行清理/流式正文落库时复用。欢迎行在首次发送移除；延迟分段继续追加且按 _message_rows 插回原消息位置；加载更早历史强制重建并按高度差保持阅读锚点；右键历史 itemsAt 改为 itemAt。
+- 自动跟随状态跟用户实际滚动走；rangeChanged 只在跟随状态调度到底，回调检查 sid/跟随状态。新增气泡主动 show 避免延迟布局令 range 长时间为 0。Bubble.fit 解除旧 fixed minimum 后再 heightForWidth，解决每次多 4px 的隐性膨胀。主题在底继续跟随，读历史保持位置。字体从字节加载，避免 Windows 字体文件锁。
+- 权限页显式信任开关：roles.<role>.roots[].trusted。用户本轮已明确授权增加此模式，因此更新 AGENTS 对应规则。信任工作区自动确认文件操作，仍校验权限/路径/冲突并备份；不免除 memory/MCP 审阅。新增 delete_file，目录删除加完整备份和清单重验；禁止根目录删除/移动、嵌套/跨卷移动。
+- 停止变为停止并撤回：取消后等 worker.finished 才 Store.withdraw_turn，移除本轮输入与后续输出，全文进 audit，用户输入合并到原会话草稿。新草稿不覆盖。已执行文件操作不回滚。摘要跨过撤回边界则清空摘要恢复原始上下文。停止中的新增 text/changed 信号不再显示。
+- 插件实现真正移到 extensions/plugins/time-context 和 daypart-greetings，每包 plugin.json/main.py/_conf_schema.json。宿主扫描加载；新增插件表单读取器，按角色持久参数。旧模块只兼容包装，不要把实现再搬回去。分发源码必须带 extensions。参考本机 AstrBot schema 规范，不是 AstrBot 全运行时兼容；未复制其代码/用户数据。详见重写后的 PLUGIN_SPEC。
+- 寒暄 idle_minutes 默认 60，连续用户消息间隔 <=60 分钟不寒暄，超过再触发；0 为原每日每时段首次。凌晨重复/间隔优先，按角色配置。失败且无正文会释放预留，旧 v2 的 seen 不再令首次升级无响应。时间背景加 greeting_event 例外避免规则冲突；事件要求实际时段问候，正文进历史。没有真实付费 API 联调，不能承诺模型绝对遵循。
+- 原生插件和旧 JSON 提示词行都有真实“设置”按钮。检查了 DPI 下实际窗口，修正 item padding 导致自定义行高度为 0；自定义 delegate 仅去掉底层重复 check indicator。不要仅测控件存在就判定可见可点。
+- 外观/数据新增 close_to_tray（默认 false），源码也能关闭到托盘、继续任务；tray.py 管打开/退出。无系统服务/开机自启，不支持休眠后继续执行。
+- Claude 本次全部交接已读并按规则归档到 archive/2026-11-04_claude-by-codex.md；原文件只保留头部。历史日期查询模块仍未实现，主人本轮没要求。
+
+验证：改前 51 测试有 3 个滚动失败；改后原生 Qt 全量 61 测试通过（最终报告 docs/revision-results.txt）。覆盖真实设置按钮点击/参数生效、停止竞态、信任与删除备份、消息分段、流式复用、滚动、主题高度、插件卸载、凌晨/跨时段、失败释放、托盘不结束任务。所有测试临时 fixture，不用真实聊天/密钥。界面预览 docs/plugins-preview.png、plugin-options-preview.png。
+
+
 ## 2026-11-03 22:55 — Codex（时段寒暄 v2：本地触发 + 模型表达）
 改动：daypart_greetings、agent、ui、settings、native_plugins；测试和文档。
 目的：主人指出固定文案枯燥且角色不知道刚才寒暄过；明确允许改成本地代码 + LLM 回复，取代上一条纯本地方案。
