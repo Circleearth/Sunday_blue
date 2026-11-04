@@ -47,6 +47,8 @@ class MainWindow(QWidget):
         self._more_button=None; self._welcome_shown=False; self._stretch_added=False
         self._force_rebuild=False; self._auto_follow=False
         self._rendering=False; self._last_max=0; self._welcome=None
+        self._follow_show_timer=QTimer(self); self._follow_show_timer.setInterval(1000); self._follow_show_timer.setSingleShot(True)
+        self._follow_show_timer.timeout.connect(self._show_follow_button)
         self.chat_bubbles=[]
         self._message_rows={}
         self.reveals={}
@@ -383,12 +385,19 @@ class MainWindow(QWidget):
         self.update_context()
 
     def _update_follow_button(self):
+        # WeChat-style: the hint only appears if the user stays away from the bottom for
+        # a full second (timer); any moment back at the bottom cancels it and hides it.
         if not hasattr(self,'follow_button'):return
-        bar=self.chat_scroll.verticalScrollBar()
-        show=bar.maximum()>0 and not self._is_at_bottom()
-        if show!=self.follow_button.isVisible():
-            self._place_follow_button()
-            self.follow_button.setVisible(show)
+        if self._is_at_bottom():
+            self._follow_show_timer.stop()
+            if self.follow_button.isVisible():self.follow_button.hide()
+        elif not self._follow_show_timer.isActive():
+            self._follow_show_timer.start()
+
+    def _show_follow_button(self):
+        if self._is_at_bottom() or self.follow_button.isVisible():return
+        self._place_follow_button()
+        self.follow_button.show()
 
     def _place_follow_button(self):
         self.follow_button.move(max(0,(self.chat_scroll.viewport().width()-self.follow_button.width())//2),
@@ -408,6 +417,7 @@ class MainWindow(QWidget):
         self._update_follow_button()
 
     def _follow_clicked(self):
+        self._follow_show_timer.stop()
         self.follow_button.hide()
         self._auto_follow=True
         self.scroll_bottom()

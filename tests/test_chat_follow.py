@@ -30,10 +30,12 @@ class ChatFollowTests(unittest.TestCase):
         self._fill()
         bar=self.window.chat_scroll.verticalScrollBar()
         bar.setValue(800)
-        self.assertNotIn(self.window._is_at_bottom(),(True,),)
+        self.assertFalse(self.window._is_at_bottom())
         self.window.store.add(self.window.sid,'assistant','新的一条。')
         self.window.render(preserve=True);QTest.qWait(60)
         self.assertLessEqual(bar.value(),900)  # not dragged to the bottom
+        self.assertFalse(self.window.follow_button.isVisible())  # not yet: must stay away for a full second
+        QTest.qWait(1200)
         self.assertTrue(self.window.follow_button.isVisible())
     def test_at_bottom_new_message_follows(self):
         self._fill()
@@ -57,6 +59,7 @@ class ChatFollowTests(unittest.TestCase):
         bar.setValue(0);QTest.qWait(30)
         self.window.store.add(self.window.sid,'assistant','新消息。')
         self.window.render(preserve=True);QTest.qWait(60)
+        QTest.qWait(1200)
         self.assertTrue(self.window.follow_button.isVisible())
         self.window._follow_clicked();QTest.qWait(60)
         self.assertEqual(bar.value(),bar.maximum())
@@ -64,5 +67,12 @@ class ChatFollowTests(unittest.TestCase):
         self.window.store.add(self.window.sid,'assistant','又一条。')
         self.window.render(preserve=True);QTest.qWait(60)
         self.assertEqual(bar.value(),bar.maximum())  # follow resumed after clicking the hint
+    def test_follow_button_hidden_when_back_to_bottom(self):
+        self._fill()
+        bar=self.window.chat_scroll.verticalScrollBar()
+        bar.setValue(0);QTest.qWait(1200)
+        self.assertTrue(self.window.follow_button.isVisible())
+        bar.setValue(bar.maximum());QTest.qWait(1300)
+        self.assertFalse(self.window.follow_button.isVisible())  # timer cancelled; stays hidden
 
 if __name__=='__main__':unittest.main()
