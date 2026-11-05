@@ -396,12 +396,20 @@ class MainWindow(QWidget):
 
     def _show_follow_button(self):
         if self._is_at_bottom() or self.follow_button.isVisible():return
-        self._place_follow_button()
-        self.follow_button.show()
+        # Delay both place and show by one event-loop cycle: on first startup the
+        # chat scroll area may not yet have its final width, so a same-frame move()
+        # lands too far left (the reported "first time only" mispositioning).
+        def _show():
+            if self._is_at_bottom():return
+            self._place_follow_button()
+            self.follow_button.show()
+        QTimer.singleShot(0,_show)
 
     def _place_follow_button(self):
-        self.follow_button.move(max(0,(self.chat_scroll.viewport().width()-self.follow_button.width())//2),
-            max(6,self.chat_scroll.height()-self.follow_button.height()-8))
+        width=self.follow_button.sizeHint().width()
+        height=self.follow_button.sizeHint().height()
+        self.follow_button.move(max(0,(self.chat_scroll.viewport().width()-width)//2),
+            max(6,self.chat_scroll.height()-height-8))
 
     def _on_bar_moved(self,value=None):
         bar=self.chat_scroll.verticalScrollBar()

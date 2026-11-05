@@ -74,5 +74,12 @@ class ChatFollowTests(unittest.TestCase):
         self.assertTrue(self.window.follow_button.isVisible())
         bar.setValue(bar.maximum());QTest.qWait(1300)
         self.assertFalse(self.window.follow_button.isVisible())  # timer cancelled; stays hidden
+    def test_follow_button_is_centered_on_first_show(self):
+        self._fill()
+        bar=self.window.chat_scroll.verticalScrollBar()
+        bar.setValue(0);QTest.qWait(1300)
+        self.assertTrue(self.window.follow_button.isVisible())
+        expected_x=(self.window.chat_scroll.viewport().width()-self.window.follow_button.sizeHint().width())//2
+        self.assertEqual(self.window.follow_button.x(),expected_x)
 
 if __name__=='__main__':unittest.main()
