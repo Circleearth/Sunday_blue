@@ -1,0 +1,71 @@
+{
+  "daemon_python": {
+    "type": "string",
+    "description": "守护进程 Python 解释器（pythonw 无窗口）",
+    "default": "C:/Users/zsc18/AppData/Local/Programs/Python/Python314/pythonw.exe",
+    "hint": "守护进程以 pythonw 无控制台窗口方式常驻，默认本机 Python 3.14 的 pythonw"
+  },
+  "dsh_profile": {
+    "type": "string",
+    "description": "DSH QQ 机器人 profile 名（QQ 出站点）",
+    "default": "qqbot",
+    "hint": "凭据取自 %USERPROFILE%/.dsh/profiles/<profile>/cordis.patch.yml（Rui 侧扫码绑定写入），本插件不另存凭据"
+  },
+  "llm_polish": {
+    "type": "bool",
+    "description": "发送前用 LLM 润色提醒文案（走本机 API，不用 DSH）",
+    "default": true,
+    "hint": "默认开启：调用 设置-API 连接 里的 API（如 Agnes），每条提醒润色一次；关闭则固定文案零调用"
+  },
+  "llm_max_daily": {
+    "type": "int",
+    "description": "每天 LLM 润色条数上限",
+    "default": 10,
+    "hint": "仅 llm_polish 开启时生效，防止误配造成费用"
+  },
+  "llm_base_url": {
+    "type": "string",
+    "description": "润色 LLM 的 base_url（OpenAI 兼容 /v1，留空=复用宿主 settings.json 的 api.base_url）",
+    "default": ""
+  },
+  "llm_model": {
+    "type": "string",
+    "description": "LLM 模型名（留空=复用宿主 settings.json 的 api.model，即用你现有的 Agnes API）",
+    "default": ""
+  },
+  "llm_key_override": {
+    "type": "string",
+    "description": "润色 LLM 的 Key 覆盖（留空=复用宿主的加密 Key；只填这里不会写进任何文件）",
+    "default": "",
+    "hint": "主人指定的 Agnes Key 走宿主 settings.json 已有配置，此字段仅在宿主未配置时兜底，插件不持久化它"
+  },
+  "http_proxy": {
+    "type": "string",
+    "description": "守护进程出网代理（出 LLM/QQ API 请求用）",
+    "default": "http://127.0.0.1:7890",
+    "hint": "本机需要 7890 代理访问 apihub.agnes-ai.com / api.sgroup.qq.com；直连通可留空"
+  },
+  "poll_interval": {
+    "type": "int",
+    "description": "守护进程轮询间隔（秒）",
+    "default": 15,
+    "hint": "15 秒一次检查到期提醒，几乎零开销"
+  },
+  "delivery_max_retries": {
+    "type": "int",
+    "description": "单次提醒发送失败重试上限（超后放弃并标记）",
+    "default": 5,
+    "hint": "网关恢复前持续重试；超过上限放弃并在日志注明"
+  },
+  "qq_openid": {
+    "type": "string",
+    "description": "主人 QQ openid（提醒送达对象）",
+    "default": "EEFDF5B877B47A567027B72768A48D2A"
+  },
+  "test_send_url": {
+    "type": "string",
+    "description": "测试发送端点覆盖（留空=走 QQ Bot OpenAPI 正式链路）",
+    "default": "",
+    "hint": "非空时守护进程把提醒 POST 到该地址，用于不发真实 QQ 消息的验证"
+  }
+}

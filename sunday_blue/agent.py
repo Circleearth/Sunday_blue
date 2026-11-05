@@ -10,7 +10,7 @@ from .files import FileTools, FILE_SCHEMAS, MEMORY_SCHEMAS
 from .extensions import MCPClient, extension_text
 from .storage import plain, now
 from .native_plugins import enabled
-from .plugin_runtime import system_context,load
+from .plugin_runtime import system_context,load,discover
 
 _COMPACT = re.compile(r'^\s*/\s*compact\b[\s:：]*$', re.IGNORECASE)
 
@@ -174,6 +174,17 @@ class Agent(QThread):
                     name = f'mcp_{len(external)}'
                     external[name] = (client, t['name'])
                     tools.append({'name': name, 'description': f"MCP {spec['name']} / {t['name']}: " + t.get('description', '')[:1500], 'input_schema': t['inputSchema']})
+        plugin_tools = {}
+        _pr = self.config.get('_plugin_root')
+        for pid, meta in (discover(_pr) if _pr else discover()).items():
+            if not meta.get('error') and enabled(self.config, self.role, pid):
+                module = load(pid)
+                if not hasattr(module, 'tools'):
+                    continue
+                for t in module.tools():
+                    pname = 'plugin_%s_%s' % (pid.replace('-', '_'), t['name'])
+                    plugin_tools[pname] = (pid, t['name'])
+                    tools.append({'name': pname, 'description': t['description'], 'input_schema': t['input_schema']})
         if not messages:
             messages = [{'role': 'user', 'content': '请依据历史摘要继续。'}]
         self.status.emit(self.sid, '正在思考…')
@@ -196,7 +207,7 @@ class Agent(QThread):
             results = []
             for call in calls:
                 name, args = call['name'], call['input']
-                self.status.emit(self.sid, '工具 · ' + (external[name][1] if name in external else name))
+                self.status.emit(self.sid, '工具 · ' + (external[name][1] if name in external else (plugin_tools[name][1] if name in plugin_tools else name)))
                 error = False
                 try:
                     if self.cancel.is_set():
@@ -220,6 +231,9 @@ class Agent(QThread):
                     elif name == 'move': result = ft.move(**args)
                     elif name == 'memory_read': result = (self.root/'data'/'memory'/self.role/'long_term.md').read_text(encoding='utf-8')
                     elif name == 'memory_write': result = ft.write('', content=args['content'], memory=True)
+                    elif name in plugin_tools:
+                        pid, tname = plugin_tools[name]
+                        result = load(pid).dispatch(self.config, self.role, tname, args)
                     else: raise ValueError('未知工具')
                 except Exception as exc:
                     result, error = {'error': str(exc)}, True

@@ -39,7 +39,7 @@ def load(pid,root=DEFAULT_ROOT):
 
 def parameters(config,role,pid,root=None):
     meta=discover(root or config.get('_plugin_root',DEFAULT_ROOT)).get(pid,{})
-    values={k:v.get('default') for k,v in meta.get('schema',{}).items()}
+    values={k:spec.get('default') for k,spec in meta.get('schema',{}).items()}
     if pid=='daypart-greetings':values.update(config.get('greetings',{}))
     values.update(config.get('roles',{}).get(role,{}).get('plugin_settings',{}).get(pid,{}))
     return values

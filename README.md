@@ -112,6 +112,8 @@ API Key 使用当前 Windows 账户的 DPAPI 加密，保存在 `data/settings.j
 
 文件工作台、持久记忆、MCP 桥的全局开关仍在插件页。旧单文件 JSON 提示词插件仍支持导入、按角色启停与设置，例如：
 
+**QQ 定时提醒**（`extensions/plugins/qq-reminders/`，默认启用）：任意角色可用 `add_reminder / list_reminders / remove_reminders` 工具创建提醒（"22:30 提醒我睡觉"、"每晚必做清单（循环）"），到点由 QQ 机器人私聊发送，消息前缀角色名。规则：给出明确时间点才创建，模糊时间（"晚上"）先反问；说"每天/循环"即为每日重复。发送由**无窗口后台守护进程**（pythonw，15 秒轮询、接近零资源占用，`install_task.bat` 注册为任务计划程序的看门狗任务，每小时自动拉起、单实例锁）负责；QQ 网关（Rui 侧 dsh qqbot）在线且网络可用时送达，**断网/网关挂起的时段不丢提醒**：挂起重试（最多 5 次）后放弃并写入 `data/plugins/qq-reminders/daemon.log`。可选 LLM 润色默认关闭（零成本），开启走宿主 API 配置（Agnes 等），每天上限 10 条。提醒规范见 `extensions/skills/qq-reminders/SKILL.md`（可在设置 → Skills 为角色导入；插件自带的 system_context 已含基本规则，导入 Skill 不强制）。分发源码时 `extensions/plugins/qq-reminders` 必须随包携带；守护进程只在 Windows 本机运行。
+
 ```json
 {
   "id": "daily-planning",
