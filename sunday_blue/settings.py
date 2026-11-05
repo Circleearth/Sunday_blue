@@ -204,7 +204,33 @@ class Settings(QDialog):
         self.plugins.setStyleSheet('QListWidget::item {padding:6px 4px; margin:2px 0;} QListWidget::indicator {width:0; height:0;}')
         add = QPushButton('导入提示词插件 .json'); add.clicked.connect(self.import_plugin); layout.addWidget(add)
         layout.addWidget(label('每行设置按钮打开该角色的插件参数。保存设置后，下一条消息生效。Python 插件拥有当前用户权限，仅安装信任的插件。'))
+        self._build_plugin_status_box(layout)
         self.load_plugins()
+
+    def _build_plugin_status_box(self, layout):
+        # Runtime status + controls for plugins that expose an optional
+        # status_widget(root) hook (see PLUGIN_SPEC section 3b). Currently only
+        # qq-reminders does (daemon / watchdog / QQ gateway liveness + install/stop).
+        # Widgets are independent of the role selector — the daemon is global.
+        from .plugin_runtime import load
+        built = False
+        for pid, meta in discover(self.config.root).items():
+            if meta.get('error'):
+                continue
+            try:
+                module = load(pid)
+            except Exception:
+                continue
+            if not hasattr(module, 'status_widget'):
+                continue
+            title = QLabel('插件运行状态 · %s' % meta['name'])
+            title.setObjectName('section')
+            layout.addWidget(title)
+            widget = module.status_widget(self.config.root)
+            layout.addWidget(widget)
+            built = True
+        if not built:
+            return
 
     def load_plugins(self):
         self.plugins.blockSignals(True); self.plugins.clear()

@@ -177,3 +177,91 @@ def dispatch(config, role, name, args):
 PLUGIN_ID = _PLUGIN_ID
 def plugin(config, role, name, args):
     return dispatch(config, role, name, args)
+
+
+def status_widget(root):
+    """Optional hook (PLUGIN_SPEC section 3b): the host's settings/plugins page
+    renders this widget under the plugin row. Shows live status of the daemon,
+    the dsh QQ gateway, the watchdog task and pending reminders, plus
+    install/stop controls. Qt imports happen here so plain module import in
+    non-GUI tests stays safe."""
+    import importlib.util
+    from pathlib import Path as _Path
+    from PySide6.QtCore import QTimer
+    from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
+
+    here = _Path(__file__).resolve().parent
+    spec = importlib.util.spec_from_file_location('_sb_qqrem_ctl', str(here / 'daemon_ctl.py'))
+    ctl = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ctl)
+    root = str(root)
+
+    w = QWidget()
+    col = QVBoxLayout(w)
+    col.setContentsMargins(0, 0, 0, 0)
+    col.setSpacing(4)
+
+    states = {}
+    for key, title in (('daemon', '守护进程（无窗口 pythonw）'),
+                       ('task', '看门狗任务（计划程序）'),
+                       ('gateway', 'QQ 网关（Rui 的 dsh qqbot）'),
+                       ('pending', '挂起提醒')):
+        row = QHBoxLayout()
+        cap = QLabel(title)
+        cap.setObjectName('muted')
+        val = QLabel('未检测')
+        row.addWidget(cap)
+        row.addStretch()
+        row.addWidget(val)
+        col.addLayout(row)
+        states[key] = val
+
+    def refresh():
+        try:
+            st = ctl.check(root)
+        except Exception as exc:
+            for v in states.values():
+                v.setText('检测失败：%s' % exc)
+            return
+        states['daemon'].setText('运行中（PID %s）' % st['daemon_pid'] if st['daemon_alive'] else '未运行')
+        states['task'].setText('已注册（每 10 分钟自检拉起）' if st['task_installed'] else '未注册')
+        states['gateway'].setText('在线' if st['gateway_alive'] else '不在线（提醒会挂起等待）')
+        states['pending'].setText('%d 条' % st['pending'])
+
+    refresh()
+    timer = QTimer(w)
+    timer.setInterval(15000)
+    timer.timeout.connect(refresh)
+    timer.start()
+
+    btns = QHBoxLayout()
+    note = QLabel('QQ 网关属于 Rui 系统的进程，本软件不替你开关；需要时用 Rui 的 restart.bat。')
+    note.setObjectName('muted')
+    note.setWordWrap(True)
+    check_btn = QPushButton('检查')
+    check_btn.clicked.connect(refresh)
+    install_btn = QPushButton('安装/重启看门狗')
+    stop_btn = QPushButton('停止守护')
+
+    def do_install():
+        r = ctl.install(root)
+        refresh()
+        result.setText('看门狗已注册' + ('，守护进程已运行' if r.get('daemon_alive') else '；守护进程未起来，点“检查”看详情'))
+
+    def do_stop():
+        ctl.stop(root)
+        refresh()
+        result.setText('已停止')
+
+    result = QLabel('')
+    result.setObjectName('muted')
+    install_btn.clicked.connect(do_install)
+    stop_btn.clicked.connect(do_stop)
+    btns.addWidget(check_btn)
+    btns.addWidget(install_btn)
+    btns.addWidget(stop_btn)
+    btns.addStretch()
+    col.addLayout(btns)
+    col.addWidget(note)
+    col.addWidget(result)
+    return w

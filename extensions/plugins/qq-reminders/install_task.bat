@@ -1,24 +1,12 @@
 @echo off
-rem Install the qq-reminders silent daemon as a per-user Windows Task Scheduler task
-rem (watchdog style: runs hourly, only spawns if no daemon is alive - the daemon
-rem itself enforces a single instance via a pid lock file, so frequent triggers are
-rem safe and consume nothing when one is already running).
+rem qq-reminders watchdog installer (thin wrapper around the plugin's daemon_ctl).
+rem Safe to re-run: the daemon's pid-lock dedupes, so this is a no-op if it is
+rem already running. This only manages THIS plugin's task + its own daemon; it
+rem does not touch the host app data or the Rui dsh QQ gateway.
 setlocal
-set "ROOT=%~dp0..\..\"
-set "PYTHONW=C:\Users\zsc18\AppData\Local\Programs\Python\Python314\pythonw.exe"
-set "VBS=%TEMP%\sb_qq_reminders_launch.vbs"
-set "DAEMON=%ROOT%extensions\plugins\qq-reminders\daemon\run.py"
-echo Set sh = CreateObject("WScript.Shell")> "%VBS%"
-echo sh.Run """""%PYTHONW%"%"" ""%DAEMON%"", 0, False>> "%VBS%"
-echo Set sh = Nothing>> "%VBS%"
-schtasks /Create /F /SC HOURLY /TN "SundayBlue-QQ-Reminders" /TR "wscript.exe \"%VBS%\"" /RL LIMITED 2>nul
-if %errorlevel%==0 (
-  schtasks /Change /TN "SundayBlue-QQ-Reminders" /ENABLE
-  echo Installed: task SundayBlue-QQ-Reminders (hourly, silent, self-healing)
-) else (
-  echo schtasks failed - running as administrator may be required, or start the daemon manually:
-  echo   wscript.exe "%VBS%"
-)
-rem Start it right now without a window
-start "" wscript.exe "%VBS%"
+rem %~dp0 = <root>\extensions\plugins\qq-reminders\ ; go up three levels to root
+for %%i ("%~dp0..\..\..\") do set "ROOT=%%~fi"
+set "PY=C:\Users\zsc18\AppData\Local\Programs\Python\Python314\python.exe"
+"%PY%" -c "import sys;sys.path.insert(0,sys.argv[1]+chr(92)+'extensions'+chr(92)+'plugins'+chr(92)+'qq-reminders');import daemon_ctl;print('installed:',daemon_ctl.install(sys.argv[1]))" "%ROOT%"
+pause
 endlocal
