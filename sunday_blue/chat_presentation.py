@@ -67,7 +67,7 @@ def chat_font(root,value,role=None):
                 _font_cache[key]=QFontDatabase.applicationFontFamilies(fid) if fid>=0 else []
             if _font_cache[key]:family=_font_cache[key][0]
     f=QFont(family,c['font_size']);f.setWeight(QFont.Weight(c['font_weight']))
-    f.setHintingPreference(QFont.HintingPreference.PreferFullHinting)
+    f.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
     return f
 
 def tool_failure(block):
