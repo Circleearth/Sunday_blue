@@ -11,7 +11,7 @@ class PluginRowDelegate(QStyledItemDelegate):
 
 
 class PluginPreferences(QDialog):
-    def __init__(self,meta,values,parent=None):
+    def __init__(self,meta,values,parent=None,extra_widget=None):
         super().__init__(parent);self.setWindowTitle(meta['name']+' · 参数设置');self.resize(560,430)
         self.values=dict(values);self.fields={}
         layout=QVBoxLayout(self);scroll=QScrollArea();scroll.setWidgetResizable(True);layout.addWidget(scroll)
@@ -37,6 +37,13 @@ class PluginPreferences(QDialog):
                 form.addRow(spec.get('description',key),QLabel('不支持此配置类型：'+str(kind)));continue
             w.setToolTip(spec.get('hint',''));form.addRow(spec.get('description',key),w);self.fields[key]=(w,kind)
         if not self.fields:form.addRow(QLabel('此插件没有可配置参数。'))
+        if extra_widget is not None:
+            cap = QLabel(getattr(extra_widget, '_settings_extra_title', '插件运行状态 · 重启/停止'))
+            cap.setObjectName('section')
+            layout.addWidget(cap)
+            box = QScrollArea(); box.setWidgetResizable(True); box.setWidget(extra_widget)
+            box.setMaximumHeight(300)
+            layout.addWidget(box)
         buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.Cancel)
         buttons.button(QDialogButtonBox.StandardButton.Ok).setText('应用参数')
         buttons.button(QDialogButtonBox.StandardButton.Cancel).setText('取消')

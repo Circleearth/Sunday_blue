@@ -19,7 +19,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
 import sys
 import time
 import urllib.request
@@ -82,25 +81,6 @@ def _creds(profile):
     aid = re.search(r"appId:\s*['\"]?([A-Za-z0-9]+)", t)
     sec = re.search(r"appSecret:\s*['\"]?([A-Za-z0-9]+)", t)
     return {"appId": aid.group(1), "appSecret": sec.group(1)} if (aid and sec) else None
-
-
-def _gateway_alive():
-    """QQ delivery needs a live dsh gateway with an ESTABLISHED outbound conn,
-    mirroring the Rui watchdog liveness rule. We only deliver when it is up; if
-    it is down we stay pending (no lost reminder, no spam). We never spawn a
-    gateway ourselves - that is the Rui watchdog's job, not this plugin's."""
-    out = subprocess.run(
-        ["powershell", "-NoProfile", "-Command",
-         "Get-CimInstance Win32_Process -Filter 'Name=\"node.exe\"' | "
-         "Where-Object { $_.CommandLine -match 'dsh' -and $_.CommandLine -match 'qqbot' } | "
-         "Select-Object -ExpandProperty ProcessId"],
-        capture_output=True, text=True, timeout=15)
-    pids = [x for x in out.stdout.split() if x.isdigit()]
-    if not pids:
-        return False
-    st = subprocess.run("netstat -ano".split(), capture_output=True, text=True, timeout=15)
-    return any(("ESTABLISHED" in ln and any(p in ln for p in pids))
-               for ln in st.stdout.splitlines())
 
 
 def _opener(cfg):
@@ -192,9 +172,7 @@ def _deliver(rows):
             except Exception as e:
                 _log("reminder %d test_send_url error: %s" % (nid, e))
         elif not creds:
-            _log("reminder %d: no DSH %s creds; stays pending" % (nid, cfg.get("dsh_profile", "qqbot")))
-        elif not _gateway_alive():
-            _log("reminder %d not sent: QQ gateway not alive; stays pending" % nid)
+            _log("reminder %d: no DSH %s creds; counted as a failure" % (nid, cfg.get("dsh_profile", "qqbot")))
         else:
             try:
                 tok = _token(creds, cfg)

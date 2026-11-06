@@ -15,7 +15,7 @@ from .extensions import validate_servers
 from .files import no_links, inside
 from .chat_preferences import ChatPreferences
 from .native_plugins import enabled
-from .plugin_runtime import discover,parameters
+from .plugin_runtime import discover,parameters,load
 from .plugin_preferences import PluginPreferences,PluginRowDelegate
 
 def label(text):
@@ -204,33 +204,7 @@ class Settings(QDialog):
         self.plugins.setStyleSheet('QListWidget::item {padding:6px 4px; margin:2px 0;} QListWidget::indicator {width:0; height:0;}')
         add = QPushButton('导入提示词插件 .json'); add.clicked.connect(self.import_plugin); layout.addWidget(add)
         layout.addWidget(label('每行设置按钮打开该角色的插件参数。保存设置后，下一条消息生效。Python 插件拥有当前用户权限，仅安装信任的插件。'))
-        self._build_plugin_status_box(layout)
         self.load_plugins()
-
-    def _build_plugin_status_box(self, layout):
-        # Runtime status + controls for plugins that expose an optional
-        # status_widget(root) hook (see PLUGIN_SPEC section 3b). Currently only
-        # qq-reminders does (daemon / watchdog / QQ gateway liveness + install/stop).
-        # Widgets are independent of the role selector — the daemon is global.
-        from .plugin_runtime import load
-        built = False
-        for pid, meta in discover(self.config.root).items():
-            if meta.get('error'):
-                continue
-            try:
-                module = load(pid)
-            except Exception:
-                continue
-            if not hasattr(module, 'status_widget'):
-                continue
-            title = QLabel('插件运行状态 · %s' % meta['name'])
-            title.setObjectName('section')
-            layout.addWidget(title)
-            widget = module.status_widget(self.config.root)
-            layout.addWidget(widget)
-            built = True
-        if not built:
-            return
 
     def load_plugins(self):
         self.plugins.blockSignals(True); self.plugins.clear()
@@ -272,7 +246,15 @@ class Settings(QDialog):
 
     def configure_plugin(self,pid):
         role=self.plugin_role.currentData();meta=discover(self.config.root)[pid]
-        dialog=PluginPreferences(meta,parameters(self.value,role,pid,self.config.root),self)
+        # Optional per-plugin control panel embedded in the SAME settings dialog
+        # (PLUGIN_SPEC section 3b). Only plugins that implement settings_extra
+        # get one; it manages the plugin's own background components only.
+        extra=None
+        module=load(pid)
+        if hasattr(module,'settings_extra'):
+            extra=module.settings_extra(self.config.root)
+        dialog=PluginPreferences(meta,parameters(self.value,role,pid,self.config.root),
+                                 self,extra_widget=extra)
         if dialog.exec()==QDialog.DialogCode.Accepted:
             self.value['roles'][role].setdefault('plugin_settings',{})[pid]=dialog.values
 

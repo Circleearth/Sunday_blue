@@ -46,15 +46,15 @@ def system_context(config):
 
 config 是该角色解析后的参数字典。宿主将非空字符串加入当前请求的 system，不显示在聊天中，也不写入 messages。未启用插件不执行入口。异常作为请求失败显示，不伪装成功。没有后台定时任务、自动联网、工具注册/进程隔离或完整 AstrBot 事件总线。普通 system_context 在每次任务开始构建，不能自行往 UI 填固定消息。
 
-3b. 可选工具与运行时状态挂钩（宿主只约定了这两个钩子，实现必须自己带）：
+3b. 可选工具与设置对话框挂钩（宿主只约定了这两个钩子，实现必须自己带）：
 ```python
 def tools():
     return [{'name':'...','description':'...','input_schema':{...}}]   # 宿主按 plugin_<id>_<name> 注册并分发
 
-def status_widget(root):
-    return QWidget()  # 插件运行状态/控制区，宿主设置页“插件”自动嵌入；无此函数则不嵌入
+def settings_extra(root):
+    return QWidget()  # 嵌入该插件“设置”对话框底部；无此函数则对话框只有参数表单
 ```
-`tools()` 的宿主分发规则：工具名加 `plugin_<id>_<name>` 前缀注册；调用时宿主把 (config, role, name, args) 交给 `dispatch`。`status_widget(root)` 由宿主的设置页插件区调用一次并嵌入 layout；插件可在此提供只读状态 + 自身守护进程的启停按钮，但不得触碰宿主数据或其他系统的进程。
+`tools()` 的宿主分发规则：工具名加 `plugin_<id>_<name>` 前缀注册；调用时宿主把 (config, role, name, args) 交给 `dispatch`。`settings_extra(root)` 由宿主在 `PluginPreferences` 对话框内嵌到参数表单下方（宿主负责标题与滚动区）；插件只实现自身后台组件（守护进程、计划任务等）的只读状态与启停按钮，异步操作必须用 QThread 后台线程，不得阻塞对话框；不得触碰宿主数据或其他系统的进程。插件可通过 `w._settings_extra_title` 自定义区块标题。
 
 目前时段寒暄还使用一个宿主明确支持的有状态协议（下一节）；不能仅给任意第三方插件写一个任意钩子名就期望自动执行。需要新增钩子时同时修改宿主、合同与测试。
 

@@ -66,7 +66,7 @@ def system_context(config):
         '(profile ' + profile + ') will proactively DM the owner at trigger time, prefixed with '
         'the role name. For repeat=daily use time_of_day. If the user has not stated a concrete '
         'time or every-day/once repetition, ASK first; do not invent a time. '
-        'If delivery fails (no network, QQ gateway down) the reminder is NOT lost, it stays '
+        'If delivery fails (no network, etc.) the reminder is NOT lost, it stays '
         'pending and self-heals when the gateway recovers, so tell the user it will be sent '
         'as soon as possible, without promising a fixed time. '
         'LLM polishing is ' + ('on (max ' + str(cap) + ' per day)' if polish else 'off (fixed text, zero cost)') + '.')
@@ -179,16 +179,20 @@ def plugin(config, role, name, args):
     return dispatch(config, role, name, args)
 
 
-def status_widget(root):
-    """Optional hook (PLUGIN_SPEC section 3b): the host's settings/plugins page
-    renders this widget under the plugin row. Shows live status of the daemon,
-    the dsh QQ gateway, the watchdog task and pending reminders, plus
-    install/stop controls. Qt imports happen here so plain module import in
+def settings_extra(root):
+    """Optional hook (PLUGIN_SPEC section 3b): the host's per-plugin settings
+    dialog embeds this panel under the parameter form. Shows live status of
+    this plugin's own components (daemon / watchdog task / pending reminders)
+    and restart / stop controls that manage ONLY this plugin's pythonw daemon
+    and its Task Scheduler task — never the host data or any external
+    gateway. Delivery is self-contained (direct QQ Bot OpenAPI), so there is
+    no gateway row. Qt imports happen here so plain module import in
     non-GUI tests stays safe."""
     import importlib.util
     from pathlib import Path as _Path
-    from PySide6.QtCore import QTimer
-    from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
+    from PySide6.QtCore import QTimer, QThread, Signal
+    from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+                                   QPushButton)
 
     here = _Path(__file__).resolve().parent
     spec = importlib.util.spec_from_file_location('_sb_qqrem_ctl', str(here / 'daemon_ctl.py'))
@@ -196,16 +200,27 @@ def status_widget(root):
     spec.loader.exec_module(ctl)
     root = str(root)
 
+    class _Worker(QThread):
+        done = Signal(object)
+        def __init__(self, fn):
+            super().__init__()
+            self._fn = fn
+        def run(self):
+            try:
+                self.done.emit(self._fn())
+            except Exception as e:
+                self.done.emit({'_error': '%s: %s' % (type(e).__name__, e)})
+
     w = QWidget()
+    w._settings_extra_title = 'QQ 定时提醒 · 运行状态与重启/停止'
     col = QVBoxLayout(w)
     col.setContentsMargins(0, 0, 0, 0)
-    col.setSpacing(4)
+    col.setSpacing(6)
 
     states = {}
-    for key, title in (('daemon', '守护进程（无窗口 pythonw）'),
-                       ('task', '看门狗任务（计划程序）'),
-                       ('gateway', 'QQ 网关（Rui 的 dsh qqbot）'),
-                       ('pending', '挂起提醒')):
+    for key, title in (('daemon', '守护进程（后台，无窗口）'),
+                       ('task', '看门狗计划任务（守护被杀会自动补）'),
+                       ('pending', '挂起中待发的提醒')):
         row = QHBoxLayout()
         cap = QLabel(title)
         cap.setObjectName('muted')
@@ -216,52 +231,80 @@ def status_widget(root):
         col.addLayout(row)
         states[key] = val
 
-    def refresh():
+    restart_btn = QPushButton('重启')
+    stop_btn = QPushButton('停止')
+    test_btn = QPushButton('试发一条')
+    check_btn = QPushButton('检查')
+    result = QLabel('')
+    result.setObjectName('muted')
+    result.setWordWrap(True)
+    note = QLabel('「重启/停止」只管本插件的守护进程与看门狗任务。提醒由守护进程直接调 QQ 机器人接口主动发送，不依赖外部网关进程；断网时段到点的提醒挂起、联网后自动补发。')
+    note.setObjectName('muted')
+    note.setWordWrap(True)
+
+    ops = []
+
+    def refresh(force=False):
+        if ops and not force:
+            return  # a restart/stop is still running; do not flip buttons mid-op
         try:
             st = ctl.check(root)
         except Exception as exc:
             for v in states.values():
                 v.setText('检测失败：%s' % exc)
             return
-        states['daemon'].setText('运行中（PID %s）' % st['daemon_pid'] if st['daemon_alive'] else '未运行')
-        states['task'].setText('已注册（每 10 分钟自检拉起）' if st['task_installed'] else '未注册')
-        states['gateway'].setText('在线' if st['gateway_alive'] else '不在线（提醒会挂起等待）')
+        states['daemon'].setText('运行中（PID %s）' % st['daemon_pid']
+                                 if st['daemon_alive'] else '未运行')
+        states['task'].setText('已注册（每 30 分钟自检拉起）'
+                               if st['task_installed'] else '未注册')
         states['pending'].setText('%d 条' % st['pending'])
 
-    refresh()
-    timer = QTimer(w)
-    timer.setInterval(15000)
-    timer.timeout.connect(refresh)
-    timer.start()
+    def _run_bg(key, fn):
+        def on_done(ret):
+            ops.remove(worker)
+            if key == 'test':
+                result.setText(ret if isinstance(ret, str) else '试发完成')
+            elif isinstance(ret, dict) and ret.get('_error'):
+                result.setText('操作失败：%s，点“检查”看当前状态' % ret['_error'])
+            else:
+                if key == 'restart':
+                    alive = ret.get('daemon_alive') if isinstance(ret, dict) else False
+                    result.setText('已重启：守护进程 ' + ('运行中' if alive else '未起来，点“检查”看详情'))
+                else:
+                    result.setText('已停止守护进程与看门狗任务')
+            refresh()
+        for b in (restart_btn, stop_btn, test_btn, check_btn):
+            b.setEnabled(False)
+        if key == 'restart':
+            restart_btn.setText('重启中…')
+            result.setText('正在重启（停旧进程 + 起守护 + 注册看门狗，约 10 秒）')
+        elif key == 'stop':
+            stop_btn.setText('停止中…')
+            result.setText('正在停止…')
+        else:
+            test_btn.setText('发送中…')
+            result.setText('正在试发一条消息到你的 QQ（需网络，约 10 秒）')
+        worker = _Worker(fn)
+        worker.done.connect(on_done)
+        ops.append(worker)
+        worker.start()
 
-    btns = QHBoxLayout()
-    note = QLabel('QQ 网关属于 Rui 系统的进程，本软件不替你开关；需要时用 Rui 的 restart.bat。')
-    note.setObjectName('muted')
-    note.setWordWrap(True)
-    check_btn = QPushButton('检查')
-    check_btn.clicked.connect(refresh)
-    install_btn = QPushButton('安装/重启看门狗')
-    stop_btn = QPushButton('停止守护')
+    restart_btn.clicked.connect(lambda: _run_bg('restart', lambda: ctl.restart(root)))
+    stop_btn.clicked.connect(lambda: _run_bg('stop', lambda: ctl.stop(root)))
+    test_btn.clicked.connect(lambda: _run_bg('test', lambda: ctl.send_test(root)))
+    check_btn.clicked.connect(lambda: refresh(force=True))
 
-    def do_install():
-        r = ctl.install(root)
-        refresh()
-        result.setText('看门狗已注册' + ('，守护进程已运行' if r.get('daemon_alive') else '；守护进程未起来，点“检查”看详情'))
-
-    def do_stop():
-        ctl.stop(root)
-        refresh()
-        result.setText('已停止')
-
-    result = QLabel('')
-    result.setObjectName('muted')
-    install_btn.clicked.connect(do_install)
-    stop_btn.clicked.connect(do_stop)
-    btns.addWidget(check_btn)
-    btns.addWidget(install_btn)
-    btns.addWidget(stop_btn)
-    btns.addStretch()
-    col.addLayout(btns)
+    row = QHBoxLayout()
+    row.addWidget(restart_btn); row.addWidget(stop_btn)
+    row.addWidget(test_btn);    row.addWidget(check_btn)
+    row.addStretch()
+    col.addLayout(row)
     col.addWidget(note)
     col.addWidget(result)
+
+    refresh(force=True)
+    timer = QTimer(w)
+    timer.setInterval(15000)
+    timer.timeout.connect(lambda: refresh())
+    timer.start()
     return w

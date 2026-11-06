@@ -1,16 +1,20 @@
 """Operational checks and control for the qq-reminders daemon.
 
-Used by the plugin status widget on the host's settings page (see main.py's
-optional status_widget hook, documented in handoff/PLUGIN_SPEC.md section 3b).
-All checks are read-only except install()/stop(), which only touch this
-plugin's own Task Scheduler task and its own pythonw process — never the
-host app's data or the Rui dsh gateway.
+Used by the plugin's settings-dialog control panel (see main.py's optional
+settings_extra hook, documented in handoff/PLUGIN_SPEC.md section 3b). All
+checks are read-only except install()/stop()/restart(), which only touch this
+plugin's own Task Scheduler task and its own pythonw process — never the host
+app's data or any external gateway. Delivery is self-contained: the daemon
+sends proactively via the QQ Bot OpenAPI and does not depend on a gateway
+process, so no gateway liveness is reported here.
 """
 from __future__ import annotations
 import importlib.util
+import json
 import os
 import sqlite3
 import subprocess
+import sys
 from pathlib import Path
 
 PLUGIN_ID = 'qq-reminders'
@@ -33,10 +37,9 @@ def _lock(root):
 
 
 def check(root):
-    """Read-only status of the three processes + pending reminders."""
+    """Read-only status of the daemon, its watchdog task, and pending reminders."""
     run = _run(root)
-    out = {'daemon_alive': False, 'daemon_pid': None, 'task_installed': False,
-           'gateway_alive': False, 'pending': 0}
+    out = {'daemon_alive': False, 'daemon_pid': None, 'task_installed': False, 'pending': 0}
     lock = _lock(root)
     if lock.exists():
         try:
@@ -53,19 +56,60 @@ def check(root):
         out['task_installed'] = r.returncode == 0
     except Exception:
         pass
-    try:
-        out['gateway_alive'] = run._gateway_alive()
-    except Exception:
-        pass
     dbf = Path(root) / 'data' / 'plugins' / PLUGIN_ID / 'state.sqlite3'
     if dbf.exists():
         try:
             c = sqlite3.connect(str(dbf))
-            out['pending'] = c.execute('SELECT COUNT(*) FROM rem WHERE done=0 AND next_fire IS NOT NULL').fetchone()[0]
+            out['pending'] = c.execute(
+                'SELECT COUNT(*) FROM rem WHERE done=0 AND next_fire IS NOT NULL').fetchone()[0]
             c.close()
         except sqlite3.Error:
             pass
     return out
+
+
+def _cfg(root):
+    """Resolve delivery config the way the daemon does: schema defaults, then the
+    host's settings.json (role plugin_settings + api section)."""
+    root = Path(root).resolve()
+    sys.path.insert(0, str(root))
+    from sunday_blue.plugin_runtime import discover
+    meta = discover(root).get(PLUGIN_ID, {})
+    values = {k: spec.get('default') for k, spec in meta.get('schema', {}).items()}
+    sf = root / 'data' / 'settings.json'
+    host = json.loads(sf.read_text(encoding='utf-8')) if sf.exists() else {}
+    api = host.get('api') or {}
+    if not values.get('llm_base_url'):
+        values['llm_base_url'] = api.get('base_url', '')
+    if not values.get('llm_model'):
+        values['llm_model'] = api.get('model', '')
+    for rv in host.get('roles', {}).values():
+        ps = (rv.get('plugin_settings') or {}).get(PLUGIN_ID) or {}
+        for k, v in ps.items():
+            if v:
+                values[k] = v
+    return values
+
+
+def send_test(root):
+    """Send one proactive QQ message to the owner to verify the delivery path,
+    without creating a reminder. Returns a short human-readable status string."""
+    run = _run(root)
+    cfg = _cfg(root)
+    profile = cfg.get('dsh_profile', 'qqbot')
+    creds = run._creds(profile)
+    if not creds:
+        return '未找到 QQ 机器人凭据（%USERPROFILE%/.dsh/profiles/%s/cordis.patch.yml）' % profile
+    openid = cfg.get('qq_openid')
+    if not openid:
+        return '未设置 qq_openid，无法发送'
+    try:
+        tok = run._token(creds, cfg)
+        ok = run._qq_send(creds, tok, openid,
+                          '🟢 Sunday Blue 试发消息：收到即说明主动提醒链路可用', cfg)
+    except Exception as e:
+        return '发送异常：%s' % (type(e).__name__ + ' ' + str(e))
+    return '已发送一条试发消息到你的 QQ' if ok else '发送失败，请看守护日志 data/plugins/qq-reminders/daemon.log'
 
 
 def _vbs_path(root):
@@ -86,7 +130,6 @@ def install(root, pythonw=None):
     root = Path(root).resolve()
     pythonw = (pythonw or DEFAULT_PYTHONW).replace('/', os.sep)
     if not Path(pythonw).exists():
-        import sys
         pythonw = Path(sys.executable).with_name('pythonw.exe').as_posix() or Path(sys.executable).as_posix()
     daemon = str((root / 'extensions' / 'plugins' / PLUGIN_ID / 'daemon' / 'run.py').resolve())
     vbs = _vbs_path(root)
@@ -97,16 +140,14 @@ def install(root, pythonw=None):
         'Set sh = Nothing\n'.format(pythonw, daemon),
         encoding='ascii')
     CREATE_NO_WINDOW = 0x08000000
-    # Watchdog: a periodic task that re-attempts to start the silent launcher.
     subprocess.run(['schtasks', '/Create', '/F', '/SC', 'MINUTE', '/MO', '30',
                     '/TN', TASK_NAME, '/TR', 'wscript.exe "%s"' % str(vbs)],
                    capture_output=True, text=True, timeout=30, creationflags=CREATE_NO_WINDOW)
     subprocess.run(['schtasks', '/Change', '/TN', TASK_NAME, '/ENABLE'],
                    capture_output=True, text=True, timeout=30, creationflags=CREATE_NO_WINDOW)
-    # Start the daemon right now, directly (pythonw = no console window).
     _spawn_daemon(pythonw, daemon)
     import time
-    time.sleep(2)  # let the new daemon claim its lock file
+    time.sleep(2)
     return check(root)
 
 
@@ -115,7 +156,7 @@ def _spawn_daemon(pythonw, daemon):
 
 
 def stop(root):
-    """Delete the task and kill the daemon; delivered history is untouched."""
+    """Delete the watchdog task and kill the daemon; delivered history is untouched."""
     CREATE_NO_WINDOW = 0x08000000
     subprocess.run(['schtasks', '/Delete', '/F', '/TN', TASK_NAME],
                    capture_output=True, text=True, timeout=30, creationflags=CREATE_NO_WINDOW)
@@ -129,3 +170,10 @@ def stop(root):
         except ValueError:
             pass
     return check(root)
+
+
+def restart(root, pythonw=None):
+    """Full stop then start of this plugin's own components (its daemon + watchdog
+    task). Returns the post-restart status dict."""
+    stop(root)
+    return install(root, pythonw)
