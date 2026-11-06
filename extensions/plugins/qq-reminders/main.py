@@ -262,6 +262,10 @@ def settings_extra(root):
     def _run_bg(key, fn):
         def on_done(ret):
             ops.remove(worker)
+            for b in (restart_btn, stop_btn, test_btn, check_btn):
+                b.setEnabled(True)
+            restart_btn.setText('重启'); stop_btn.setText('停止')
+            test_btn.setText('试发一条'); check_btn.setText('检查')
             if key == 'test':
                 result.setText(ret if isinstance(ret, str) else '试发完成')
             elif isinstance(ret, dict) and ret.get('_error'):
@@ -285,8 +289,8 @@ def settings_extra(root):
             test_btn.setText('发送中…')
             result.setText('正在试发一条消息到你的 QQ（需网络，约 10 秒）')
         worker = _Worker(fn)
-        worker.done.connect(on_done)
         ops.append(worker)
+        worker.done.connect(on_done)
         worker.start()
 
     restart_btn.clicked.connect(lambda: _run_bg('restart', lambda: ctl.restart(root)))

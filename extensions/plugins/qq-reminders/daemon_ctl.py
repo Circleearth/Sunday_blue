@@ -103,13 +103,26 @@ def send_test(root):
     openid = cfg.get('qq_openid')
     if not openid:
         return '未设置 qq_openid，无法发送'
-    try:
-        tok = run._token(creds, cfg)
-        ok = run._qq_send(creds, tok, openid,
-                          '🟢 Sunday Blue 试发消息：收到即说明主动提醒链路可用', cfg)
-    except Exception as e:
-        return '发送异常：%s' % (type(e).__name__ + ' ' + str(e))
-    return '已发送一条试发消息到你的 QQ' if ok else '发送失败，请看守护日志 data/plugins/qq-reminders/daemon.log'
+    last = None
+    for _ in range(2):  # one retry: SSL EOF via a flaky proxy is often transient
+        try:
+            tok = run._token(creds, cfg)
+            ok = run._qq_send(creds, tok, openid,
+                              '🟢 Sunday Blue 试发消息：收到即说明主动提醒链路可用', cfg)
+            if ok:
+                return '已发送一条试发消息到你的 QQ'
+            last = 'QQ 接口拒绝/发送失败'
+        except Exception as e:
+            s = str(e)
+            last = s
+            if 'UNEXPECTED_EOF' not in s:
+                break  # non-transient failure (4xx, bad creds…): no point retrying
+    if 'UNEXPECTED_EOF' in str(last) or 'urlopen' in str(last) or 'proxy' in str(last).lower():
+        return ('网络/代理不通或超时（%s）：请确认 7890 代理能正常出网后重试；'
+                '到点的提醒会自动挂起重试，不会丢' % str(last)[:120])
+    if last:
+        return '发送失败：%s（需网络与代理正常；守护日志 data/plugins/qq-reminders/daemon.log）' % str(last)[:160]
+    return '发送失败，请看守护日志 data/plugins/qq-reminders/daemon.log'
 
 
 def _vbs_path(root):

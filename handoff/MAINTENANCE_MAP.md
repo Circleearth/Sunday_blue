@@ -11,6 +11,7 @@
 | 设置页、导入、配置控件 | sunday_blue/settings.py | 设置保存/旧配置 |
 | 人格拼接、工具分发、压缩、取消 | sunday_blue/agent.py | test_core Agent 测试 |
 | 时间注入 / 寒暄 | extensions/plugins/{time-context,daypart-greetings}/main.py | test_time_context.py / test_greetings.py / test_revision.py |
+| QQ 定时提醒（已正常运行，主人要求 Codex 除非恶性 bug 勿改） | extensions/plugins/qq-reminders/（main.py 工具+设置面板、daemon/run.py 守护、daemon_ctl.py 检查/启停）+ extensions/skills/qq-reminders/SKILL.md | test_qq_reminders.py + 本机试发 |
 | 插件发现 / 参数表单 | sunday_blue/plugin_runtime.py / plugin_preferences.py | test_revision.py |
 | 后台托盘 | sunday_blue/tray.py | test_revision.py |
 | API 协议、流式/思考块 | sunday_blue/provider.py | 两协议 mock 测试 |

@@ -1,9 +1,9 @@
 {
   "id": "qq-reminders",
   "name": "QQ 定时提醒",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "api_version": 1,
   "entry": "main.py",
-  "description": "通过聊天创建定时/循环提醒，由无窗口后台守护进程发送 QQ 提醒（LLM 润色走本机 API，不用 DSH）；网关/网络不可用时提醒挂起等待自愈，不丢失",
+  "description": "通过聊天创建单次/每日循环提醒，无窗口后台守护进程直接经 QQ 机器人 OpenAPI 主动私聊送达（不依赖网关进程；凭据运行时读取，LLM 润色走宿主 API）。断网时段提醒挂起、联网后自动补发；重启/停止/试发在插件设置对话框内操作",
   "default_enabled": true
 }

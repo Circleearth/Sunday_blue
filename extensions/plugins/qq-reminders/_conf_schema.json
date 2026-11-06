@@ -25,16 +25,19 @@
   },
   "llm_base_url": {
     "type": "string",
+    "invisible": true,
     "description": "润色 LLM 的 base_url（OpenAI 兼容 /v1，留空=复用宿主 settings.json 的 api.base_url）",
     "default": ""
   },
   "llm_model": {
     "type": "string",
+    "invisible": true,
     "description": "LLM 模型名（留空=复用宿主 settings.json 的 api.model，即用你现有的 Agnes API）",
     "default": ""
   },
   "llm_key_override": {
     "type": "string",
+    "invisible": true,
     "description": "润色 LLM 的 Key 覆盖（留空=复用宿主的加密 Key；只填这里不会写进任何文件）",
     "default": "",
     "hint": "主人指定的 Agnes Key 走宿主 settings.json 已有配置，此字段仅在宿主未配置时兜底，插件不持久化它"
@@ -64,6 +67,7 @@
   },
   "test_send_url": {
     "type": "string",
+    "invisible": true,
     "description": "测试发送端点覆盖（留空=走 QQ Bot OpenAPI 正式链路）",
     "default": "",
     "hint": "非空时守护进程把提醒 POST 到该地址，用于不发真实 QQ 消息的验证"

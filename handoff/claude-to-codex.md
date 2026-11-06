@@ -7,6 +7,37 @@
 
 ---
 
+## 2026-11-06 · QQ 提醒插件落地为"正常运行"版（Claude 做，主人指令：写清说明，正常运行的插件，Codex 除非恶性 bug 否则勿改）
+
+**状态：插件已在本机实际运行并端到端验证通过**（守护进程 pythonw 无窗口常驻 + 看门狗计划任务
+`SundayBlue-QQ-Reminders` 每 30 分钟自检拉起 + 「试发一条」真实发到主人 QQ 成功）。
+**请 Codex 保持不动**（避免混乱）：除发现恶性 bug（守护崩、提醒全丢、误杀进程）外不要改本插件
+`extensions/plugins/qq-reminders/` 与 `extensions/skills/qq-reminders/`，以及宿主
+`settings.py` / `plugin_preferences.py` / `plugin_runtime.py` / `agent.py` 里对应 3b 钩子的行。
+
+**相对 11-05 那条的演进（本插件已自包含，不再依赖 Rui 网关）**：
+- **拆掉"网关在线才发"闸门**：守护进程到点**直接**调 QQ Bot OpenAPI 主动私聊（`daemon/run.py`
+  删除 `_gateway_alive()` 判断；`_deliver` 不再因网关不在线而挂起）。凭据仍是运行时读
+  `%USERPROFILE%\.dsh\profiles\<profile>\cordis.patch.yml`，不另存。11-05 条目里"QQ 网关当前没跑
+  会一直挂起"的风险**已消除**——现在没有网关也能发。
+- **语义**：单次=到点发一次；每日循环=每天固定点都发；断网时段挂起、联网后自动补发（保留）。
+- **控制面板进"设置"对话框**：宿主新增可选钩子 `settings_extra(root)`（PLUGIN_SPEC 3b 由
+  `status_widget` 改名/挪位置），嵌在 `PluginPreferences` 对话框**参数表单上方**。面板含 3 行状态
+  （守护进程 / 看门狗任务 / 挂起中提醒）+ 4 按钮（重启 / 停止 / 试发一条 / 检查），后台 QThread 执行不卡窗。
+  宿主的插件页已还原为"每插件一行 + 设置按钮"，不再有独立状态块。
+- **UI 清理**：`_conf_schema.json` 里纯技术/自动复用型字段（`llm_base_url`、`llm_model`、
+  `llm_key_override`、`test_send_url`）标 `invisible` 不再显示，仅保留 8 个主人真正要改的。
+- **修两个小 bug**：① 试发/重启/停止结束（含失败）后按钮一直灰显 → 完成回调里统一恢复；
+  ② `send_test` 经 7890 代理偶发 SSL EOF → 加一次自动重试 + 失败给"代理/网络不通"人话提示。
+
+**验证**：全量 69 tests OK（`tests/test_qq_reminders.py` 6 条不变）；offscreen 构建设置面板通过；
+本机 `daemon_ctl.restart()` 后新守护 PID 在位、看门狗任务 `task_installed: True`；`send_test` 实发成功。
+
+**留给主人**（非 Codex）：插件页 Skills 标签里给需要的角色勾上 `qq-reminders` 技能，角色才带完整
+创建规范（模糊时间反问、每天=循环等）；不勾也能建（走插件自带简短提示），只是缺判断规则细节。
+
+---
+
 ## 2026-11-05 · QQ 定时提醒插件（Claude 做，主人指定：达成目的的最轻量级插件）
 
 **目标**（主人）：和任意角色聊天即可创建定时/循环提醒，到点由 QQ 机器人私聊送达；
