@@ -159,7 +159,8 @@ class MainWindow(QWidget):
         layout.addSpacing(5)
         self.context_label=text_label('上下文 · 等待第一条消息','muted'); self.context_label.setWordWrap(True); layout.addWidget(self.context_label)
         self.context_progress=QProgressBar(); self.context_progress.setRange(0,100); self.context_progress.setTextVisible(False); self.context_progress.setFixedHeight(4); layout.addWidget(self.context_progress)
-        layout.addWidget(button('查看持久记忆',self.memory_dialog,'ghost'))
+        layout.addWidget(button('编辑已确认记忆',self.memory_dialog,'ghost'))
+        layout.addWidget(button('记忆大脑 / Ollama',self.brain_dialog,'ghost'))
         self.permission_label=text_label('','muted'); self.permission_label.setWordWrap(True); layout.addWidget(self.permission_label)
         body.addWidget(panel)
 
@@ -591,6 +592,10 @@ class MainWindow(QWidget):
             if getattr(worker,'error_text',None):self.show_notice(worker.error_text)
         self.refresh_sessions(); self.update_state(); worker.deleteLater()
 
+    def brain_dialog(self):
+        from .memory_preferences import show_memory_panel
+        show_memory_panel(self.config.root, self.role, self)
+
     def on_approval(self,sid,item):
         if item.event.is_set():return
         role=self.store.session(sid)['role']
@@ -598,7 +603,11 @@ class MainWindow(QWidget):
         layout=QVBoxLayout(dlg)
         heading=text_label(role.upper()+' / '+item.title,'title');layout.addWidget(heading)
         sub=QLabel(item.subject);sub.setWordWrap(True);sub.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse);layout.addWidget(sub)
-        view=QPlainTextEdit(item.detail);view.setReadOnly(True);view.setStyleSheet('font-family:Consolas; font-size:12px;');layout.addWidget(view)
+        if isinstance(item.detail, dict) and item.detail.get('kind') == 'text_change':
+            from .change_review import ChangeReview
+            layout.addWidget(ChangeReview(item.detail['before'], item.detail['after']))
+        else:
+            view=QPlainTextEdit(str(item.detail));view.setReadOnly(True);layout.addWidget(view)
         row=QHBoxLayout();row.addStretch();row.addWidget(button('拒绝',dlg.reject));row.addWidget(button('确认执行',dlg.accept,'primary'));layout.addLayout(row)
         timer=QTimer(dlg);timer.setInterval(100)
         timer.timeout.connect(lambda:dlg.reject() if sid not in self.workers or self.workers[sid].cancel.is_set() else None);timer.start()
@@ -638,8 +647,8 @@ class MainWindow(QWidget):
         self.context_progress.setValue(percent)
 
     def memory_dialog(self):
-        p=self.config.data/'memory'/self.role/'long_term.md'
-        self.show_document('角色持久记忆 · '+self.role,p.read_text(encoding='utf-8')+'\n\n存储位置：'+str(p))
+        from .memory_editor import MemoryEditor
+        MemoryEditor(self.config.root, self.role, self.store, self).exec()
 
     def show_document(self,title,text):
         dlg=QDialog(self);dlg.setWindowTitle(title);dlg.resize(800,600);layout=QVBoxLayout(dlg)
@@ -655,6 +664,10 @@ class MainWindow(QWidget):
         self.config.value['active_sessions']=self.current_by_role
         self.config.save()
         if hasattr(self,'tray') and self.tray.hide_on_close():event.ignore();return
+        from .memory_preferences import _jobs
+        if any(job.isRunning() for job in _jobs):
+            QMessageBox.information(self,'记忆操作正在进行','请等待当前模型启停或记忆整理操作完成后退出。')
+            event.ignore();return
         if self.workers:
             QMessageBox.information(self,'还有任务在运行','请停止或等待所有会话中的任务完成后再关闭。右侧 ● 表示有任务运行的角色。')
             event.ignore();return

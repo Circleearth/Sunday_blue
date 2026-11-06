@@ -11,6 +11,8 @@ def main():
     app=QApplication(sys.argv)
     app.setApplicationName('Sunday Blue')
     app.setOrganizationName('SundayBlue')
+    from sunday_blue.living_memory import close_all
+    app.aboutToQuit.connect(close_all)
     root=root_path()
     (root/'data').mkdir(parents=True,exist_ok=True)
     lock=QLockFile(str(root/'data'/'app.lock'))

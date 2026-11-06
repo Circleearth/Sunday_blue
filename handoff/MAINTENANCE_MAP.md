@@ -13,6 +13,9 @@
 | 时间注入 / 寒暄 | extensions/plugins/{time-context,daypart-greetings}/main.py | test_time_context.py / test_greetings.py / test_revision.py |
 | QQ 定时提醒（已正常运行，主人要求 Codex 除非恶性 bug 勿改） | extensions/plugins/qq-reminders/（main.py 工具+设置面板、daemon/run.py 守护、daemon_ctl.py 检查/启停）+ extensions/skills/qq-reminders/SKILL.md | test_qq_reminders.py + 本机试发 |
 | 插件发现 / 参数表单 | sunday_blue/plugin_runtime.py / plugin_preferences.py | test_revision.py |
+| LivingMemory、独立 Ollama、图谱 | extensions/plugins/livingmemory/ + sunday_blue/living_memory.py / memory_preferences.py；细分见 docs/LIVINGMEMORY.md | test_memory_personas.py + scripts/test_livingmemory_live.py |
+| 人格编辑、版本恢复 | sunday_blue/personas.py / persona_preferences.py；四份人格文件；旧流程在 personas/_archive | test_memory_personas.py |
+| 已确认记忆编辑、左右差异审阅 | sunday_blue/memory_editor.py / change_review.py / files.py | test_memory_personas.py + test_ui.py |
 | 后台托盘 | sunday_blue/tray.py | test_revision.py |
 | API 协议、流式/思考块 | sunday_blue/provider.py | 两协议 mock 测试 |
 | 路径/权限、文件与目录操作 | sunday_blue/files.py | 权限、审阅、冲突测试 |

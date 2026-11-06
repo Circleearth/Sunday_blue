@@ -1,0 +1,5 @@
+{
+  "reflection_turns":{"type":"int","description":"每几轮完整对话整理一次记忆","default":4,"slider":{"min":1,"max":50},"hint":"整理调用当前聊天 API；向量检索使用本机 Ollama。失败保留待整理内容。"},
+  "recall_count":{"type":"int","description":"每次最多召回几条记忆","default":5,"slider":{"min":1,"max":15}},
+  "context_chars":{"type":"int","description":"记忆注入字数上限","default":6000,"slider":{"min":500,"max":20000}}
+}

@@ -10,7 +10,7 @@ from .files import FileTools, FILE_SCHEMAS, MEMORY_SCHEMAS
 from .extensions import MCPClient, extension_text
 from .storage import plain, now
 from .native_plugins import enabled
-from .plugin_runtime import system_context,load,discover
+from .plugin_runtime import system_context,load,discover,turn_hooks
 
 _COMPACT = re.compile(r'^\s*/\s*compact\b[\s:：]*$', re.IGNORECASE)
 
@@ -34,7 +34,7 @@ def system_prompt(root, role, config):
     parts = [f'你是 Sunday Blue 中的 {role}。保持以下人格。']
     parts.append(system_context(root,config,role))
     # Preserve personality/voice; legacy host-specific workflow files are reference only.
-    for name in ('identity.md', 'personality.md', 'voice.md', 'expertise.md', 'relationships.md'):
+    for name in ('identity.md', 'personality.md', 'voice.md', 'relationships.md'):
         p = persona / name
         if p.exists():
             parts.append(p.read_text(encoding='utf-8'))
@@ -49,7 +49,7 @@ def system_prompt(root, role, config):
 ''')
     parts.append('本角色目录权限：' + json.dumps(config['roles'][role]['roots'], ensure_ascii=False))
     if config['features'].get('memory'):
-        parts.append('本角色持久记忆：\n' + (root/'data'/'memory'/role/'long_term.md').read_text(encoding='utf-8')[:100000])
+        parts.append('本角色经用户确认的事实与偏好（与自动整理的历史记忆区分）：\n' + (root/'data'/'memory'/role/'long_term.md').read_text(encoding='utf-8')[:100000])
     parts.append(extension_text(root, config['roles'][role]))
     return '\n\n'.join(parts)
 
@@ -156,6 +156,18 @@ class Agent(QThread):
             if not already_spoke and greetings:
                 self.greeting_message=actual_user['id']
                 greeting_instruction=greetings.on_message(self.config,self.role,self.sid,actual_user['id']) or ''
+        memory_notice = []
+        def hook_error(pid, exc):
+            memory_notice.append(pid + '：' + str(exc))
+            self.audit('plugin_hook_failed', memory_notice[-1])
+        if actual_user:
+            self.status.emit(self.sid, '检索角色记忆…')
+            recalled = turn_hooks(self.root, self.config, self.role, 'before_turn',
+                                  self.sid, actual_user, on_error=hook_error)
+            if recalled:
+                system += '\n\n' + recalled
+        if self.cancel.is_set():
+            raise Cancelled()
         tools, external = [], {}
         if self.config['features'].get('files'):
             tools.extend(FILE_SCHEMAS)
@@ -202,7 +214,12 @@ class Agent(QThread):
             self.changed.emit(self.sid)
             calls = [b for b in blocks if b['type'] == 'tool_use']
             if not calls:
-                self.status.emit(self.sid, '输出达到上限 · 可继续发送' if finish in ('length','max_tokens') else '就绪')
+                if actual_user and plain(blocks).strip() and finish not in ('length','max_tokens'):
+                    completed = [m for m in self.store.messages(self.sid) if m['id'] >= actual_user['id']]
+                    turn_hooks(self.root, self.config, self.role, 'after_turn', self.sid,
+                               actual_user, completed, on_error=hook_error)
+                self.status.emit(self.sid, '输出达到上限 · 可继续发送' if finish in ('length','max_tokens') else
+                                 ('就绪 · 记忆待处理（请在记忆大脑查看状态）' if memory_notice else '就绪'))
                 return
             results = []
             for call in calls:

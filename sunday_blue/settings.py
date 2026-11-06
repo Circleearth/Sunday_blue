@@ -61,6 +61,7 @@ class Settings(QDialog):
         self._mcp_page()
         self._skills_page()
         self._appearance_page()
+        self._persona_page()
         self.nav.setCurrentRow(0)
         row = QHBoxLayout()
         row.addWidget(label('设置从下一次发送生效；运行中的任务使用启动时的配置。'))
@@ -85,6 +86,18 @@ class Settings(QDialog):
             combo.addItem(f'{name} · {desc}', rid)
         combo.setCurrentIndex(next(i for i,r in enumerate(ROLES) if r[0] == (selected or self.current_role)))
         return combo
+
+    def _persona_page(self):
+        layout = self.page('人格设定')
+        layout.addWidget(label('身份内核、性格反应、说话方式、角色关系。人格由你维护，工具技能交给插件。旧操作规程已归档，不进入对话。'))
+        launch = QPushButton('打开人格编辑器')
+        def open_editor():
+            from .persona_preferences import PersonaDialog
+            PersonaDialog(self.config.root, self.current_role, self).exec()
+        launch.clicked.connect(open_editor)
+        layout.addWidget(launch)
+        layout.addWidget(label('编辑器中的“确认保存”立即写入并保留旧版；取消外层设置不会撤销已经确认的人格保存。'))
+        layout.addStretch()
 
     def _api_page(self):
         layout = self.page('API 连接')

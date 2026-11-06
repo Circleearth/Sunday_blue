@@ -1,0 +1,1 @@
+{"id":"livingmemory","name":"LivingMemory · 独立记忆大脑","version":"1.0.0+upstream.2.9.1","api_version":1,"entry":"main.py","description":"原版 LivingMemory 核心与图谱；九角色独立数据。需要手动启动本软件的 Ollama。","default_enabled":false}

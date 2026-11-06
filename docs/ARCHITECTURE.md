@@ -41,7 +41,7 @@ MCP 是用户选择运行的本机程序，进程拥有操作系统用户权限�
 
 PyInstaller onedir，Python/Qt/requests 放在 `_internal`；assets/personas/extensions/data 外置，定位以 EXE 所在目录为准。开发模式以 main.py 的项目根定位。构建输出在 build 内，再复制 EXE 与 `_internal` 到根。
 
-不绑定旧项目的 Python 路径。不复制第三方已有项目源码。人格是已授权复制的项目内容；Qt/PySide6、Python、requests 等第三方库使用各自许可证，随依赖包保留许可证资料。公开分发前应审查对应许可证义务。
+不绑定旧项目的 Python 路径。LivingMemory 作为用户指定的例外，保留固定版本原版源码与少量 AstrBot 向量存储源码，来源哈希及许可证在其插件目录；不复制 AstrBot 用户配置或旧记忆。人格是已授权复制的项目内容；Qt/PySide6、Python、requests 等依赖保留各自许可证资料。
 
 
 ## 插件与 UI 生命周期（2026-11-04）
@@ -55,3 +55,15 @@ plugin_runtime 扫描 extensions/plugins/*/plugin.json，读取 _conf_schema.jso
 停止撤回：worker 先取消，完成信号后主线程事务移除该用户输入及后续本轮消息，原内容保留 audit，输入与新草稿合并。已执行工具操作不能回滚；摘要涉及撤回边界时清空摘要并恢复完整历史上下文。用户主动关闭到托盘时进程和任务保持运行，托盘可重开；退出仍要先结束任务。默认关闭到托盘不启用。没有 Windows 服务、开机自启或休眠运行。
 
 当前源码启动，不打包；用户实际数据与凭据不用于测试。
+
+## LivingMemory / 人格与审阅（2026-11-06）
+
+- `living_memory.py` 管理显式启动的独立 Ollama、角色进程和持久队列。端口 11435；状态检测不启动模型。
+- `extensions/plugins/livingmemory/` 持有插件清单、适配器、固定上游和原版页面。每个角色一个子进程隔离上游全局状态；完整后台初始化、BM25/FAISS/图谱检索、记忆原子、衰减、整合使用上游实现。
+- `plugin_runtime.turn_hooks` 是通用的 `before_turn / after_turn` 合同；Agent 在检索后注入只读背景，完整成功后入队。插件错误记审计并降级，不丢正常聊天。
+- worker 用只绑定 127.0.0.1 的临时端口和随机进程令牌；网页通过 HttpOnly/SameSite cookie 访问，检查 Origin/Host。九角色独立 Qt WebEngine profile，不共享同主机 cookie。
+- inbox 以 session/user-message 唯一键去重；整理成功后提交游标，故障保留待办。上游文档额外保存 sunday_job/sunday_committed 以处理跨库提交间隙。
+- `personas.py` 与 `persona_preferences.py` 仅允许用户编辑四个人格字段，带并发冲突检查、完整前后快照及恢复。旧专业与平台流程移到 personas/_archive，不加载。
+- `memory_editor.py` 用现有 FileTools 审阅备份机制编辑确认记忆；`change_review.py` 提供统一的左右对照及修改行提示。自动记忆与确认记忆不互相覆盖。
+
+全量自动测试用隔离目录和本地 HTTP fixture。显式 `scripts/test_livingmemory_live.py --live-chat` 才使用当前 API 的少量真实调用，输入仍是合成测试文本，不读取用户会话。详见 [接入与维护](LIVINGMEMORY.md)。

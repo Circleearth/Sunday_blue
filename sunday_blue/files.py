@@ -134,11 +134,14 @@ class FileTools:
         if content == before and original is not None:
             return {'status': 'unchanged', 'path': str(p)}
         diff = ''.join(difflib.unified_diff(before.splitlines(True), content.splitlines(True), fromfile=str(p), tofile=str(p)))
-        accepted=self.approve('持久记忆更新',str(p),diff) if memory else self.request('文件修改',p,diff)
+        review = {'kind': 'text_change', 'before': before, 'after': content, 'diff': diff}
+        accepted=self.approve('持久记忆更新',str(p),review) if memory else self.request('文件修改',p,review)
         if not accepted:
             self.audit('write_denied', str(p))
             return {'status': 'denied', 'path': str(p)}
         with WRITE_LOCK:
+            if self.cancelled():
+                return {'status': 'denied', 'path': str(p)}
             if not memory:
                 self.check(str(p), True)
             no_links(p)

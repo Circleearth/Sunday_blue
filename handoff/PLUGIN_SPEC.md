@@ -87,6 +87,26 @@ Skill 仍仅加载 extensions/skills/<id>/SKILL.md，不执行脚本或自动读
 
 本轮仅阅读用户指定本机 AstrBot 的配置规范，参考其 schema 词汇；没有复制其核心源码、插件数据或用户配置，没有运行或连接 AstrBot。Sunday Blue 不是 AstrBot Runtime，现有 AstrBot 插件不能直接把目录复制过来就工作。复用选择：提取插件纯业务逻辑适配以上合同，或今后做独立 AstrBot 服务桥接；原项目及每个插件许可证、依赖、生命周期需单独核对。不得把“参考配置读取方式”写成“兼容整个插件市场”。
 
+### 7b. LivingMemory 专用适配（2026-11-06）
+
+用户要求接入的 LivingMemory 已作为独立插件提供，详见 `docs/LIVINGMEMORY.md`。固定 2.9.1 原版 core/storage/pages，加少量 AstrBot 向量存储；不导入完整 AstrBot。适配层在 vendor 外，来源及技术/UI 差异检查见 upstream-lock.json 与 scripts/livingmemory_upstream.py。不要把该专用适配描述为整个 AstrBot 插件市场兼容。
+
+### 7c. 会话钩子（可选）
+
+```python
+def before_turn(root, config, role, sid, user_message):
+    return "仅本轮使用的历史背景，或空字符串"
+
+def after_turn(root, config, role, sid, user_message, messages):
+    pass  # messages 为该轮落库消息，插件自己过滤文本和工具回执
+```
+
+宿主在普通请求开始前调用 before_turn，返回值仅加入当前 system；成功完整回复后调用 after_turn。压缩不触发，失败/截断不写自动记忆。未启用插件不执行。插件异常审计并降级，不阻断普通聊天；不要在异常中暴露密钥。钩子运行在 Agent 工作线程，不得直接修改 UI。
+
+LivingMemory after_turn 只持久入队，后台子进程达到轮数阈值后调用原版处理器。Ollama 必须由用户按钮显式启动；监测、进程启动、插件启用不能隐式启动 Ollama。停用插件不清数据。模型没有自动改写确认记忆或人格的权限。
+
+discover 按清单/schema/入口的 mtime+size 缓存解析结果，仍每次检查文件状态，因此新装、卸载、改参数 schema 可即时发现；入口模块按原 mtime 缓存。后台组件由插件适配层明确负责，不是任意插件自动具备的能力。
+
 ## 8. 验证与维护
 
 使用 tests 下临时应用目录安装插件副本，禁止使用真实对话/凭据做自动测试。至少验证发现/卸载、schema 参数持久化与角色隔离、停用不执行、参数真实影响请求、日期边界、免寒暄间隔、失败释放、同消息幂等、工具前后事件撤除、实际回复落库与旧历史兼容。运行 `python -m unittest discover -s tests -v`。更新 README、维护地图、架构与自己的交接后提交。当前不打包；分发源码时必须包含 extensions/plugins 两个目录。
