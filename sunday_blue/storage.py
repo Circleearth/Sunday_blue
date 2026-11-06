@@ -78,6 +78,7 @@ class Config:
             'features': {'files': True, 'memory': True, 'mcp': False},
             'mcp_servers': [],
             'ui_theme': 'dark',
+            'ui_display': {'font_family': 'Noto Sans SC'},
             'greetings': {'night_repeat': True, 'night_interval_minutes': 0},
             'chat_display': {},
         }
@@ -91,6 +92,7 @@ class Config:
             self.value['last_role'] = loaded.get('last_role', 'rui')
             self.value['active_sessions'] = loaded.get('active_sessions', {})
             self.value['ui_theme'] = loaded.get('ui_theme', 'dark')
+            self.value['ui_display'].update(loaded.get('ui_display', {}))
             self.value['close_to_tray'] = loaded.get('close_to_tray', False)
             self.value['chat_display'] = loaded.get('chat_display', {})
             self.value['greetings'].update(loaded.get('greetings', {}))

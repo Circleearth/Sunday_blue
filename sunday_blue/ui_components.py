@@ -3,6 +3,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap, QColor, QPainter, QPen, QFont, QTextOption
 from PySide6.QtWidgets import QFrame, QLabel, QPushButton, QPlainTextEdit, QTextBrowser
 from .storage import ROLES
+from .design_system import tokens
 
 def text_label(text, name=None):
     w = QLabel(text)
@@ -43,7 +44,7 @@ class Composer(QPlainTextEdit):
 class Portrait(QFrame):
     def __init__(self,root):
         super().__init__()
-        self.root=root; self.role='rui'; self.pix=QPixmap(); self.tint=QColor('#7cb7ff')
+        self.root=root; self.role='rui'; self.pix=QPixmap(); self.tint=QColor('#7cb7ff'); self.theme='dark'
         self.setObjectName('portrait'); self.setMinimumHeight(310)
 
     def set_role(self,role):
@@ -57,16 +58,16 @@ class Portrait(QFrame):
         p=QPainter(self); p.setRenderHint(QPainter.RenderHint.Antialiasing)
         width,height=self.width(),self.height()
         # Fine geometric framing leaves the entire central area for custom artwork.
-        p.setPen(QPen(QColor('#3b4e68'),1))
+        t=tokens(self.theme);p.setPen(QPen(QColor(t['border_strong']),1))
         p.drawLine(20,44,width-20,44); p.drawLine(20,height-55,width-20,height-55)
         for x,y,dx,dy in [(10,10,1,1),(width-11,10,-1,1),(10,height-11,1,-1),(width-11,height-11,-1,-1)]:
-            p.setPen(QPen(QColor('#bba77d'),2)); p.drawLine(x,y,x+20*dx,y); p.drawLine(x,y,x,y+20*dy)
+            p.setPen(QPen(self.tint,2)); p.drawLine(x,y,x+14*dx,y); p.drawLine(x,y,x,y+14*dy)
         if not self.pix.isNull():
             pix=self.pix.scaled(max(1,width-28),max(1,height-90),Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation)
             p.drawPixmap((width-pix.width())//2,48+(height-100-pix.height())//2,pix)
-        p.setPen(QColor('#8c9cb2')); p.setFont(QFont('Segoe UI',9))
+        p.setPen(QColor(t['text_muted'])); p.setFont(QFont('Noto Sans SC',9))
         p.drawText(22,29,'CHARACTER  /  '+self.role.upper())
-        p.setPen(QColor('#677d9a'))
+        p.setPen(QColor(t['text_subtle']))
         p.drawText(self.rect().adjusted(22,0,-22,-17),Qt.AlignmentFlag.AlignBottom|Qt.AlignmentFlag.AlignHCenter,'S U N D A Y   B L U E')
 
 class Bubble(QLabel):
@@ -81,18 +82,18 @@ class Bubble(QLabel):
         self.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse | Qt.TextInteractionFlag.TextSelectableByKeyboard)
         self.setWordWrap(True)
         self.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        self.setMargin(12)
+        self.setMargin(9)
         self.set_theme(light)
         self.set_text(text)
 
     def set_theme(self,light):
-        background=('#dbe7fb' if self.user else '#eef1f5') if light else ('#294761' if self.user else '#1b2a40')
-        border='#b9cdea' if light else '#42637f'
-        color='#1f2937' if light else '#e0e8f3'
+        t=tokens('light' if light is True or light=='light' else 'dark')
+        background=t['user_bubble'] if self.user else t['assistant_bubble']
+        border=t['bubble_border'];color=t['text']
         family=self.chat_font.family().replace('"','').replace('\\','')
         size=self.chat_font.pointSizeF()
         weight=int(self.chat_font.weight())
-        self.setStyleSheet(f'QLabel {{background:{background}; border:1px solid {border}; border-radius:11px; color:{color}; font-family:"{family}"; font-size:{size}pt; font-weight:{weight};}}')
+        self.setStyleSheet(f'QLabel {{background:{background}; border:1px solid {border}; border-radius:{t["radius_bubble"]}px; color:{color}; font-family:"{family}"; font-size:{size}pt; font-weight:{weight};}}')
         self.setFont(self.chat_font)
         self.ensurePolished()
         self.fit()
@@ -109,12 +110,12 @@ class Bubble(QLabel):
     def fit(self,*args):
         cap=max(64,int(self._available*.8))
         longest=max((self.fontMetrics().horizontalAdvance(line) for line in self.raw.splitlines()),default=20)
-        target=min(cap,max(64,longest+30))
+        target=min(cap,max(56,longest+20))
         self.setFixedWidth(target)
         # QLabel heightForWidth otherwise clamps to the previous fixed minimum,
         # adding four pixels on every theme/resize/stream update.
         self.setMinimumHeight(0);self.setMaximumHeight(16777215)
-        self.setFixedHeight(max(46,self.heightForWidth(target)+4))
+        self.setFixedHeight(max(self.fontMetrics().height()+20,self.heightForWidth(target)+2))
 
     def toPlainText(self):
         return self.raw

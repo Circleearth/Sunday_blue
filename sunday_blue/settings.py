@@ -8,7 +8,8 @@ from PySide6.QtCore import Qt, QThread, Signal, QUrl, QSize
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QTabWidget, QWidget,
     QFormLayout, QLineEdit, QComboBox, QSpinBox, QCheckBox, QLabel, QPushButton,
-    QListWidget, QListWidgetItem, QFileDialog, QMessageBox, QPlainTextEdit, QInputDialog, QScrollArea)
+    QListWidget, QListWidgetItem, QFileDialog, QMessageBox, QPlainTextEdit, QInputDialog, QScrollArea,
+    QStackedWidget, QFrame)
 from .storage import ROLES, protect, atomic_json
 from .provider import Provider, endpoint
 from .extensions import validate_servers
@@ -44,19 +45,23 @@ class Settings(QDialog):
         self.current_role = role
         self.test_worker = None
         self.setWindowTitle('Sunday Blue · 设置')
-        self.resize(860, 690)
+        self.resize(980, 720);self.setMinimumSize(900,650)
         layout = QVBoxLayout(self)
-        heading = QLabel('设置 / CONTROL ROOM')
+        layout.setContentsMargins(20,18,20,16);layout.setSpacing(14)
+        heading = QLabel('设置')
         heading.setObjectName('title')
         layout.addWidget(heading)
-        self.tabs = QTabWidget()
-        layout.addWidget(self.tabs)
+        content=QFrame();content.setObjectName('card');content_layout=QHBoxLayout(content);content_layout.setContentsMargins(0,0,0,0);content_layout.setSpacing(0)
+        self.nav=QListWidget();self.nav.setObjectName('settingsNav');self.nav.setFixedWidth(176)
+        self.tabs=QStackedWidget();content_layout.addWidget(self.nav);content_layout.addWidget(self.tabs,1);layout.addWidget(content,1)
+        self.nav.currentRowChanged.connect(self.tabs.setCurrentIndex)
         self._api_page()
         self._permissions_page()
         self._plugins_page()
         self._mcp_page()
         self._skills_page()
         self._appearance_page()
+        self.nav.setCurrentRow(0)
         row = QHBoxLayout()
         row.addWidget(label('设置从下一次发送生效；运行中的任务使用启动时的配置。'))
         row.addStretch()
@@ -70,9 +75,8 @@ class Settings(QDialog):
     def page(self, title):
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(16, 18, 16, 16)
-        layout.setSpacing(12)
-        self.tabs.addTab(page, title)
+        layout.setContentsMargins(22, 20, 22, 18);layout.setSpacing(12)
+        self.tabs.addWidget(page);self.nav.addItem(title)
         return layout
 
     def role_combo(self, selected=None):
@@ -336,7 +340,7 @@ class Settings(QDialog):
         outer = self.page('外观 / 数据')
         scroll=QScrollArea();scroll.setWidgetResizable(True);outer.addWidget(scroll)
         content=QWidget();layout=QVBoxLayout(content);scroll.setWidget(content)
-        self.chat_preferences=ChatPreferences(self.config.root,self.value.get('chat_display',{}))
+        self.chat_preferences=ChatPreferences(self.config.root,self.value.get('chat_display',{}),self.value.get('ui_display',{}),self.current_role)
         layout.addWidget(self.chat_preferences)
         self.close_to_tray=QCheckBox('关闭窗口后留在系统托盘，继续后台运行')
         self.close_to_tray.setChecked(self.value.get('close_to_tray',False));layout.addWidget(self.close_to_tray)
@@ -352,6 +356,7 @@ class Settings(QDialog):
     def save(self):
         try:
             self.value['chat_display']=self.chat_preferences.value()
+            self.value['ui_display']=self.chat_preferences.ui_value()
             self.value['close_to_tray']=self.close_to_tray.isChecked()
             self.value['api']=self.api_value()
             self.value['mcp_servers']=validate_servers(json.loads(self.mcp.toPlainText()))

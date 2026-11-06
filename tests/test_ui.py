@@ -167,6 +167,31 @@ class UITests(unittest.TestCase):
         self.assertEqual(chat_font(self.root,loaded).pointSize(),16)
         dlg.deleteLater()
 
+    def test_ui_font_is_fixed_size_and_chat_fonts_are_role_scoped(self):
+        from sunday_blue.chat_presentation import chat_font
+        dlg=Settings(self.config,'rui',self.window);prefs=dlg.chat_preferences
+        self.assertFalse(hasattr(prefs,'ui_size'))
+        prefs.ui_family.setCurrentIndex(max(0,prefs.ui_family.findData('YouYuan')))
+        prefs.family.setCurrentIndex(max(0,prefs.family.findData('Noto Sans SC')))
+        prefs.role.setCurrentIndex(prefs.role.findData('red'))
+        prefs.family.setCurrentIndex(max(0,prefs.family.findData('STXinwei')))
+        dlg.nav.setCurrentRow(5);dlg.show();QTest.qWait(120);APP.processEvents()
+        dlg.grab().save(str(Path(__file__).resolve().parents[1]/'docs'/'appearance-redesign-preview.png'))
+        dlg.save();loaded=Config(self.root).value
+        self.assertEqual(loaded['ui_display']['font_family'],'YouYuan')
+        self.assertEqual(chat_font(self.root,loaded['chat_display'],'rui').family(),'Noto Sans SC')
+        self.assertEqual(chat_font(self.root,loaded['chat_display'],'red').family(),'STXinwei')
+        dlg.deleteLater()
+
+    def test_saving_appearance_keeps_pending_segment_schedule(self):
+        from unittest.mock import patch
+        sid=self.window.sid
+        self.window.reveals[(sid,123)]={'parts':['一。','二。'],'count':1,'next':time.monotonic()+20,'config':{}}
+        with patch('sunday_blue.ui.Settings') as dialog:
+            dialog.return_value.exec.return_value=QDialog.DialogCode.Accepted
+            self.window.settings()
+        self.assertIn((sid,123),self.window.reveals)
+
     def test_native_plugin_checkboxes_are_role_scoped_and_persist(self):
         dlg=Settings(self.config,'rui',self.window)
         items={dlg.plugins.item(i).data(Qt.ItemDataRole.UserRole)[1]:dlg.plugins.item(i) for i in range(dlg.plugins.count())}

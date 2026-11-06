@@ -5,6 +5,7 @@ import random
 from pathlib import Path
 import regex
 from PySide6.QtGui import QFont, QFontDatabase
+from .design_system import ROLE_FONT_DEFAULTS
 
 DEFAULTS = {'font_family': 'Microsoft YaHei UI', 'font_file': '', 'font_size': 12,
             'font_weight': 500, 'segmented': True, 'threshold': 150,
@@ -14,6 +15,14 @@ _font_cache = {}
 
 def options(value):
     return DEFAULTS | value
+
+def font_options(value, role=None):
+    """Return typography for one role while accepting the old global format."""
+    base={k:options(value)[k] for k in ('font_family','font_file','font_size','font_weight')}
+    if role:
+        base.update(ROLE_FONT_DEFAULTS.get(role,{}))
+        base.update(value.get('role_fonts',{}).get(role,{}))
+    return base
 
 def validate(value):
     c=options(value)
@@ -46,8 +55,8 @@ def delay(text,value):
     c=options(value)
     return random.uniform(c['random_min'],c['random_max']) if c['interval']=='random' else math.log(max(1,len(text)),c['log_base'])
 
-def chat_font(root,value):
-    c=options(value);family=c['font_family']
+def chat_font(root,value,role=None):
+    c=font_options(value,role);family=c['font_family']
     if c['font_file']:
         base=(Path(root)/'assets'/'fonts').resolve()
         p=(Path(root)/c['font_file']).resolve()

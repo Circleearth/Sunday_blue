@@ -7,7 +7,7 @@
 |---|---|---|
 | 窗口布局、角色/历史切换、后台任务信号 | sunday_blue/ui.py / MainWindow | tests/test_ui.py |
 | 拼音输入、气泡尺寸、立绘绘制、标题拖动 | sunday_blue/ui_components.py | UI 测试 + 原生输入法验证 |
-| 深浅色 | sunday_blue/theme.py | 两种主题原生窗口 |
+| 设计变量、深浅色、精选字体 | sunday_blue/design_system.py / theme.py / docs/UI_DESIGN_SYSTEM.md | 两种主题原生窗口 |
 | 设置页、导入、配置控件 | sunday_blue/settings.py | 设置保存/旧配置 |
 | 人格拼接、工具分发、压缩、取消 | sunday_blue/agent.py | test_core Agent 测试 |
 | 时间注入 / 寒暄 | extensions/plugins/{time-context,daypart-greetings}/main.py | test_time_context.py / test_greetings.py / test_revision.py |
@@ -31,7 +31,7 @@
 
 ## 聊天显示补充
 
-`chat_presentation.py` 管分段纯函数、间隔、字体加载及工具失败识别；`chat_preferences.py` 管外观页中的聊天配置控件。配置存 settings.json/chat_display，旧配置缺省兼容。ui.py 管计时与展示，ui_components.py 的 Bubble 使用无内滚动的 QLabel，禁止恢复为固定高度 QTextBrowser。成功回执仍落库，不要在 storage/provider 删除工具块。
+`chat_presentation.py` 管分段纯函数、间隔、按角色字体加载及工具失败识别；`chat_preferences.py` 管界面字体、角色气泡字体和分段控件。配置存 settings.json/ui_display 与 chat_display.role_fonts，旧配置缺省兼容。ui.py 管计时与展示，ui_components.py 的 Bubble 使用无内滚动的 QLabel，禁止恢复为固定高度 QTextBrowser。成功回执仍落库，不要在 storage/provider 删除工具块。
 
 插件已外置到 extensions/plugins/<id>，不再在 native_plugins 写死登记。native_plugins/time_context/daypart_greetings 仅兼容旧入口；实际加载和配置读取器见 plugin_runtime，表单见 plugin_preferences。UI 的 legacy_greetings 只读旧气泡，不触发新问候。完整接口合同见 PLUGIN_SPEC。
 

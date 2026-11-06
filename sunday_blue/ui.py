@@ -7,7 +7,7 @@ from PySide6.QtCore import Qt, QTimer, Signal, QSize
 from PySide6.QtGui import QIcon, QPixmap, QColor, QPainter, QPen, QLinearGradient, QFont, QTextOption
 from PySide6.QtWidgets import (QApplication, QWidget, QFrame, QLabel, QPushButton, QHBoxLayout,
     QVBoxLayout, QListWidget, QListWidgetItem, QScrollArea, QPlainTextEdit, QTextBrowser,
-    QProgressBar, QDialog, QMessageBox, QInputDialog, QFileDialog, QSizeGrip, QSizePolicy, QMenu)
+    QProgressBar, QDialog, QMessageBox, QInputDialog, QFileDialog, QSizeGrip, QSizePolicy, QMenu, QToolButton)
 from .storage import ROLES, Store, plain
 from .agent import Agent, is_compact_command
 from .legacy_greetings import LegacyGreetings as Greetings
@@ -62,11 +62,10 @@ class MainWindow(QWidget):
         outer=QVBoxLayout(self); outer.setContentsMargins(0,0,0,0)
         shell=QWidget(); shell.setObjectName('shell'); outer.addWidget(shell)
         main=QVBoxLayout(shell); main.setContentsMargins(1,1,1,1); main.setSpacing(0)
-        top=TitleBar(); top.setObjectName('top'); top.setFixedHeight(65)
-        bar=QHBoxLayout(top); bar.setContentsMargins(24,8,12,8)
-        bar.addWidget(text_label('◇  SUNDAY BLUE','brand'))
-        bar.addSpacing(18); bar.addWidget(text_label('YOUR PERSONAL SPACE','eyebrow')); bar.addStretch()
-        bar.addWidget(button('⚙  设置',self.settings,'ghost'))
+        top=TitleBar(); top.setObjectName('top'); top.setFixedHeight(56)
+        bar=QHBoxLayout(top); bar.setContentsMargins(20,7,10,7)
+        bar.addWidget(text_label('Sunday Blue','brand'));bar.addStretch()
+        bar.addWidget(button('设置',self.settings,'ghost'))
         self.theme_button=button('☀  浅色' if self.ui_theme=='dark' else '☾  暗色',self.toggle_theme,'ghost'); bar.addWidget(self.theme_button)
         bar.addSpacing(10)
         for title,fn,obj in [('—',self.showMinimized,'ghost'),('□',self.maximize,'ghost'),('×',self.close,'close')]:
@@ -86,7 +85,9 @@ class MainWindow(QWidget):
         self.showNormal() if self.isMaximized() else self.showMaximized()
 
     def _apply_theme(self):
-        self.setStyleSheet(style_for(self.ui_theme))
+        self.setStyleSheet(style_for(self.ui_theme,self.config.value.get('ui_display',{})))
+        if hasattr(self,'portrait'):
+            self.portrait.theme=self.ui_theme;self.portrait.update()
         if hasattr(self, 'theme_button'):
             self.theme_button.setText('☀  浅色' if self.ui_theme == 'dark' else '☾  暗色')
 
@@ -103,12 +104,12 @@ class MainWindow(QWidget):
         QTimer.singleShot(0,lambda:bar.setValue(bar.maximum() if follow else min(position,bar.maximum())))
 
     def _sidebar(self,body):
-        frame=QFrame(); frame.setObjectName('sidebar'); frame.setFixedWidth(224)
-        layout=QVBoxLayout(frame); layout.setContentsMargins(18,25,16,16); layout.setSpacing(15)
-        layout.addWidget(text_label('WORKSPACE','section'))
+        frame=QFrame(); frame.setObjectName('sidebar'); frame.setFixedWidth(232)
+        layout=QVBoxLayout(frame); layout.setContentsMargins(16,22,14,16); layout.setSpacing(12)
+        layout.addWidget(text_label('当前角色','section'))
         self.side_name=text_label('Rui','title'); layout.addWidget(self.side_name)
         layout.addWidget(button('＋  开始新对话',self.new_session,'primary'))
-        layout.addSpacing(12); layout.addWidget(text_label('会话记录 / CONVERSATIONS','eyebrow'))
+        layout.addSpacing(10); layout.addWidget(text_label('会话记录','section'))
         self.sessions_list=QListWidget(); self.sessions_list.currentItemChanged.connect(self.select_history)
         self.sessions_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.sessions_list.customContextMenuRequested.connect(self._sidebar_context_menu)
@@ -119,7 +120,7 @@ class MainWindow(QWidget):
         body.addWidget(frame)
 
     def _chat(self,body):
-        panel=QWidget(); layout=QVBoxLayout(panel); layout.setContentsMargins(24,22,24,14); layout.setSpacing(15)
+        panel=QWidget(); layout=QVBoxLayout(panel); layout.setContentsMargins(24,20,24,14); layout.setSpacing(12)
         row=QHBoxLayout(); names=QVBoxLayout()
         self.chat_title=text_label('Rui','title'); names.addWidget(self.chat_title)
         self.chat_status=text_label('就绪','muted'); names.addWidget(self.chat_status); row.addLayout(names); row.addStretch()
@@ -131,7 +132,7 @@ class MainWindow(QWidget):
         row.addWidget(self.session_button); layout.addLayout(row)
         self.chat_scroll=QScrollArea(); self.chat_scroll.setWidgetResizable(True)
         self.chat_content=QWidget(); self.chat_content.setObjectName('chatContent'); self.chat_content.setStyleSheet('QWidget#chatContent { background:transparent; }')
-        self.chat_layout=QVBoxLayout(self.chat_content); self.chat_layout.setContentsMargins(0,12,5,12); self.chat_layout.setSpacing(18)
+        self.chat_layout=QVBoxLayout(self.chat_content); self.chat_layout.setContentsMargins(0,10,5,10); self.chat_layout.setSpacing(14)
         self.chat_scroll.setWidget(self.chat_content); layout.addWidget(self.chat_scroll,1)
         self.chat_scroll.verticalScrollBar().valueChanged.connect(self._on_bar_moved)
         self.chat_scroll.verticalScrollBar().rangeChanged.connect(self._on_range_changed)
@@ -140,7 +141,7 @@ class MainWindow(QWidget):
         self.follow_button=button('⌄  查看最新消息',self._follow_clicked,'ghost'); self.follow_button.setFixedHeight(32)
         self.follow_button.setParent(self.chat_scroll); self.follow_button.hide()
         self.notice=text_label('','muted'); self.notice.setWordWrap(True); self.notice.hide(); layout.addWidget(self.notice)
-        composer=QFrame(); composer.setObjectName('composer'); c=QVBoxLayout(composer); c.setContentsMargins(14,10,14,10)
+        composer=QFrame(); composer.setObjectName('composer'); c=QVBoxLayout(composer); c.setContentsMargins(12,9,12,9)
         self.input=Composer(); self.input.setObjectName('input'); self.input.setPlaceholderText('')
         self.input.setFixedHeight(80); self.input.send.connect(self.send); c.addWidget(self.input)
         actions=QHBoxLayout(); actions.addWidget(text_label('Enter 发送  ·  Shift + Enter 换行','muted')); actions.addStretch()
@@ -150,10 +151,10 @@ class MainWindow(QWidget):
         body.addWidget(panel,1)
 
     def _character(self,body):
-        panel=QWidget(); panel.setFixedWidth(292)
-        layout=QVBoxLayout(panel); layout.setContentsMargins(0,24,18,16); layout.setSpacing(12)
+        panel=QWidget(); panel.setFixedWidth(276);self.character_panel=panel
+        layout=QVBoxLayout(panel); layout.setContentsMargins(0,20,16,16); layout.setSpacing(10)
         row=QHBoxLayout(); row.addWidget(text_label('角色档案','section')); row.addStretch(); row.addWidget(button('刷新素材',self.refresh_art,'ghost')); layout.addLayout(row)
-        self.portrait=Portrait(self.config.root); layout.addWidget(self.portrait,1)
+        self.portrait=Portrait(self.config.root);self.portrait.theme=self.ui_theme;layout.addWidget(self.portrait,1)
         self.role_description=text_label('','muted'); self.role_description.setWordWrap(True); layout.addWidget(self.role_description)
         layout.addSpacing(5)
         self.context_label=text_label('上下文 · 等待第一条消息','muted'); self.context_label.setWordWrap(True); layout.addWidget(self.context_label)
@@ -163,30 +164,25 @@ class MainWindow(QWidget):
         body.addWidget(panel)
 
     def _rail(self,body):
-        rail=QFrame(); rail.setObjectName('rail'); rail.setFixedWidth(108)
-        layout=QVBoxLayout(rail); layout.setContentsMargins(10,22,10,12); layout.setSpacing(12)
-        layout.addWidget(text_label('CHARACTERS','eyebrow'),0,Qt.AlignmentFlag.AlignHCenter)
+        rail=QFrame(); rail.setObjectName('rail'); rail.setFixedWidth(96)
+        layout=QVBoxLayout(rail); layout.setContentsMargins(8,18,8,10); layout.setSpacing(10)
+        layout.addWidget(text_label('角色','section'),0,Qt.AlignmentFlag.AlignHCenter)
         scroll=QScrollArea(); scroll.setWidgetResizable(True); scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         inner=QWidget(); inner.setObjectName('roleContent'); inner.setStyleSheet('QWidget#roleContent { background:transparent; }'); items=QVBoxLayout(inner); items.setContentsMargins(0,0,0,0); items.setSpacing(10)
         self.role_buttons={}
         for rid,name,desc,color in ROLES:
-            b=QPushButton(); b.setObjectName('role'); b.setCheckable(True); b.setFixedSize(79,92)
+            b=QToolButton(); b.setObjectName('role'); b.setCheckable(True);b.setText(name)
+            b.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon);b.setIconSize(QSize(44,44))
             b.setToolTip(name+' · '+desc); b.clicked.connect(lambda checked=False,r=rid:self.switch_role(r))
-            col=QVBoxLayout(b); col.setContentsMargins(6,6,6,6); col.setSpacing(4)
-            avatar=QLabel(); avatar.setFixedSize(52,52); avatar.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            avatar.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-            avatar.setStyleSheet(f'background:#22344c; border:1px solid {color}; border-radius:8px;')
-            col.addWidget(avatar,0,Qt.AlignmentFlag.AlignHCenter)
-            label=text_label(name); label.setAlignment(Qt.AlignmentFlag.AlignCenter); label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents); col.addWidget(label)
-            b.avatar=avatar; b.name_label=label
-            self.role_buttons[rid]=b; items.addWidget(b)
+            b.setStyleSheet(f'QToolButton {{border-top:2px solid {color};}}')
+            self.role_buttons[rid]=b; items.addWidget(b);b.setFixedSize(76,88)
         items.addStretch(); scroll.setWidget(inner); layout.addWidget(scroll); body.addWidget(rail)
         self.refresh_art()
 
     def refresh_art(self):
         for rid,b in getattr(self,'role_buttons',{}).items():
             pix=QPixmap(str(self.config.root/'assets'/'roles'/rid/'avatar.png'))
-            b.avatar.setPixmap(pix.scaled(48,48,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation))
+            b.setIcon(QIcon(pix.scaled(44,44,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation)))
         if hasattr(self,'portrait'): self.portrait.set_role(self.role)
 
     def save_draft(self):
@@ -477,7 +473,7 @@ class MainWindow(QWidget):
         name='你' if user else next(r[1] for r in ROLES if r[0]==self.role)
         if local:name+=' · 时段寒暄'
         caption=text_label(name,'muted'); caption.setFixedHeight(20); caption.setAlignment(Qt.AlignmentFlag.AlignRight if user else Qt.AlignmentFlag.AlignLeft); col.addWidget(caption)
-        bubble=Bubble(text,user,light=self.ui_theme=='light',width=self._chat_width(),font=chat_font(self.config.root,self.config.value.get('chat_display',{})))
+        bubble=Bubble(text,user,light=self.ui_theme=='light',width=self._chat_width(),font=chat_font(self.config.root,self.config.value.get('chat_display',{}),self.role))
         col.addWidget(bubble,0,Qt.AlignmentFlag.AlignRight if user else Qt.AlignmentFlag.AlignLeft)
         self.chat_bubbles.append(bubble)
         if user:line.addStretch(1)
@@ -622,7 +618,7 @@ class MainWindow(QWidget):
         self.chat_status.setText(self.statuses.get(self.sid,'就绪 · 对话保存在本地'))
         for rid,b in self.role_buttons.items():
             busy=any(w.role==rid for w in self.workers.values())
-            b.name_label.setText(('● ' if busy else '')+next(r[1] for r in ROLES if r[0]==rid))
+            b.setText(('● ' if busy else '')+next(r[1] for r in ROLES if r[0]==rid))
         roots=self.config.value['roles'][self.role]['roots']
         trusted=sum(bool(r.get('trusted') and r.get('write')) for r in roots)
         self.permission_label.setText(f'文件权限  /  {len(roots)} 个目录 · {trusted} 个信任\n信任目录自动确认 · 修改/删除备份')
@@ -652,7 +648,7 @@ class MainWindow(QWidget):
     def settings(self):
         dlg=Settings(self.config,self.role,self)
         if dlg.exec()==QDialog.DialogCode.Accepted:
-            self.reveals.clear();self.update_state();self._force_rebuild=True;self.render(preserve=True)
+            self._apply_theme();self.update_state();self._force_rebuild=True;self.render(preserve=True)
 
     def closeEvent(self,event):
         self.config.value['last_role']=self.role
