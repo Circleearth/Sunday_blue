@@ -38,4 +38,6 @@
 
 插件已外置到 extensions/plugins/<id>，不再在 native_plugins 写死登记。native_plugins/time_context/daypart_greetings 仅兼容旧入口；实际加载和配置读取器见 plugin_runtime，表单见 plugin_preferences。UI 的 legacy_greetings 只读旧气泡，不触发新问候。完整接口合同见 PLUGIN_SPEC。
 
+中文字体渲染：`chat_presentation.chat_font()` 与 app 默认字体（main.py）均为 `PreferNoHinting`（17139ec，主人在 175% 缩放屏亲验"修好了"，解决撇捺/横线粗细不均）。不要改回 `PreferFullHinting`：本机 13px UI = 22.75 物理像素（小数），全量 hinting 会把部分笔画吸附到 1px；整像素（100% 缩放）下两种模式输出逐字节相同，NoHinting 无副作用。
+
 2026-11-04：ui.py 继续负责增量行和滚动状态，_message_rows 维持同消息延迟分段顺序；Bubble.fit 必须先解除旧固定高度再计算，防止每次增长 4 像素。不要重新引入 _diag_log 临时调试全局。停止先 cancel 再等待 finished 后 Store.withdraw_turn，避免跨线程删写竞争。后台关闭由 tray.py 管理，不运行服务、不打包。
