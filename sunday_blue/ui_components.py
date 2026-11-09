@@ -2,7 +2,7 @@
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap, QColor, QPainter, QPen, QFont, QTextOption
 from PySide6.QtWidgets import QFrame, QLabel, QPushButton, QPlainTextEdit, QTextBrowser
-from .storage import ROLES
+from .roles import list_roles
 from .design_system import tokens
 
 def text_label(text, name=None):
@@ -50,7 +50,7 @@ class Portrait(QFrame):
     def set_role(self,role):
         self.role=role
         self.pix=QPixmap(str(self.root/'assets'/'roles'/role/'portrait.png'))
-        self.tint=QColor(next(r[3] for r in ROLES if r[0]==role))
+        self.tint=QColor(next(r[3] for r in list_roles(self.root) if r[0]==role))
         self.update()
 
     def paintEvent(self,event):

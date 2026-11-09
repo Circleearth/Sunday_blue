@@ -8,7 +8,8 @@ from PySide6.QtGui import QIcon, QPixmap, QColor, QPainter, QPen, QLinearGradien
 from PySide6.QtWidgets import (QApplication, QWidget, QFrame, QLabel, QPushButton, QHBoxLayout,
     QVBoxLayout, QListWidget, QListWidgetItem, QScrollArea, QPlainTextEdit, QTextBrowser,
     QProgressBar, QDialog, QMessageBox, QInputDialog, QFileDialog, QSizeGrip, QSizePolicy, QMenu, QToolButton)
-from .storage import ROLES, Store, plain
+from .storage import Store, plain
+from .roles import list_roles, require_role
 from .agent import Agent, is_compact_command
 from .legacy_greetings import LegacyGreetings as Greetings
 from .settings import Settings
@@ -36,12 +37,15 @@ class MainWindow(QWidget):
         self.config=config; self.store=Store(config.data)
         self.store.recover_interrupted_tools()
         self.greetings=Greetings(config.data)
-        self.role='rui'; self.sid=None
+        self.role=list_roles(config.root)[0][0]; self.sid=None
         self.current_by_role={}
         for rid,sid in config.value.get('active_sessions',{}).items():
             saved=self.store.session(sid)
             if saved and saved['role']==rid:self.current_by_role[rid]=sid
         self.workers={}; self.statuses={}; self.drafts={}; self.errors={}
+        from .role_lifecycle import RoleLifecycle
+        self.role_service=RoleLifecycle(config, self.store, self.role_busy)
+        self.role_recovery_errors=self.role_service.resume_pending()
         self.pending=None; self.pending_text=''; self.history_limit=120
         self._shown=None; self._shown_until=0; self._reveal_shown={}; self._greeted_shown=set()
         self._more_button=None; self._welcome_shown=False; self._stretch_added=False
@@ -78,8 +82,35 @@ class MainWindow(QWidget):
         self.footer=text_label('本地会话 · 独立记忆 · 由你掌控','muted'); foot.addWidget(self.footer)
         grip=QSizeGrip(self); grip.setFixedSize(16,16); foot.addWidget(grip); main.addLayout(foot)
         last=config.value.get('last_role','rui')
-        self.switch_role(last if last in {r[0] for r in ROLES} else 'rui')
+        self.switch_role(last if last in {r[0] for r in list_roles(self.config.root)} else list_roles(self.config.root)[0][0])
         self.tray=Tray(self)
+        if self.role_recovery_errors:
+            self.show_notice('角色清理尚未完成，请打开角色管理查看：' + '；'.join(self.role_recovery_errors))
+
+    def role_busy(self, role):
+        from .memory_preferences import _jobs, _windows
+        return (any(w.role == role for w in self.workers.values())
+                or any(job.isRunning() for job in _jobs) or bool(_windows))
+
+    def manage_roles(self):
+        from .role_preferences import RoleManager
+        dialog=RoleManager(self.role_service, self.role, self)
+        dialog.changed.connect(self.refresh_roles)
+        dialog.exec()
+
+    def refresh_roles(self):
+        active={r[0] for r in list_roles(self.config.root)}
+        self.save_draft()
+        self.current_by_role={r:s for r,s in self.current_by_role.items() if r in active}
+        for mapping in (self.drafts, self.statuses, self.errors, self.reveals):
+            for sid in list(mapping):
+                session=self.store.session(sid)
+                if not session or session['role'] not in active: mapping.pop(sid,None)
+        if self.role not in active:
+            self.role=list_roles(self.config.root)[0][0]; self.sid=None
+        self._populate_roles()
+        self._force_rebuild=True
+        self.switch_role(self.role)
 
     def maximize(self):
         self.showNormal() if self.isMaximized() else self.showMaximized()
@@ -115,7 +146,8 @@ class MainWindow(QWidget):
         self.sessions_list.customContextMenuRequested.connect(self._sidebar_context_menu)
         layout.addWidget(self.sessions_list,1)
         row=QHBoxLayout()
-        row.addWidget(button('重命名',self.rename_session,'ghost')); row.addWidget(button('导出',self.export_session,'ghost')); layout.addLayout(row)
+        row.addWidget(button('重命名',self.rename_session,'ghost')); row.addWidget(button('导出',self.export_session,'ghost'))
+        row.addWidget(button('已归档',self.archived_dialog,'ghost')); layout.addLayout(row)
         layout.addWidget(text_label('每一次对话，都有迹可循。','muted'))
         body.addWidget(frame)
 
@@ -125,8 +157,11 @@ class MainWindow(QWidget):
         self.chat_title=text_label('Rui','title'); names.addWidget(self.chat_title)
         self.chat_status=text_label('就绪','muted'); names.addWidget(self.chat_status); row.addLayout(names); row.addStretch()
         self.session_menu=QMenu(self)
-        self._menu_fork_target=self.sid
+        self._menu_target=self.sid
         self.fork_action=self.session_menu.addAction('创建分支'); self.fork_action.triggered.connect(self._menu_fork)
+        self.session_menu.addSeparator()
+        self.archive_action=self.session_menu.addAction('归档会话'); self.archive_action.triggered.connect(self._menu_archive)
+        self.delete_action=self.session_menu.addAction('删除会话'); self.delete_action.triggered.connect(self._menu_delete)
         self.session_button=button('⋮',lambda:None,'ghost'); self.session_button.setFixedSize(34,32)
         self.session_button.clicked.connect(lambda:self._show_session_menu())
         row.addWidget(self.session_button); layout.addLayout(row)
@@ -170,14 +205,24 @@ class MainWindow(QWidget):
         layout.addWidget(text_label('角色','section'),0,Qt.AlignmentFlag.AlignHCenter)
         scroll=QScrollArea(); scroll.setWidgetResizable(True); scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         inner=QWidget(); inner.setObjectName('roleContent'); inner.setStyleSheet('QWidget#roleContent { background:transparent; }'); items=QVBoxLayout(inner); items.setContentsMargins(0,0,0,0); items.setSpacing(10)
+        self.role_items=items
+        self._populate_roles()
+        scroll.setWidget(inner); layout.addWidget(scroll); body.addWidget(rail)
+        layout.addWidget(button('管理',self.manage_roles,'ghost'))
+
+    def _populate_roles(self):
+        items=self.role_items
+        while items.count():
+            item=items.takeAt(0)
+            if item.widget(): item.widget().deleteLater()
         self.role_buttons={}
-        for rid,name,desc,color in ROLES:
+        for rid,name,desc,color in list_roles(self.config.root):
             b=QToolButton(); b.setObjectName('role'); b.setCheckable(True);b.setText(name)
             b.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon);b.setIconSize(QSize(44,44))
             b.setToolTip(name+' · '+desc); b.clicked.connect(lambda checked=False,r=rid:self.switch_role(r))
             b.setStyleSheet(f'QToolButton {{border-top:2px solid {color};}}')
             self.role_buttons[rid]=b; items.addWidget(b);b.setFixedSize(76,88)
-        items.addStretch(); scroll.setWidget(inner); layout.addWidget(scroll); body.addWidget(rail)
+        items.addStretch()
         self.refresh_art()
 
     def refresh_art(self):
@@ -190,13 +235,18 @@ class MainWindow(QWidget):
         if self.sid: self.drafts[self.sid]=self.input.toPlainText()
 
     def switch_role(self,role):
+        require_role(self.config.root, role)
         self.save_draft(); self.role=role
+        saved_sid=self.current_by_role.get(role)
+        saved=self.store.session(saved_sid) if saved_sid else None
+        saved_ok=saved is not None and not saved['archived']
         rows=self.store.sessions(role)
-        self.sid=self.current_by_role.get(role) or (rows[0]['id'] if rows else self.store.create(role))
+        self.sid=saved_sid if saved_ok else (rows[0]['id'] if rows else self.store.create(role))
+        if not saved_ok:self.current_by_role.pop(role,None)
         self.current_by_role[role]=self.sid
         self.history_limit=120
         self.refresh_sessions(); self.render()
-        name=next(r for r in ROLES if r[0]==role)
+        name=next(r for r in list_roles(self.config.root) if r[0]==role)
         self.side_name.setText(name[1]); self.chat_title.setText(name[1]); self.role_description.setText(name[2]+'\n人格持续保留 · 同角色共享记忆')
         self.portrait.set_role(role)
         for rid,b in self.role_buttons.items(): b.setChecked(rid==role)
@@ -224,37 +274,131 @@ class MainWindow(QWidget):
 
     def fork_session(self):
         # Public entry (header button / tests): branch the currently active session.
-        self._menu_fork_target=self.sid; self._menu_fork()
+        self._menu_target=self.sid; self._menu_fork()
 
     def _show_session_menu(self):
         # Header "⋯": branch the active session, disabled while a worker is running.
-        self._menu_fork_target=self.sid
-        self.fork_action.setEnabled(self.sid not in self.workers)
+        if self.sid is None: return
+        self._prepare_session_menu(self.sid)
         self.session_menu.exec(self.session_button.mapToGlobal(self.session_button.rect().bottomLeft()))
 
     def _sidebar_context_menu(self, pos):
-        # Right-click on a session row: branch that specific session.
+        # Right-click on a session row: branch/archive/delete that specific session.
         item=self.sessions_list.itemAt(pos)
         if not item:return
         sid=item.data(Qt.ItemDataRole.UserRole)
-        self._menu_fork_target=sid
-        self.fork_action.setEnabled(sid not in self.workers)
+        self._prepare_session_menu(sid)
         self.session_menu.exec(self.sessions_list.mapToGlobal(pos))
 
+    def _prepare_session_menu(self,sid):
+        if sid is None:
+            self._menu_target=None
+            self.fork_action.setEnabled(False); self.archive_action.setEnabled(False); self.delete_action.setEnabled(False)
+            return
+        session=self.store.session(sid)
+        busy=sid in self.workers
+        self._menu_target=sid
+        self.fork_action.setEnabled(not busy)
+        self.archive_action.setEnabled(bool(session) and not busy and not session['archived'])
+        self.delete_action.setEnabled(bool(session) and not busy)
+
     def _menu_fork(self):
-        sid=self._menu_fork_target
-        if sid in self.workers:
+        sid=self._menu_target
+        if sid is None or sid in self.workers:
             self.show_notice('请等待该会话当前回复完成或停止后再创建分支。'); return
         self.save_draft()
         self.sid=self.store.fork(sid); self.current_by_role[self.role]=self.sid
         self.input.clear(); self.refresh_sessions(); self.render(); self.update_state()
         self.show_notice('已创建独立分支；原对话保留，角色持久记忆共享。')
 
+    def _menu_archive(self):
+        sid=self._menu_target
+        if sid is None: return
+        if sid in self.workers:
+            self.show_notice('请等待该会话当前回复完成或停止后再归档。'); return
+        s=self.store.session(sid); title=s['title']
+        if QMessageBox.question(self,'归档会话','确认归档「%s」？\n归档后会话将不在左侧列表显示，但可打开"已归档"随时还原。'%title)!=QMessageBox.StandardButton.Yes:
+            return
+        self._leave_session_if_needed(sid,create_when_empty=False)
+        self.store.archive(sid)
+        self._refresh_after_session_removed()
+        self.show_notice('已归档「%s」。点左侧"已归档"可还原。'%title)
+
+    def _menu_delete(self):
+        sid=self._menu_target
+        if sid is None: return
+        if sid in self.workers:
+            self.show_notice('请等待该会话当前回复完成或停止后再删除。'); return
+        s=self.store.session(sid); title=s['title']
+        message=('确认删除「%s」？\n删除会同时清除这条对话的所有消息，以及它进入过记忆队列的相关记录；'\
+                 '无法恢复。已提炼到记忆大脑的角色记忆和已确认记忆均保留；这不是遗忘操作。'%title)
+        if QMessageBox.question(self,'删除会话',message)!=QMessageBox.StandardButton.Yes:
+            return
+        if self.role_busy(self.store.session(sid)['role']):
+            self.show_notice('请先结束该角色的任务并关闭记忆图谱，再删除会话。')
+            return
+        try:
+            self.store.delete(sid)
+        except Exception as exc:
+            self.show_notice('删除未完成，记录保留，可重试：' + str(exc))
+            return
+        self._leave_session_if_needed(sid,create_when_empty=True)
+        self._refresh_after_session_removed()
+        self.show_notice('已删除「%s」。'%title)
+
+    def _leave_session_if_needed(self,sid,create_when_empty):
+        # Archive/delete happen AFTER this, so sid is still in the store: exclude it.
+        self.drafts.pop(sid,None)
+        self.errors.pop(sid,None)
+        if self.sid!=sid:return
+        remaining=[s['id'] for s in self.store.sessions(self.role) if s['id']!=sid]
+        if remaining:
+            self.sid=remaining[0]; self.current_by_role[self.role]=self.sid
+            self.input.setPlainText(self.drafts.get(self.sid,''))
+        elif create_when_empty:
+            # delete left zero sessions: a fresh one is the only way to keep chatting
+            self.sid=self.store.create(self.role); self.current_by_role[self.role]=self.sid
+            self.input.clear()
+        else:
+            # archive left zero visible sessions: stay in an empty welcome state, no new row
+            self.sid=None; self.current_by_role.pop(self.role,None)
+            self.input.clear()
+
+    def _refresh_after_session_removed(self):
+        self.refresh_sessions(); self.render(); self.update_state()
+
+    def archived_dialog(self):
+        rows=[s for s in self.store.sessions(self.role,include_archived=True) if s['archived']]
+        dlg=QDialog(self); dlg.setWindowTitle('已归档会话 · '+next(r[1] for r in list_roles(self.config.root) if r[0]==self.role)); dlg.resize(460,360)
+        layout=QVBoxLayout(dlg)
+        layout.addWidget(text_label('还原后会回到左侧"会话记录"列表。','muted'))
+        list_widget=QListWidget()
+        for s in rows:
+            item=QListWidgetItem(s['title']); item.setData(Qt.ItemDataRole.UserRole,s['id']); list_widget.addItem(item)
+        if not rows:list_widget.addItem('暂无已归档会话')
+        layout.addWidget(list_widget,1)
+        buttons=QHBoxLayout()
+        def _restore():
+            item=list_widget.currentItem()
+            if not item or item.text()=='暂无已归档会话':return
+            sid=item.data(Qt.ItemDataRole.UserRole)
+            if sid in self.workers:self.show_notice('请等待该会话当前回复完成或停止后再还原。');return
+            self.store.archive(sid,False)
+            dlg.accept()
+            self._refresh_after_session_removed()
+            self.show_notice('已还原「%s」。'%self.store.session(sid)['title'])
+        restore=button('还原选中',_restore,'primary'); buttons.addStretch(); buttons.addWidget(restore)
+        buttons.addWidget(button('关闭',dlg.accept,'ghost'))
+        layout.addLayout(buttons)
+        dlg.exec()
+
     def rename_session(self):
+        if self.sid is None: self.show_notice('请先选择或新建一个会话。'); return
         title,ok=QInputDialog.getText(self,'会话名称','名称：',text=self.store.session(self.sid)['title'])
         if ok and title.strip(): self.store.update(self.sid,title=title.strip()[:100]); self.refresh_sessions()
 
     def export_session(self):
+        if self.sid is None: self.show_notice('请先选择或新建一个会话。'); return
         path,_=QFileDialog.getSaveFileName(self,'导出对话',str(self.config.root/'conversation.md'),'Markdown (*.md)')
         if not path:return
         data=['# '+self.store.session(self.sid)['title']]
@@ -316,13 +460,13 @@ class MainWindow(QWidget):
             self._more_button=None; self._welcome_shown=False; self._stretch_added=False
             self._welcome=None
         if self.notice.isVisible():self.notice.hide()
-        messages=self.store.messages(self.sid)
+        messages=self.store.messages(self.sid) if self.sid else []
         if messages and self._welcome is not None:
             self.chat_layout.removeWidget(self._welcome);self._welcome.hide();self._welcome.deleteLater()
             self._welcome=None;self._welcome_shown=False
         if not messages and not self._welcome_shown:
             welcome=QFrame(); col=QVBoxLayout(welcome); col.setContentsMargins(24,70,24,35); col.setSpacing(20)
-            name=next(r[1] for r in ROLES if r[0]==self.role)
+            name=next(r[1] for r in list_roles(self.config.root) if r[0]==self.role)
             col.addWidget(text_label('A LITTLE SPACE, JUST FOR YOU','eyebrow'))
             col.addWidget(text_label(f'与 {name} 开始一段对话。','title'))
             intro=text_label('日常、计划，或一个还没整理好的想法。\n从这里开始，记忆会慢慢延续。','muted'); intro.setWordWrap(True); col.addWidget(intro)
@@ -471,7 +615,7 @@ class MainWindow(QWidget):
         row.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Maximum)
         col=QVBoxLayout(); col.setSpacing(5)
         col.setAlignment(Qt.AlignmentFlag.AlignTop)
-        name='你' if user else next(r[1] for r in ROLES if r[0]==self.role)
+        name='你' if user else next(r[1] for r in list_roles(self.config.root) if r[0]==self.role)
         if local:name+=' · 时段寒暄'
         caption=text_label(name,'muted'); caption.setFixedHeight(20); caption.setAlignment(Qt.AlignmentFlag.AlignRight if user else Qt.AlignmentFlag.AlignLeft); col.addWidget(caption)
         bubble=Bubble(text,user,light=self.ui_theme=='light',width=self._chat_width(),font=chat_font(self.config.root,self.config.value.get('chat_display',{}),self.role))
@@ -504,12 +648,16 @@ class MainWindow(QWidget):
         if not text:return
         if not self.config.value['api']['model']:
             self.settings(); return
+        if self.sid is None:
+            # Empty welcome state (e.g. right after archiving the only session): open a fresh one.
+            self.sid=self.store.create(self.role); self.current_by_role[self.role]=self.sid
         mid=self.store.add(self.sid,'user',text)
         if self.store.session(self.sid)['title']=='新对话':self.store.update(self.sid,title=text.replace('\n',' ')[:26])
         self.input.clear(); self.drafts[self.sid]=''; self.render(); self.start_worker()
 
     def retry(self):
         if self.sid in self.workers:return
+        if self.sid is None:self.show_notice('没有等待回复的消息。');return
         msgs=self.store.messages(self.sid,context=True)
         if not msgs or msgs[-1]['role']!='user':self.show_notice('没有等待回复的消息。');return
         self.start_worker()
@@ -627,14 +775,17 @@ class MainWindow(QWidget):
         self.chat_status.setText(self.statuses.get(self.sid,'就绪 · 对话保存在本地'))
         for rid,b in self.role_buttons.items():
             busy=any(w.role==rid for w in self.workers.values())
-            b.setText(('● ' if busy else '')+next(r[1] for r in ROLES if r[0]==rid))
+            b.setText(('● ' if busy else '')+next(r[1] for r in list_roles(self.config.root) if r[0]==rid))
         roots=self.config.value['roles'][self.role]['roots']
         trusted=sum(bool(r.get('trusted') and r.get('write')) for r in roots)
         self.permission_label.setText(f'文件权限  /  {len(roots)} 个目录 · {trusted} 个信任\n信任目录自动确认 · 修改/删除备份')
         self.update_context()
 
     def update_context(self):
-        session=self.store.session(self.sid)
+        session=self.store.session(self.sid) if self.sid else None
+        if not session:
+            self.context_label.setText('上下文 · 等待第一条消息'); self.context_progress.setValue(0)
+            return
         usage=json.loads(session['usage'])
         if usage and ('input_tokens' in usage or 'prompt_tokens' in usage):
             tokens=usage.get('input_tokens',usage.get('prompt_tokens',0))+usage.get('cache_read_input_tokens',0)+usage.get('cache_creation_input_tokens',0)+usage.get('output_tokens',usage.get('completion_tokens',0))
@@ -658,6 +809,8 @@ class MainWindow(QWidget):
         dlg=Settings(self.config,self.role,self)
         if dlg.exec()==QDialog.DialogCode.Accepted:
             self._apply_theme();self.update_state();self._force_rebuild=True;self.render(preserve=True)
+        if getattr(dlg, 'open_role_manager_requested', False) is True:
+            self.manage_roles()
 
     def closeEvent(self,event):
         self.config.value['last_role']=self.role

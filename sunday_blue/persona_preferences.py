@@ -3,7 +3,7 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QCombo
                               QListWidget, QPlainTextEdit, QPushButton, QMessageBox,
                               QDialogButtonBox, QSplitter, QWidget)
 from PySide6.QtCore import Qt
-from .storage import ROLES
+from .roles import list_roles
 from .personas import SECTIONS, read_persona, save_persona, previous_persona
 from .change_review import ChangeReview
 
@@ -22,7 +22,7 @@ class PersonaDialog(QDialog):
         note.setWordWrap(True)
         layout.addWidget(note)
         self.roles = QComboBox()
-        for rid, name, *_ in ROLES:
+        for rid, name, *_ in list_roles(root):
             self.roles.addItem(name, rid)
         self.roles.setCurrentIndex(self.roles.findData(role))
         layout.addWidget(self.roles)

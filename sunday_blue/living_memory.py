@@ -11,7 +11,8 @@ import subprocess
 import threading
 import time
 import requests
-from .storage import ROLE_IDS, plain
+from .storage import plain
+from .roles import require_role
 
 OLLAMA_URL = 'http://127.0.0.1:11435'
 EMBEDDING_MODEL = 'bge-m3:latest'
@@ -23,8 +24,7 @@ _readers = ThreadPoolExecutor(max_workers=9, thread_name_prefix='memory-start')
 
 @contextmanager
 def queue_connect(root, role):
-    if role not in ROLE_IDS:
-        raise ValueError('未知记忆角色')
+    require_role(root, role)
     path = Path(root) / 'data/plugins/livingmemory' / role / 'inbox.sqlite3'
     path.parent.mkdir(parents=True, exist_ok=True)
     db = sqlite3.connect(path, timeout=15)
@@ -167,8 +167,7 @@ class Brain:
 
 
 def get_brain(root, role):
-    if role not in ROLE_IDS:
-        raise ValueError('未知记忆角色')
+    require_role(root, role)
     root = Path(root).resolve()
     state = ollama_status()
     if not state['online'] or not state['model_ready']:
@@ -186,6 +185,13 @@ def close_all():
         stop_ollama()
     except Exception:
         pass
+
+
+def close_role(root, role):
+    with _lock:
+        brain = _brains.pop((str(Path(root).resolve()), role), None)
+        if brain is not None:
+            brain.close()
 
 
 atexit.register(close_all)

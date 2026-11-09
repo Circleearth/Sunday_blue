@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (QWidget,QFormLayout,QSpinBox,QComboBox,QCheckBox,
     QDoubleSpinBox,QPushButton,QFileDialog,QMessageBox,QLabel,QVBoxLayout,QFrame,QHBoxLayout)
 from .chat_presentation import options,validate,font_options
 from .design_system import UI_FONTS,CHAT_FONTS,ROLE_FONT_DEFAULTS
-from .storage import ROLES
+from .roles import list_roles
 
 def _card(title, description=''):
     frame=QFrame();frame.setObjectName('card');layout=QVBoxLayout(frame);layout.setContentsMargins(16,14,16,16);layout.setSpacing(10)
@@ -37,7 +37,7 @@ class ChatPreferences(QWidget):
         font_card,font_layout=_card('角色气泡字体','每个角色保存自己的字体。下列字体均支持中文；也可以为当前角色导入字体文件。')
         role_row=QHBoxLayout();role_row.addWidget(QLabel('角色'))
         self.role=QComboBox()
-        for rid,name,desc,_ in ROLES:self.role.addItem(f'{name} · {desc}',rid)
+        for rid,name,desc,_ in list_roles(root):self.role.addItem(f'{name} · {desc}',rid)
         self.role.setCurrentIndex(max(0,self.role.findData(role)));role_row.addWidget(self.role,1);font_layout.addLayout(role_row)
         form=QFormLayout()
         self.family=_font_combo(CHAT_FONTS)
@@ -71,7 +71,7 @@ class ChatPreferences(QWidget):
         if i>=0:combo.setCurrentIndex(i)
 
     def _role_value(self,role):
-        value=dict(ROLE_FONT_DEFAULTS.get(role,{}));value['font_file']=''
+        value=dict(ROLE_FONT_DEFAULTS.get(role,ROLE_FONT_DEFAULTS['rui']));value['font_file']=''
         value.update(self.role_fonts.get(role,{}));return value
 
     def _store_role(self):
@@ -98,7 +98,7 @@ class ChatPreferences(QWidget):
         self.font_note.setText('使用精选系统字体')
 
     def reset_role_font(self):
-        self.role_fonts[self.current_role]=dict(ROLE_FONT_DEFAULTS[self.current_role],font_file='')
+        self.role_fonts[self.current_role]=dict(ROLE_FONT_DEFAULTS.get(self.current_role, ROLE_FONT_DEFAULTS['rui']),font_file='')
         self._load_role(self.current_role)
 
     def import_font(self):

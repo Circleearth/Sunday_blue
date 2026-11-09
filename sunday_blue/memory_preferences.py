@@ -3,7 +3,7 @@ from pathlib import Path
 from PySide6.QtCore import QThread, Signal, QUrl, QTimer, Qt
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
                               QComboBox, QDialog, QApplication, QCheckBox, QGridLayout)
-from .storage import ROLES
+from .roles import list_roles
 from .living_memory import (ollama_status, start_ollama, stop_ollama, get_brain, pending_count)
 
 _jobs = set()
@@ -42,7 +42,7 @@ class MemoryPanel(QWidget):
         layout.addWidget(self.state)
         role_row = QHBoxLayout()
         self.roles = QComboBox()
-        for rid, name, *_ in ROLES:
+        for rid, name, *_ in list_roles(root):
             self.roles.addItem(name, rid)
         self.roles.setCurrentIndex(max(0, self.roles.findData(role)))
         role_row.addWidget(self.roles)

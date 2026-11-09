@@ -41,3 +41,7 @@
 中文字体渲染：`chat_presentation.chat_font()` 与 app 默认字体（main.py）均为 `PreferNoHinting`（17139ec，主人在 175% 缩放屏亲验"修好了"，解决撇捺/横线粗细不均）。不要改回 `PreferFullHinting`：本机 13px UI = 22.75 物理像素（小数），全量 hinting 会把部分笔画吸附到 1px；整像素（100% 缩放）下两种模式输出逐字节相同，NoHinting 无副作用。
 
 2026-11-04：ui.py 继续负责增量行和滚动状态，_message_rows 维持同消息延迟分段顺序；Bubble.fit 必须先解除旧固定高度再计算，防止每次增长 4 像素。不要重新引入 _diag_log 临时调试全局。停止先 cancel 再等待 finished 后 Store.withdraw_turn，避免跨线程删写竞争。后台关闭由 tray.py 管理，不运行服务、不打包。
+# 角色注册与生命周期（2026-11-09）
+
+所有新模块从 `roles.list_roles(root)` / `require_role(root, id)` 取角色；不要新增固定角色列表，不要把显示名用作路径。`role_lifecycle.py` 是唯一角色清理入口，`role_preferences.py` 是管理界面。插件有独立后台/数据时，必须增加明确归属与清理适配后才允许删除；未知状态默认阻止。审查及恢复约束见 `docs/ROLE_SYSTEM_REVIEW.md`，测试 `tests/test_roles.py`。删除流程不可用正式角色做测试。
+

@@ -13,9 +13,9 @@ PLUGIN = Path(__file__).resolve().parent
 ROOT = Path(sys.argv[1]).resolve()
 ROLE = sys.argv[2]
 sys.path.insert(0, str(ROOT))
-from sunday_blue.storage import ROLE_IDS, atomic_json
-if ROLE not in ROLE_IDS:
-    raise ValueError('Unknown role')
+from sunday_blue.storage import atomic_json
+from sunday_blue.roles import require_role
+require_role(ROOT, ROLE)
 DATA = ROOT / 'data/plugins/livingmemory' / ROLE
 DATA.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(filename=str(DATA / 'service.log'), level=logging.WARNING,

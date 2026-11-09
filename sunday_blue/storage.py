@@ -12,18 +12,10 @@ import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
-ROLES = [
-    ('rui', 'Rui', '统筹 · 日常陪伴', '#7cb7ff'),
-    ('red', 'Red', '运动 · 训练管理', '#ee8e96'),
-    ('ewa', 'Ewa', '饮食 · 营养规划', '#deb889'),
-    ('luna', 'Luna', '睡眠 · 安静陪伴', '#b4a0e5'),
-    ('loluns', 'Loluns', '学习 · 成长计划', '#8dcbbb'),
-    ('kia', 'Kia', '归档 · 记忆整理', '#c3bcaa'),
-    ('mia', 'Mia', '检索 · 信息研究', '#96c4d3'),
-    ('ticktick', 'TickTick', '任务 · 日程执行', '#cbb779'),
-    ('mubu', 'Mubu', '大纲 · 思路整理', '#afaed9'),
-]
-ROLE_IDS = {r[0] for r in ROLES}
+from .roles import RoleRegistry, list_roles, require_role, LegacyRoles, DEFAULT_ROLES
+# Compatibility exports only; runtime validation must use the installation root.
+ROLES = LegacyRoles()
+ROLE_IDS = {r[0] for r in DEFAULT_ROLES}
 
 def root_path():
     return Path(sys.executable).parent if getattr(sys, 'frozen', False) else Path(__file__).resolve().parent.parent
@@ -69,12 +61,15 @@ class Config:
         self.data = self.root / 'data'
         self.data.mkdir(parents=True, exist_ok=True)
         self.path = self.data / 'settings.json'
+        self.registry = RoleRegistry(self.root)
+        self.registry.initialize()
+        role_ids = {r[0] for r in list_roles(self.root, include_archived=True)}
         self.value = {
             'api': {'protocol': 'anthropic', 'base_url': 'https://api.anthropic.com',
                     'model': '', 'key_encrypted': '', 'auth': 'x-api-key',
                     'max_tokens': 4096, 'context_limit': 200000, 'stream': True,
                     'thinking_budget': 0},
-            'roles': {r[0]: {'roots': [], 'skills': [], 'plugins': []} for r in ROLES},
+            'roles': {r: {'roots': [], 'skills': [], 'plugins': []} for r in role_ids},
             'features': {'files': True, 'memory': True, 'mcp': False},
             'mcp_servers': [],
             'ui_theme': 'dark',
@@ -86,7 +81,7 @@ class Config:
             loaded = json.loads(self.path.read_text(encoding='utf-8'))
             for k in ('api', 'features'):
                 self.value[k].update(loaded.get(k, {}))
-            for r in ROLE_IDS:
+            for r in role_ids:
                 self.value['roles'][r].update(loaded.get('roles', {}).get(r, {}))
             self.value['mcp_servers'] = loaded.get('mcp_servers', [])
             self.value['last_role'] = loaded.get('last_role', 'rui')
@@ -96,7 +91,7 @@ class Config:
             self.value['close_to_tray'] = loaded.get('close_to_tray', False)
             self.value['chat_display'] = loaded.get('chat_display', {})
             self.value['greetings'].update(loaded.get('greetings', {}))
-        for role in ROLE_IDS:
+        for role in role_ids:
             p = self.data / 'memory' / role / 'long_term.md'
             p.parent.mkdir(parents=True, exist_ok=True)
             if not p.exists():
@@ -104,6 +99,15 @@ class Config:
 
     def save(self, value=None):
         if value is not None:value={k:v for k,v in value.items() if k!='_plugin_root'}
+        target = value if value is not None else self.value
+        valid = {r[0] for r in list_roles(self.root, include_archived=True)}
+        target['roles'] = {r: target.get('roles', {}).get(r, {'roots': [], 'skills': [], 'plugins': []}) for r in valid}
+        target['active_sessions'] = {r:s for r,s in target.get('active_sessions', {}).items() if r in valid}
+        for spec in target.get('mcp_servers', []):
+            spec['roles'] = [r for r in spec.get('roles', []) if r in valid]
+        fonts = target.get('chat_display', {}).get('role_fonts', {})
+        for r in list(fonts):
+            if r not in valid: del fonts[r]
         atomic_json(self.path, value if value is not None else self.value)
         if value is not None:
             self.value = copy.deepcopy(value)
@@ -130,6 +134,10 @@ class Store:
                 CREATE TABLE IF NOT EXISTS audit (
                     id INTEGER PRIMARY KEY, at TEXT, role TEXT, session TEXT, action TEXT, detail TEXT);
             ''')
+            try:
+                db.execute('ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0')
+            except sqlite3.OperationalError:
+                pass  # column already present in newer databases
 
     @contextmanager
     def connect(self):
@@ -142,8 +150,7 @@ class Store:
             db.close()
 
     def create(self, role, title='新对话', parent=None):
-        if role not in ROLE_IDS:
-            raise ValueError('未知角色')
+        require_role(self.path.parent.parent, role)
         sid = str(uuid.uuid4())
         with self.connect() as db:
             db.execute('INSERT INTO sessions(id,role,title,created,updated,parent) VALUES(?,?,?,?,?,?)',
@@ -155,9 +162,12 @@ class Store:
             row = db.execute('SELECT * FROM sessions WHERE id=?', (sid,)).fetchone()
         return dict(row) if row else None
 
-    def sessions(self, role):
+    def sessions(self, role, include_archived=False):
+        sql = 'SELECT * FROM sessions WHERE role=?'
+        if not include_archived:
+            sql += ' AND COALESCE(archived,0)=0'
         with self.connect() as db:
-            return [dict(r) for r in db.execute('SELECT * FROM sessions WHERE role=? ORDER BY updated DESC', (role,))]
+            return [dict(r) for r in db.execute(sql + ' ORDER BY updated DESC', (role,))]
 
     def add(self, sid, role, content):
         with self.connect() as db:
@@ -190,6 +200,47 @@ class Store:
                 cursor = copied
         self.update(new, summary=old['summary'], summarized_through=cursor, usage=old['usage'])
         return new
+
+    def archive(self, sid, archived=True):
+        with self.connect() as db:
+            db.execute('UPDATE sessions SET archived=? WHERE id=?', (1 if archived else 0, sid))
+
+    def delete(self, sid):
+        """Remove transcript and source queue; already extracted role memories stay.
+        Cleanup errors propagate before deleting the transcript, allowing retry.
+        Whole-role removal is owned by RoleLifecycle, never this method.
+        """
+        session = self.session(sid)
+        from .living_memory import close_role
+        if session: close_role(self.path.parent.parent, session['role'])
+        self._purge_plugin_session_data(session['role'] if session else None, sid)
+        with self.connect() as db:
+            db.execute('DELETE FROM messages WHERE session=?', (sid,))
+            db.execute('DELETE FROM audit WHERE session=?', (sid,))
+            db.execute('DELETE FROM sessions WHERE id=?', (sid,))
+        if session:
+            self.audit(session['role'], sid, 'delete_session', 'Session permanently deleted from all stores.')
+
+    def _purge_plugin_session_data(self, role, sid):
+        """Only known source tables; do not guess upstream memory table layouts."""
+        def purge(db_path, specs):
+            if not db_path.exists():
+                return
+            db = sqlite3.connect(str(db_path), timeout=15)
+            try:
+                for table, column in specs:
+                    cols = [r[1] for r in db.execute('PRAGMA table_info("%s")' % table).fetchall()] if \
+                        db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone() else []
+                    if column in cols:
+                        db.execute('DELETE FROM "%s" WHERE "%s"=?' % (table, column), (sid,))
+                db.commit()
+            finally:
+                db.close()
+        plugins_dir = Path(self.path).parent / 'plugins'
+        purge(plugins_dir / 'daypart-greetings' / 'state.sqlite3', (('events', 'session'), ('triggers', 'session')))
+        if role:
+            brain_dir = plugins_dir / 'livingmemory' / role
+            purge(brain_dir / 'inbox.sqlite3', (('turns', 'session'),))
 
     def withdraw_turn(self,sid,message_id):
         """Called only once the worker has finished. Preserve withdrawn text in audit."""

@@ -98,6 +98,44 @@ class StoreTests(Fixture):
         self.assertEqual(self.store.session(fork)['parent'],sid)
         self.assertEqual(len(self.store.sessions('red')),0)
         self.store.add(fork,'assistant','branch');self.assertEqual(len(self.store.messages(sid)),3)
+    def test_archive_toggle_hides_session_and_preserves_data(self):
+        sid=self.store.create('rui');self.store.add(sid,'user','hello')
+        self.assertEqual(self.store.session(sid)['archived'],0)
+        self.store.archive(sid)
+        self.assertEqual(self.store.session(sid)['archived'],1)
+        self.assertNotIn(sid,[s['id'] for s in self.store.sessions('rui')])
+        self.assertEqual([s['id'] for s in self.store.sessions('rui',include_archived=True)],[sid])
+        self.assertEqual(len(self.store.messages(sid)),1)  # archived keeps data intact
+        self.store.archive(sid,False)
+        self.assertEqual(self.store.session(sid)['archived'],0)
+        self.assertIn(sid,[s['id'] for s in self.store.sessions('rui')])
+    def test_delete_session_removes_messages_and_plugin_data(self):
+        import sqlite3
+        sid=self.store.create('rui');self.store.add(sid,'user','hello');self.store.add(sid,'assistant','hi')
+        # seed per-session plugin rows for purge verification
+        plugins=self.config.data/'plugins'
+        gd=plugins/'daypart-greetings';gd.mkdir(parents=True,exist_ok=True)
+        gconn=sqlite3.connect(str(gd/'state.sqlite3'))
+        gconn.executescript("CREATE TABLE IF NOT EXISTS events(session TEXT, message INTEGER, text TEXT, created TEXT, PRIMARY KEY(session,message));"
+                            "CREATE TABLE IF NOT EXISTS triggers(session TEXT, message INTEGER, instruction TEXT, created TEXT, PRIMARY KEY(session,message))")
+        gconn.execute('INSERT INTO events(session,message,text,created) VALUES(?,?,?,?)',(sid,1,'hi','t'))
+        inbox=plugins/'livingmemory'/'rui';inbox.mkdir(parents=True,exist_ok=True)
+        iconn=sqlite3.connect(str(inbox/'inbox.sqlite3'))
+        iconn.execute("CREATE TABLE IF NOT EXISTS turns(id INTEGER PRIMARY KEY, session TEXT, user_id INTEGER, messages TEXT, done INTEGER DEFAULT 0, UNIQUE(session,user_id))")
+        iconn.execute('INSERT INTO turns(session,user_id,messages) VALUES(?,?,?)',(sid,1,'[]'))
+        gconn.commit();iconn.commit();gconn.close();iconn.close()
+        self.store.delete(sid)
+        self.assertIsNone(self.store.session(sid))
+        self.assertEqual(len(self.store.messages(sid)),0)
+        gconn=sqlite3.connect(str(gd/'state.sqlite3'))
+        self.assertEqual(gconn.execute('SELECT count(*) FROM events WHERE session=?',(sid,)).fetchone()[0],0)
+        gconn.close()
+        iconn=sqlite3.connect(str(inbox/'inbox.sqlite3'))
+        self.assertEqual(iconn.execute('SELECT count(*) FROM turns WHERE session=?',(sid,)).fetchone()[0],0)
+        iconn.close()
+        # role's shared long-term memory must survive session deletion
+        long_term=(self.config.data/'memory'/'rui'/'long_term.md').read_text(encoding='utf-8')
+        self.assertIn('持久记忆',long_term)
     def test_config_credentials(self):
         encrypted=protect('not-a-real-api-key')
         self.assertNotIn('not-a-real',encrypted);self.assertEqual(protect(encrypted,True),'not-a-real-api-key')

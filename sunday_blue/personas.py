@@ -6,7 +6,8 @@ import os
 from pathlib import Path
 import uuid
 from .files import WRITE_LOCK, no_links
-from .storage import ROLE_IDS, atomic_json
+from .storage import atomic_json
+from .roles import require_role
 
 SECTIONS = (
     ('identity.md', '身份内核', '是谁、核心气质与不能随意改变的边界。只有你能修改。'),
@@ -18,8 +19,7 @@ FILENAMES = {item[0] for item in SECTIONS}
 
 
 def read_persona(root, role):
-    if role not in ROLE_IDS:
-        raise ValueError('未知角色')
+    require_role(root, role)
     result = {}
     for filename, *_ in SECTIONS:
         path = Path(root) / 'personas' / role / filename
@@ -34,7 +34,8 @@ def persona_text(root, role):
 
 def save_persona(root, role, before, after):
     root = Path(root).resolve()
-    if role not in ROLE_IDS or set(after) != FILENAMES:
+    require_role(root, role)
+    if set(after) != FILENAMES:
         raise ValueError('人格字段不完整或包含未知文件')
     if not after['identity.md'].strip():
         raise ValueError('身份内核不能为空')
@@ -78,8 +79,7 @@ def save_persona(root, role, before, after):
 
 
 def previous_persona(root, role):
-    if role not in ROLE_IDS:
-        raise ValueError('未知角色')
+    require_role(root, role)
     versions = sorted((Path(root) / 'data/persona_versions' / role).glob('*.json'), reverse=True)
     if not versions:
         raise ValueError('还没有保存过的人格版本')

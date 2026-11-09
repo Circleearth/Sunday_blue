@@ -10,7 +10,8 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QTabWidget, QW
     QFormLayout, QLineEdit, QComboBox, QSpinBox, QCheckBox, QLabel, QPushButton,
     QListWidget, QListWidgetItem, QFileDialog, QMessageBox, QPlainTextEdit, QInputDialog, QScrollArea,
     QStackedWidget, QFrame)
-from .storage import ROLES, protect, atomic_json
+from .storage import protect, atomic_json
+from .roles import list_roles
 from .provider import Provider, endpoint
 from .extensions import validate_servers
 from .files import no_links, inside
@@ -82,13 +83,20 @@ class Settings(QDialog):
 
     def role_combo(self, selected=None):
         combo = QComboBox()
-        for rid, name, desc, _ in ROLES:
+        for rid, name, desc, _ in list_roles(self.config.root):
             combo.addItem(f'{name} · {desc}', rid)
-        combo.setCurrentIndex(next(i for i,r in enumerate(ROLES) if r[0] == (selected or self.current_role)))
+        combo.setCurrentIndex(next(i for i,r in enumerate(list_roles(self.config.root)) if r[0] == (selected or self.current_role)))
         return combo
 
     def _persona_page(self):
         layout = self.page('人格设定')
+        manage = QPushButton('角色管理：创建、重命名、归档与删除')
+        def open_manager():
+            self.open_role_manager_requested = True
+            self.reject()
+        manage.clicked.connect(open_manager)
+        layout.addWidget(manage)
+        layout.addWidget(label('角色管理会关闭当前设置页；请先保存其他未提交的设置。也可从主界面角色栏直接打开。'))
         layout.addWidget(label('身份内核、性格反应、说话方式、角色关系。人格由你维护，工具技能交给插件。旧操作规程已归档，不进入对话。'))
         launch = QPushButton('打开人格编辑器')
         def open_editor():
@@ -372,7 +380,7 @@ class Settings(QDialog):
             self.value['ui_display']=self.chat_preferences.ui_value()
             self.value['close_to_tray']=self.close_to_tray.isChecked()
             self.value['api']=self.api_value()
-            self.value['mcp_servers']=validate_servers(json.loads(self.mcp.toPlainText()))
+            self.value['mcp_servers']=validate_servers(json.loads(self.mcp.toPlainText()), self.config.root)
             self.value['features']={k:w.isChecked() for k,w in self.features.items()}
             self.config.save(self.value)
             self.accept()

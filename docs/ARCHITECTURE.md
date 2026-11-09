@@ -2,6 +2,8 @@
 
 ## 分层
 
+- `roles.py`：安装根内唯一角色注册；`data/roles.json` 存 ID、名称、描述、颜色与状态。`role_lifecycle.py` 负责依赖核验、导出、归档与可续做删除；`role_preferences.py` 只负责管理 UI。固定默认角色仅用于首次初始化。
+
 - `storage.py`：应用路径、角色元数据、原子 JSON、Windows DPAPI、SQLite。每次数据库操作独立连接、事务、确定关闭；WAL 支持多会话线程。
 - `provider.py`：统一内部消息（text / tool_use / tool_result），转换 Anthropic Messages 与 OpenAI Chat Completions。支持 JSON 和 SSE；必须收到结束标记才算完整。禁止重定向转发凭据；网络错误不记录密钥或服务端原始响应体。
 - `files.py`：目录授权、路径检查、文本读取/搜索、差异生成、审阅后再次验证、冲突检测、旧字节备份、同目录临时文件 + 原子替换。文件锁串行化软件内写入。信任目录按角色配置自动确认，普通写目录审阅。提供创建、同卷移动、文件/目录删除；删除完整备份、目标清单前后核验，禁止删除授权根目录。

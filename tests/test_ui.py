@@ -47,6 +47,46 @@ class UITests(unittest.TestCase):
         self.window.grab().save(str(Path(__file__).resolve().parents[1]/'docs'/'chat-preview.png'))
         self.window.fork_session();self.assertNotEqual(self.window.sid,original)
         self.assertEqual(len(self.window.store.messages(self.window.sid)),2)
+    def test_archive_delete_and_restore_flow(self):
+        from unittest.mock import patch
+        import PySide6.QtWidgets as W
+        sid=self.window.sid
+        self.window.store.add(sid,'user','归档测试消息')
+        count_before=len(self.window.store.sessions(self.window.role))
+        # archiving the only session must NOT create a new one (no side effect);
+        # it should leave the user in an empty welcome state (sid=None).
+        with patch.object(W.QMessageBox,'question',return_value=W.QMessageBox.StandardButton.Yes):
+            self.window._menu_target=sid;self.window._menu_archive()
+        self.assertEqual(self.window.store.session(sid)['archived'],1)
+        self.assertNotIn(sid,[s['id'] for s in self.window.store.sessions(self.window.role)])
+        self.assertIsNone(self.window.sid)
+        self.assertEqual(len(self.window.store.messages(sid)),1)  # data preserved under archive
+        # restoring (what the "已归档" dialog does) must NOT create a session either
+        self.window.store.archive(sid,False)
+        self.assertEqual(self.window.store.session(sid)['archived'],0)
+        self.assertIn(sid,[s['id'] for s in self.window.store.sessions(self.window.role)])
+        # the welcome screen's send() creates a fresh session on demand; stub out
+        # the worker so no real Agent thread / Settings dialog is involved.
+        self.config.value['api']['model']='mock'
+        self.window.input.setPlainText('归档后新消息')
+        with patch.object(self.window,'start_worker',lambda:None):
+            self.window.send()
+        new_sid=self.window.sid
+        self.assertIsNotNone(new_sid); self.assertNotEqual(new_sid,sid)
+        self.assertEqual(len(self.window.store.sessions(self.window.role)),count_before+1)
+        # delete flow: a separate session is permanently removed; opening it must
+        # fall back to an existing remaining session, never a fresh blank "新对话".
+        other=self.window.store.create(self.window.role)
+        self.window.store.add(other,'user','将被删除')
+        third=self.window.store.create(self.window.role)
+        self.window.store.add(third,'user','留下的会话')
+        self.window.current_by_role[self.window.role]=other; self.window.sid=other  # open it, so we leave it
+        with patch.object(W.QMessageBox,'question',return_value=W.QMessageBox.StandardButton.Yes):
+            self.window._menu_target=other;self.window._menu_delete()
+        self.assertIsNone(self.window.store.session(other))
+        self.assertEqual(len(self.window.store.messages(other)),0)
+        self.assertEqual(len(self.window.store.sessions(self.window.role)),count_before+2)  # only the 3 that existed survive
+        self.assertIn(self.window.sid,{sid,new_sid,third})  # fell back to a real session, none created
     def test_settings_tabs_save_and_role_scopes(self):
         dlg=Settings(self.config,'rui',self.window);dlg.show();APP.processEvents()
         self.assertEqual(dlg.tabs.count(),7)

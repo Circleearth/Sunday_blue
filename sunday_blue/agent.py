@@ -11,6 +11,7 @@ from .extensions import MCPClient, extension_text
 from .storage import plain, now
 from .native_plugins import enabled
 from .plugin_runtime import system_context,load,discover,turn_hooks
+from .roles import require_role
 
 _COMPACT = re.compile(r'^\s*/\s*compact\b[\s:：]*$', re.IGNORECASE)
 
@@ -30,8 +31,9 @@ class Approval:
 
 def system_prompt(root, role, config):
     root = Path(root)
+    identity = require_role(root, role)
     persona = root / 'personas' / role
-    parts = [f'你是 Sunday Blue 中的 {role}。保持以下人格。']
+    parts = [f'你是 Sunday Blue 中的角色，显示名称：{identity["name"]}；稳定 ID：{role}。保持以下人格。']
     parts.append(system_context(root,config,role))
     # Preserve personality/voice; legacy host-specific workflow files are reference only.
     for name in ('identity.md', 'personality.md', 'voice.md', 'relationships.md'):
@@ -125,6 +127,7 @@ class Agent(QThread):
             self.changed.emit(self.sid)
 
     def _run(self):
+        require_role(self.root, self.role)
         session = self.store.session(self.sid)
         messages = self.store.messages(self.sid, context=True)
         greetings=None
@@ -190,7 +193,7 @@ class Agent(QThread):
         _pr = self.config.get('_plugin_root')
         for pid, meta in (discover(_pr) if _pr else discover()).items():
             if not meta.get('error') and enabled(self.config, self.role, pid):
-                module = load(pid)
+                module = load(pid, self.root)
                 if not hasattr(module, 'tools'):
                     continue
                 for t in module.tools():
@@ -250,7 +253,7 @@ class Agent(QThread):
                     elif name == 'memory_write': result = ft.write('', content=args['content'], memory=True)
                     elif name in plugin_tools:
                         pid, tname = plugin_tools[name]
-                        result = load(pid).dispatch(self.config, self.role, tname, args)
+                        result = load(pid, self.root).dispatch(self.config, self.role, tname, args)
                     else: raise ValueError('未知工具')
                 except Exception as exc:
                     result, error = {'error': str(exc)}, True

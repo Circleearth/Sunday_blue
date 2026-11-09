@@ -34,8 +34,9 @@ def extension_text(root, role_config):
         raise ValueError('启用的扩展提示词过多，请减少 Skill / 插件。')
     return result
 
-def validate_servers(servers):
-    from .storage import ROLE_IDS
+def validate_servers(servers, root=None):
+    from .roles import list_roles
+    role_ids = {r[0] for r in list_roles(root, include_archived=True)}
     if not isinstance(servers, list):
         raise ValueError('MCP 配置必须是 JSON 数组。')
     names = set()
@@ -51,7 +52,7 @@ def validate_servers(servers):
             raise ValueError('MCP args 必须是字符串数组。')
         if not isinstance(s.get('env', {}), dict) or not all(isinstance(k, str) and isinstance(v, str) for k,v in s.get('env', {}).items()):
             raise ValueError('MCP env 必须是字符串映射。')
-        if not isinstance(s.get('roles', []), list) or not set(s.get('roles', [])) <= ROLE_IDS:
+        if not isinstance(s.get('roles', []), list) or not set(s.get('roles', [])) <= role_ids:
             raise ValueError('MCP roles 必须是有效角色 ID 数组；空数组不授予任何角色。')
         if not isinstance(s.get('enabled', False), bool):
             raise ValueError('MCP enabled 必须为布尔值。')
