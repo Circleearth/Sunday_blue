@@ -121,6 +121,14 @@ def require_role(root, role, active=True):
     return RoleRegistry(root).get(role, active=active)
 
 
+def default_settings(role):
+    settings = {'roots': [], 'skills': [], 'plugins': []}
+    if role not in {r[0] for r in DEFAULT_ROLES}:
+        settings.update(native_plugins_default=False,
+                        capabilities={'files': False, 'memory': True, 'mcp': False})
+    return settings
+
+
 class LegacyRoles:
     """Read-only compatibility for external plugins; new code must pass its root."""
     def __iter__(self):

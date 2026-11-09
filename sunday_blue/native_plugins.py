@@ -2,6 +2,10 @@
 from .plugin_runtime import discover,DEFAULT_ROOT
 PLUGINS=discover()
 def enabled(config,role,plugin,meta=None):
+    from .roles import require_role
+    try: require_role(config.get('_plugin_root', DEFAULT_ROOT), role)
+    except ValueError: return False
     if meta is None:meta=discover(config.get('_plugin_root',DEFAULT_ROOT)).get(plugin)
     if not meta or meta.get('error'):return False
-    return config.get('roles',{}).get(role,{}).get('native_plugins',{}).get(plugin,meta.get('default_enabled',False))
+    role_config=config.get('roles',{}).get(role,{})
+    return role_config.get('native_plugins',{}).get(plugin,role_config.get('native_plugins_default',meta.get('default_enabled',False)))

@@ -168,6 +168,15 @@ class Settings(QDialog):
         self.permission_role = self.role_combo()
         self.permission_role.currentIndexChanged.connect(self.load_roots)
         layout.addWidget(self.permission_role)
+        capabilities = QPushButton('配置此角色的能力、职责与按需加载')
+        def configure_capabilities():
+            from .capability_preferences import CapabilityDialog
+            role = self.permission_role.currentData()
+            dialog = CapabilityDialog(self.config.root, self.value, role, self)
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                self.value['roles'][role] = dialog.value
+        capabilities.clicked.connect(configure_capabilities)
+        layout.addWidget(capabilities)
         self.roots = QListWidget()
         layout.addWidget(self.roots)
         row = QHBoxLayout()
@@ -275,7 +284,7 @@ class Settings(QDialog):
         # (PLUGIN_SPEC section 3b). Only plugins that implement settings_extra
         # get one; it manages the plugin's own background components only.
         extra=None
-        module=load(pid)
+        module=load(pid,self.config.root)
         if hasattr(module,'settings_extra'):
             extra=module.settings_extra(self.config.root)
         dialog=PluginPreferences(meta,parameters(self.value,role,pid,self.config.root),

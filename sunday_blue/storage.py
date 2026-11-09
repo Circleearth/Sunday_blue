@@ -12,7 +12,7 @@ import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
-from .roles import RoleRegistry, list_roles, require_role, LegacyRoles, DEFAULT_ROLES
+from .roles import RoleRegistry, list_roles, require_role, LegacyRoles, DEFAULT_ROLES, default_settings
 # Compatibility exports only; runtime validation must use the installation root.
 ROLES = LegacyRoles()
 ROLE_IDS = {r[0] for r in DEFAULT_ROLES}
@@ -69,7 +69,7 @@ class Config:
                     'model': '', 'key_encrypted': '', 'auth': 'x-api-key',
                     'max_tokens': 4096, 'context_limit': 200000, 'stream': True,
                     'thinking_budget': 0},
-            'roles': {r: {'roots': [], 'skills': [], 'plugins': []} for r in role_ids},
+            'roles': {r: default_settings(r) for r in role_ids},
             'features': {'files': True, 'memory': True, 'mcp': False},
             'mcp_servers': [],
             'ui_theme': 'dark',
@@ -101,7 +101,7 @@ class Config:
         if value is not None:value={k:v for k,v in value.items() if k!='_plugin_root'}
         target = value if value is not None else self.value
         valid = {r[0] for r in list_roles(self.root, include_archived=True)}
-        target['roles'] = {r: target.get('roles', {}).get(r, {'roots': [], 'skills': [], 'plugins': []}) for r in valid}
+        target['roles'] = {r: target.get('roles', {}).get(r, default_settings(r)) for r in valid}
         target['active_sessions'] = {r:s for r,s in target.get('active_sessions', {}).items() if r in valid}
         for spec in target.get('mcp_servers', []):
             spec['roles'] = [r for r in spec.get('roles', []) if r in valid]
