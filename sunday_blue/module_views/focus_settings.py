@@ -20,11 +20,13 @@ class FocusSettings(QDialog):
         note.setObjectName('muted'); note.setWordWrap(True); layout.addWidget(note)
         form = QFormLayout(); self.fields = {}
         for key, title, maximum, suffix in (
-            ('focus_minutes', '专注', 240, ' 分钟'), ('short_break_minutes', '短休息', 60, ' 分钟'),
+            ('max_rounds', '本次最多专注', 20, ' 轮'), ('focus_minutes', '专注', 240, ' 分钟'), ('short_break_minutes', '短休息', 60, ' 分钟'),
             ('long_break_minutes', '长休息', 120, ' 分钟'), ('long_every', '长休息间隔', 12, ' 个番茄')):
             field = QSpinBox(); field.setRange(2 if key == 'long_every' else 1, maximum)
             field.setValue(self.draft[key]); field.setSuffix(suffix)
             self.fields[key] = field; form.addRow(title, field)
+        self.auto_loop = QCheckBox('自然到点后自动循环专注与休息（手动结束即停止）')
+        self.auto_loop.setChecked(self.draft['auto_loop']); form.addRow(self.auto_loop)
         self.enabled = QCheckBox('阶段结束时播放声音'); self.enabled.setChecked(self.draft['sound_enabled'])
         form.addRow(self.enabled)
         self.volume = QSpinBox(); self.volume.setRange(0, 100); self.volume.setSuffix(' %')
@@ -64,7 +66,7 @@ class FocusSettings(QDialog):
 
     def values(self):
         return {k: field.value() for k, field in self.fields.items()} | {
-            'sound_enabled': self.enabled.isChecked(), 'volume': self.volume.value(), 'sounds': dict(self.sounds)}
+            'auto_loop': self.auto_loop.isChecked(), 'sound_enabled': self.enabled.isChecked(), 'volume': self.volume.value(), 'sounds': dict(self.sounds)}
 
     def listen(self, phase):
         self.preview.play(phase, self.values())

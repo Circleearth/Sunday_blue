@@ -145,7 +145,11 @@ class FocusPage(QWidget):
         except Exception as exc: QMessageBox.warning(self, '暂未完成', str(exc))
 
     def begin(self):
-        result = self.invoke(lambda: self.hub.focus.start(self.category.currentText(), self.label.text(),
+        if self.hub.focus.status()['state'] == 'idle':
+            for i in range(self.feed.count()):
+                item=self.feed.item(i)
+                if not item.text().startswith('【上一轮】'):item.setText('【上一轮】'+item.text())
+        result = self.invoke(lambda: self.hub.start_focus(self.category.currentText(), self.label.text(),
             self.roles.currentData(), self.phase, self.target.value()*60))
         if result: self.banner.hide(); self.silence.hide(); self.hub.focus_alarm.stop()
         self.refresh(True)
@@ -174,12 +178,8 @@ class FocusPage(QWidget):
     def feedback(self, role, text):
         names = {r[0]: r[1] for r in list_roles(self.hub.root)}
         item = QListWidgetItem(names.get(role, '伙伴')+'：'+text); self.feed.addItem(item)
-        while self.feed.count()>4: self.feed.takeItem(0)
+        while self.feed.count()>20: self.feed.takeItem(0)
         self.feed.scrollToBottom()
-        def expire():
-            index = self.feed.row(item)
-            if index>=0: self.feed.takeItem(index)
-        QTimer.singleShot(12000, self, expire)
 
     def refresh(self, full=False):
         state = self.hub.focus.status(); active = state['state'] != 'idle'
@@ -217,6 +217,8 @@ class FocusPage(QWidget):
         cycle = self.hub.focus.cycle(); position = cycle['completed'] % options['long_every']
         self.cycle_label.setText(f"本组已完成 {position} / {options['long_every']} 个番茄")
         self.hint.setText('旧版正计时已保留，请手动结束本轮。' if active and not duration else '到点自动结算并提醒。下一阶段由你开始，不自动连跑。')
+        if options['auto_loop']:
+            self.hint.setText(f"自动循环最多 {options['max_rounds']} 轮专注；手动结束即停止。")
         self.art()
         if full:
             stats = self.hub.focus.stats()

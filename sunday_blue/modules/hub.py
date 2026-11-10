@@ -42,6 +42,24 @@ class ModuleHub(QObject):
         self.changed.connect(self._on_changed)
         if start_timer:self.timer.start();self.focus_timer.start()
 
+    def start_focus(self,category,label='',role_id='rui',phase='focus',duration=0):
+        if self.focus.status()['state']!='idle':raise ValueError('已有计时正在进行')
+        options=self.focus.options()
+        self.db.set('focus_loop',{'category':category,'label':label,'role_id':role_id,
+            'remaining':options['max_rounds'],'enabled':options['auto_loop'] and phase=='focus'})
+        return self.focus.start(category,label,role_id,phase,duration)
+
+    def _continue_focus(self,result):
+        chain=self.db.get('focus_loop',{})
+        if not chain.get('enabled') or not result['completed_timer']:return
+        if result['phase']=='focus':chain['remaining']-=1
+        if chain['remaining']<=0:
+            chain['enabled']=False;self.db.set('focus_loop',chain);return
+        phase=self.focus.cycle()['next_phase'];self.db.set('focus_loop',chain)
+        try:self.focus.start(chain['category'],chain['label'],chain['role_id'],phase,self.focus.options()[phase+'_minutes']*60)
+        except Exception as exc:
+            chain['enabled']=False;self.db.set('focus_loop',chain);self.failed.emit(str(exc))
+
     def _focus_tick(self):
         try:self.focus.checkpoint()
         except Exception as exc:self.failed.emit(str(exc))
@@ -57,11 +75,15 @@ class ModuleHub(QObject):
             icon=getattr(getattr(parent,'tray',None),'icon',None)
             if icon and icon.isVisible():icon.showMessage('番茄钟 · '+PHASES[result['phase']]+'结束',result['feedback'])
 
+        self._continue_focus(result)
+
     def _focus_changed(self,module,text=''):
         self.relations.project()
         status=self.focus.status();role=status['role_id']
         if status['state']=='idle' and self.focus.last_settlement and self.focus.last_settlement.get('record'):
             role=self.focus.last_settlement['record']['role_id']
+        if status['state']=='idle' and self.focus.last_settlement and not self.focus.last_settlement.get('completed_timer'):
+            self.db.set('focus_loop',{})
         self.changed.emit(module)
         if text:self.feedback.emit(role,text)
 

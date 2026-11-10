@@ -127,3 +127,32 @@ class PomodoroTests(unittest.TestCase):
             self.assertGreater(alarm.player.duration(),0)
             self.assertEqual(alarm.player.mediaStatus(),QMediaPlayer.MediaStatus.EndOfMedia)
         alarm.stop();alarm.deleteLater();APP.processEvents()
+
+    def test_auto_loop_limit_and_manual_stop(self):
+        hub=ModuleHub(self.config,Store(self.config.data),start_timer=False)
+        hub.focus.clock=lambda:self.now
+        hub.focus.set_options({'auto_loop':True,'max_rounds':2,'focus_minutes':3,'short_break_minutes':1})
+        try:
+            with patch.object(hub.focus_alarm,'play'):
+                hub.start_focus('学习',duration=180)
+                for _ in range(36):self.now+=5;hub._focus_tick()
+                self.assertEqual(hub.focus.status()['phase'],'short_break')
+                for _ in range(12):self.now+=5;hub._focus_tick()
+                self.assertEqual(hub.focus.status()['phase'],'focus')
+                for _ in range(36):self.now+=5;hub._focus_tick()
+                self.assertEqual(hub.focus.status()['state'],'idle')
+                self.assertEqual(hub.rewards.balances()['coins'],6)
+                hub.start_focus('学习',duration=180);self.now+=5;hub.focus.finish()
+                self.assertEqual(hub.focus.status()['state'],'idle')
+                self.assertFalse(hub.db.get('focus_loop',{}).get('enabled'))
+        finally:hub.close();hub.deleteLater();APP.processEvents()
+
+    def test_focus_bubbles_survive_and_mark_previous_round(self):
+        hub=ModuleHub(self.config,Store(self.config.data),start_timer=False);page=FocusPage(hub)
+        try:
+            for i in range(25):page.feedback('rui',str(i))
+            self.assertEqual(page.feed.count(),20)
+            page.begin()
+            self.assertTrue(page.feed.item(0).text().startswith('【上一轮】'))
+            self.assertEqual(page.feed.count(),20)
+        finally:hub.close();page.deleteLater();hub.deleteLater();APP.processEvents()

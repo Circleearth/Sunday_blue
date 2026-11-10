@@ -255,3 +255,5 @@ python -m unittest discover -s tests -v
 架构见 `docs/ARCHITECTURE.md`，本轮测试结果见 `docs/test-results.txt`。测试用本机 HTTP 假服务和本机 MCP 假服务验证完整请求、工具回执、写入审阅与界面操作；未使用你的真实 API Key，不能据此声称所有中转站已经联调成功。填入实际配置后使用“测试连接”完成实际验证。
 
 协议参考：[Anthropic 流式消息](https://platform.claude.com/docs/en/build-with-claude/streaming)、[Anthropic 工具调用](https://platform.claude.com/docs/en/agents-and-tools/tool-use/handle-tool-calls)、[MCP stdio](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports)、[OpenAI Chat Completions](https://developers.openai.com/api/reference/resources/chat)、[Qt for Python](https://doc.qt.io/qtforpython-6/gettingstarted.html)。
+
+番茄钟新增：在“节奏与提示音”可启用自动循环，并设置 1–20 轮上限；手动结束停止循环。侧栏保留最近 20 条界面反馈，手动开始新轮标记旧气泡，不写入聊天或长期记忆。

@@ -4,7 +4,7 @@ from pathlib import Path
 
 PHASES = {'focus': '专注', 'short_break': '短休息', 'long_break': '长休息'}
 DEFAULTS = {'focus_minutes': 25, 'short_break_minutes': 5, 'long_break_minutes': 15,
-            'long_every': 4, 'sound_enabled': True, 'volume': 65,
+            'auto_loop': False, 'max_rounds': 4, 'long_every': 4, 'sound_enabled': True, 'volume': 65,
             'sounds': {phase: '' for phase in PHASES}}
 
 
@@ -16,11 +16,11 @@ def options(database):
 def save_options(database, values):
     result = options(database) | values
     for key, low, high in (('focus_minutes', 1, 240), ('short_break_minutes', 1, 60),
-                           ('long_break_minutes', 1, 120), ('long_every', 2, 12), ('volume', 0, 100)):
+                           ('long_break_minutes', 1, 120), ('max_rounds', 1, 20), ('long_every', 2, 12), ('volume', 0, 100)):
         value = result[key]
         if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
             raise ValueError(f'{key} 需在 {low}–{high} 之间。')
-    if not isinstance(result['sound_enabled'], bool):
+    if not isinstance(result['sound_enabled'], bool) or not isinstance(result['auto_loop'], bool):
         raise ValueError('提示音开关必须为开或关。')
     result['sounds'] = DEFAULTS['sounds'] | result.get('sounds', {})
     for name in PHASES:
