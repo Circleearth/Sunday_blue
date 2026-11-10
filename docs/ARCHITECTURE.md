@@ -2,6 +2,8 @@
 
 2026-11-10 新增模块层与页面层，见 [模块索引](MODULE_INDEX.md)。该文是新增专注、金币、关系、群聊、双向近期记忆、主动交流和角色模型的优先阅读入口；不要为改一个页面重新扫描整套旧聊天实现。原角色增删本轮保留，不继续扩展。
 
+专注已升级为番茄钟：`modules/focus.py` 管倒计时和原子结算，`focus_timers` 附属表兼容旧正计时；Hub 的独立一秒 timer 负责切页后继续检查。`focus_alarm.py` 只负责本地声音，`focus_preferences.py` 负责配置/音频导入，`module_views/focus_settings.py` 编辑草稿。页面不发币、不自行计算有效时长。音频失败不能撤销结算；休息阶段绝不产生专注事实或奖励。
+
 ## 分层
 
 - `roles.py`：安装根内唯一角色注册；`data/roles.json` 存 ID、名称、描述、颜色与状态。`role_lifecycle.py` 负责依赖核验、导出、归档与可续做删除；`role_preferences.py` 只负责管理 UI。固定默认角色仅用于首次初始化。

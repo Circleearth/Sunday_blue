@@ -25,17 +25,37 @@ class ModuleHub(QObject):
     feedback=Signal(str,str)
     failed=Signal(str)
     closed=Signal()
+    focus_completed=Signal(object)
 
     def __init__(self,config,store,parent=None,start_timer=True):
         super().__init__(parent)
         self.root,self.config,self.store=config.root,config,store
         self.db=ModuleDB(self.root);self.rewards=Rewards(self.db)
-        self.focus=Focus(self.db,self._focus_changed);self.relations=Relations(self.db)
+        from .focus_alarm import FocusAlarm
+        self.focus_alarm=FocusAlarm(self.root,self)
+        self.focus_alarm.problem.connect(self.failed.emit)
+        self.focus=Focus(self.db,self._focus_changed,on_complete=self._focus_completed);self.relations=Relations(self.db)
         self.social=Social(self.db,config,self.changed.emit);self.jobs={};self._last_event=0
         self.social.can_interrupt=lambda:self.focus.status()['state']!='running'
         self.timer=QTimer(self);self.timer.setInterval(5000);self.timer.timeout.connect(self.tick)
+        self.focus_timer=QTimer(self);self.focus_timer.setInterval(1000);self.focus_timer.timeout.connect(self._focus_tick)
         self.changed.connect(self._on_changed)
-        if start_timer:self.timer.start()
+        if start_timer:self.timer.start();self.focus_timer.start()
+
+    def _focus_tick(self):
+        try:self.focus.checkpoint()
+        except Exception as exc:self.failed.emit(str(exc))
+
+    def _focus_completed(self,result):
+        from PySide6.QtWidgets import QApplication,QWidget
+        from .focus_preferences import PHASES
+        self.focus_alarm.play(result['phase'],self.focus.options())
+        self.focus_completed.emit(result)
+        parent=self.parent()
+        if isinstance(parent,QWidget):
+            QApplication.alert(parent,5000)
+            icon=getattr(getattr(parent,'tray',None),'icon',None)
+            if icon and icon.isVisible():icon.showMessage('番茄钟 · '+PHASES[result['phase']]+'结束',result['feedback'])
 
     def _focus_changed(self,module,text=''):
         self.relations.project()
@@ -142,5 +162,5 @@ class ModuleHub(QObject):
             return [dict(r) for r in db.execute('SELECT * FROM request_diagnostics ORDER BY created DESC,rowid DESC LIMIT 30')]
 
     def close(self):
-        self.timer.stop();self.closed.emit();self.focus.pause()
+        self.timer.stop();self.focus_timer.stop();self.closed.emit();self.focus.pause();self.focus_alarm.stop()
         for job in self.jobs.values():job.cancel.set()
