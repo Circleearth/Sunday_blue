@@ -195,6 +195,7 @@ class MainWindow(QWidget):
         self.context_label=text_label('上下文 · 等待第一条消息','muted'); self.context_label.setWordWrap(True); layout.addWidget(self.context_label)
         self.context_progress=QProgressBar(); self.context_progress.setRange(0,100); self.context_progress.setTextVisible(False); self.context_progress.setFixedHeight(4); layout.addWidget(self.context_progress)
         layout.addWidget(button('编辑已确认记忆',self.memory_dialog,'ghost'))
+        layout.addWidget(button('协作记录',self.event_dialog,'ghost'))
         layout.addWidget(button('记忆大脑 / Ollama',self.brain_dialog,'ghost'))
         self.permission_label=text_label('','muted'); self.permission_label.setWordWrap(True); layout.addWidget(self.permission_label)
         body.addWidget(panel)
@@ -800,6 +801,10 @@ class MainWindow(QWidget):
     def memory_dialog(self):
         from .memory_editor import MemoryEditor
         MemoryEditor(self.config.root, self.role, self.store, self).exec()
+
+    def event_dialog(self):
+        from .event_preferences import EventDialog
+        EventDialog(self.store,self.role,self).exec()
 
     def show_document(self,title,text):
         dlg=QDialog(self);dlg.setWindowTitle(title);dlg.resize(800,600);layout=QVBoxLayout(dlg)

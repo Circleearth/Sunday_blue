@@ -9,7 +9,8 @@ from .native_plugins import enabled
 from .plugin_runtime import discover
 
 BUILTINS = {'files': '授权目录的文件读写', 'memory': '本角色已确认记忆（写入需审阅）',
-            'mcp': '该角色已绑定的 MCP 服务（启动和调用需审阅）'}
+            'mcp': '该角色已绑定的 MCP 服务（启动和调用需审阅）',
+            'collaboration': '受控协作记录（决定、待办与完成状态需确认）'}
 ALWAYS = {'plugin:time-context', 'plugin:daypart-greetings'}
 RESPONSIBILITIES = {
     'kia': '默认负责记录、归档、信息提取与初步分类；不要把记录自动升级为完整规划或已确认决定。',
@@ -24,7 +25,8 @@ def allowed_catalog(root, config, role):
     config = config | {'_plugin_root': str(root)}
     cfg = config['roles'][role]
     result = {name: label for name, label in BUILTINS.items()
-              if config['features'].get(name) and cfg.get('capabilities', {}).get(name, True)}
+              if config['features'].get(name, name == 'collaboration')
+              and cfg.get('capabilities', {}).get(name, name != 'collaboration')}
     if 'mcp' in result and not any(s.get('enabled') and role in s.get('roles', []) for s in config.get('mcp_servers', [])):
         result.pop('mcp')
     for name in dict.fromkeys(cfg.get('skills', [])):

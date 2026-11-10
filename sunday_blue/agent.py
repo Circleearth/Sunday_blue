@@ -134,6 +134,9 @@ class Agent(QThread):
             tools.extend(FILE_SCHEMAS)
         if self.config['features'].get('memory'):
             tools.extend(MEMORY_SCHEMAS)
+        if self.config['features'].get('collaboration'):
+            from .role_events import SCHEMAS
+            tools.extend(SCHEMAS)
         if self.config['features'].get('mcp'):
             for spec in self.config.get('mcp_servers', []):
                 if not spec.get('enabled') or self.role not in spec.get('roles', []):
@@ -280,6 +283,16 @@ class Agent(QThread):
                     elif name == 'move': result = ft.move(**args)
                     elif name == 'memory_read': result = (self.root/'data'/'memory'/self.role/'long_term.md').read_text(encoding='utf-8')
                     elif name == 'memory_write': result = ft.write('', content=args['content'], memory=True)
+                    elif name.startswith('event_'):
+                        from .role_events import EventLedger
+                        ledger = EventLedger(self.store)
+                        if name == 'event_list': result = ledger.list(self.role)
+                        elif name == 'event_record':
+                            if not actual_user: raise ValueError('没有实际用户消息可作为来源。')
+                            result = ledger.record(self.role,self.sid,actual_user['id'],**args)
+                        elif name == 'event_derive': result = ledger.derive(self.role,approve=self.approve,**args)
+                        elif name == 'event_complete': result = ledger.complete(self.role,approve=self.approve,**args)
+                        else: raise ValueError('未知协作工具')
                     elif name in plugin_tools:
                         pid, tname = plugin_tools[name]
                         result = load(pid, self.root).dispatch(self.config, self.role, tname, args)

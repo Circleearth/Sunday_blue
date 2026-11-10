@@ -2,7 +2,7 @@
 import copy
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QCheckBox,
-    QTableWidget, QTableWidgetItem, QComboBox, QLineEdit, QPushButton, QPlainTextEdit, QHeaderView)
+    QTableWidget, QTableWidgetItem, QComboBox, QLineEdit, QPushButton, QPlainTextEdit, QHeaderView, QGridLayout)
 from .capabilities import BUILTINS, ALWAYS, RESPONSIBILITIES, allowed_catalog
 
 
@@ -17,16 +17,18 @@ class CapabilityDialog(QDialog):
         note = QLabel('能力授权与人格分开。先在插件、Skills、MCP 页面完成绑定，再选择加载方式。'
                       '\n“按需”由 @能力ID、关键词或模型工具申请触发；不能扩大文件权限。')
         note.setWordWrap(True); layout.addWidget(note)
-        row = QHBoxLayout(); self.grants = {}
-        for key, title in BUILTINS.items():
+        row = QGridLayout(); self.grants = {}
+        for index, (key, title) in enumerate(BUILTINS.items()):
             box = QCheckBox(title.split('（')[0])
-            box.setChecked(self.value.get('capabilities', {}).get(key, True))
+            box.setChecked(self.value.get('capabilities', {}).get(key, key != 'collaboration'))
             box.setToolTip('还需全局功能开关启用；不会新增任何目录或 MCP 授权。')
-            self.grants[key] = box; row.addWidget(box)
+            self.grants[key] = box; row.addWidget(box,index//2,index%2)
             box.toggled.connect(self.reload)
         layout.addLayout(row)
         self.table = QTableWidget(0, 3)
-        self.table.setHorizontalHeaderLabels(['能力（稳定 ID）', '加载方式', '关键词，英文逗号分隔（可选）'])
+        self.table.setHorizontalHeaderLabels(['能力（悬停查看调用 ID）', '加载方式', '关键词，英文逗号分隔（可选）'])
+        self.table.verticalHeader().hide()
+        self.table.verticalHeader().setDefaultSectionSize(42)
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         layout.addWidget(self.table, 1)
@@ -51,7 +53,7 @@ class CapabilityDialog(QDialog):
         self.table.setRowCount(0); self.rows = {}
         for key, label in catalog.items():
             row = self.table.rowCount(); self.table.insertRow(row)
-            item = QTableWidgetItem(key); item.setToolTip(label)
+            item = QTableWidgetItem(label.split('（')[0]); item.setToolTip(key + '\n' + label)
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable); self.table.setItem(row, 0, item)
             mode = QComboBox(); mode.addItem('每轮加载', 'always'); mode.addItem('按需加载', 'on_demand')
             policy = self.value.get('capability_loading', {}).get(key, {})

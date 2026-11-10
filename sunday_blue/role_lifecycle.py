@@ -106,7 +106,7 @@ class RoleLifecycle:
         sessions = self.store.sessions(role, include_archived=True)
         return dict(role=record, sessions=len(sessions), paths=[str(p.relative_to(self.root)) for p in self.paths(role)],
                     blockers=self.dependencies(role),
-                    retained='保留共享插件代码、Ollama 模型、外部工作区、全局连接和离线历史备份。')
+                    retained='保留已授权共享的协作记录及来源、共享插件代码、Ollama 模型、外部工作区、全局连接和离线历史备份。')
 
     def _capture(self, role):
         with self.store.connect() as db:
@@ -127,7 +127,9 @@ class RoleLifecycle:
         qq = self.root / 'data/plugins/qq-reminders/state.sqlite3'
         if qq.exists():
             extra['qq.rem'] = rows_at(qq, 'SELECT * FROM rem WHERE role=?', (role,))
-        return dict(version=1, at=now(), role=self.registry.get(role), sessions=sessions, messages=messages,
+        from .role_events import EventLedger
+        events = EventLedger(self.store).export_role(role)
+        return dict(version=1, at=now(), role=self.registry.get(role), sessions=sessions, messages=messages, events=events,
                     audit=audit, plugin_rows=extra, settings=self.config.value['roles'].get(role, {}),
                     role_font=self.config.value.get('chat_display', {}).get('role_fonts', {}).get(role),
                     mcp_bindings=[s['name'] for s in self.config.value.get('mcp_servers', []) if role in s.get('roles', [])])
@@ -224,6 +226,8 @@ class RoleLifecycle:
                     for child in p.rglob('*'): no_links(child)
                     shutil.rmtree(p)
             with self.store.connect() as db:
+                from .role_events import EventLedger
+                EventLedger.retire_role(db, role)
                 db.execute('DELETE FROM messages WHERE session IN (SELECT id FROM sessions WHERE role=?)', (role,))
                 db.execute('DELETE FROM audit WHERE role=?', (role,))
                 db.execute('UPDATE sessions SET parent=NULL WHERE parent IN (SELECT id FROM sessions WHERE role=?) AND role<>?', (role, role))

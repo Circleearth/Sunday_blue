@@ -215,6 +215,8 @@ class Store:
         if session: close_role(self.path.parent.parent, session['role'])
         self._purge_plugin_session_data(session['role'] if session else None, sid)
         with self.connect() as db:
+            if db.execute("SELECT 1 FROM sqlite_master WHERE name='role_events'").fetchone():
+                db.execute('UPDATE role_events SET source_session=NULL,source_message=NULL WHERE source_session=?',(sid,))
             db.execute('DELETE FROM messages WHERE session=?', (sid,))
             db.execute('DELETE FROM audit WHERE session=?', (sid,))
             db.execute('DELETE FROM sessions WHERE id=?', (sid,))
