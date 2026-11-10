@@ -31,10 +31,21 @@ class ModuleHub(QObject):
         super().__init__(parent)
         self.root,self.config,self.store=config.root,config,store
         self.db=ModuleDB(self.root);self.rewards=Rewards(self.db)
+        from .planner import Planner
+        from .organizer import Organizer
+        self.planner=Planner(self.db);self.organizer=Organizer(self.db)
+        from .dida import Dida
+        self.dida=Dida(self.db)
         from .focus_alarm import FocusAlarm
         self.focus_alarm=FocusAlarm(self.root,self)
+        self.reminder_alarm=FocusAlarm(self.root,self)
+        self.reminder_alarm.problem.connect(self.failed.emit)
+        from .reminder_delivery import ReminderDelivery
+        self.reminder_delivery=ReminderDelivery(self)
         self.focus_alarm.problem.connect(self.failed.emit)
         self.focus=Focus(self.db,self._focus_changed,on_complete=self._focus_completed);self.relations=Relations(self.db)
+        from .focus_dialogue import FocusDialogue
+        self.focus_dialogue=FocusDialogue(self)
         self.social=Social(self.db,config,self.changed.emit);self.jobs={};self._last_event=0
         self.social.can_interrupt=lambda:self.focus.status()['state']!='running'
         self.timer=QTimer(self);self.timer.setInterval(5000);self.timer.timeout.connect(self.tick)
@@ -85,7 +96,10 @@ class ModuleHub(QObject):
         if status['state']=='idle' and self.focus.last_settlement and not self.focus.last_settlement.get('completed_timer'):
             self.db.set('focus_loop',{})
         self.changed.emit(module)
-        if text:self.feedback.emit(role,text)
+        if text:
+            result=self.focus.last_settlement or {}
+            key=status['id'] or result.get('run_id','')
+            self.focus_dialogue.respond(role,key,text,status['state']=='idle')
 
     def _on_changed(self,module):
         if module=='private':self._deliver_private()
@@ -94,7 +108,8 @@ class ModuleHub(QObject):
 
     def busy_roles(self):
         roles=set()
-        for gid in self.jobs:roles.update(self.social.group(gid)['members'])
+        for gid in self.jobs:
+            if gid!='dida-sync':roles.update(self.social.group(gid)['members'])
         status=self.focus.status()
         if status['state']=='running':roles.add(status['role_id'])
         return roles
@@ -124,6 +139,7 @@ class ModuleHub(QObject):
 
     def tick(self):
         try:
+            self.reminder_delivery.tick()
             self.focus.checkpoint();self.relations.project();self.social.sync_memories();self._deliver_private();self._plugin_events()
             with self.db.connect() as db:seq=db.execute('SELECT COALESCE(max(seq),0) FROM module_events').fetchone()[0]
             if seq!=self._last_event:self._last_event=seq;self.changed.emit('modules')
@@ -178,11 +194,20 @@ class ModuleHub(QObject):
             with self.db.connect() as db:db.execute('UPDATE private_followups SET delivered=1 WHERE episode=?',(item['episode'],))
             self.feedback.emit(role,'有一条会议后的关心，已放到私聊。')
 
+    def calendar_days(self,month):
+        with self.db.connect() as db:return [r[0] for r in db.execute('SELECT DISTINCT day FROM activity_records WHERE day LIKE ?',(month+'%',))]
+
+    def calendar_coins(self,day):
+        with self.db.connect() as db:return db.execute("SELECT COALESCE(sum(c.amount),0) FROM coin_ledger c JOIN activity_records a ON c.reason='focus:'||a.id WHERE a.day=?",(day,)).fetchone()[0]
+
+    def calendar_records(self,day):
+        with self.db.connect() as db:return [dict(r) for r in db.execute('SELECT * FROM activity_records WHERE day=? ORDER BY started',(day,))]
+
     def diagnostics(self):
         with self.db.connect() as db:
             if not db.execute("SELECT 1 FROM sqlite_master WHERE name='request_diagnostics'").fetchone():return []
             return [dict(r) for r in db.execute('SELECT * FROM request_diagnostics ORDER BY created DESC,rowid DESC LIMIT 30')]
 
     def close(self):
-        self.timer.stop();self.focus_timer.stop();self.closed.emit();self.focus.pause();self.focus_alarm.stop()
+        self.timer.stop();self.focus_timer.stop();self.closed.emit();self.focus.pause();self.focus_alarm.stop();self.focus_dialogue.close();self.reminder_alarm.stop()
         for job in self.jobs.values():job.cancel.set()

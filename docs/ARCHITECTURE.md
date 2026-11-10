@@ -73,3 +73,5 @@ plugin_runtime 扫描 extensions/plugins/*/plugin.json，读取 _conf_schema.jso
 - `memory_editor.py` 用现有 FileTools 审阅备份机制编辑确认记忆；`change_review.py` 提供统一的左右对照及修改行提示。自动记忆与确认记忆不互相覆盖。
 
 全量自动测试用隔离目录和本地 HTTP fixture。显式 `scripts/test_livingmemory_live.py --live-chat` 才使用当前 API 的少量真实调用，输入仍是合成测试文本，不读取用户会话。详见 [接入与维护](LIVINGMEMORY.md)。
+
+共享日程、分类记录、月度兑换额度和滴答只读适配层已接入，详细目录/表边界见 [模块索引](MODULE_INDEX.md) 的共享功能增量。动态番茄钟气泡只用短暂上下文与受限后台请求，不经过长期记忆写入链路。

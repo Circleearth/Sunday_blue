@@ -42,6 +42,7 @@ class ModuleHTTPTests(unittest.TestCase):
         while self.hub.jobs and time.monotonic()<until:APP.processEvents();time.sleep(.01)
         APP.processEvents();self.assertFalse(self.hub.jobs)
     def test_focus_to_group_summary_memory_private_followup_and_diagnostics(self):
+        self.hub.focus.set_options({'llm_feedback':False})  # isolate social request ordering; dialogue has separate tests
         sid=self.store.create('rui');self.store.add(sid,'user','RUI_PRIVATE_SOURCE')
         other=self.store.create('red');self.store.add(other,'user','RED_PRIVATE_SOURCE')
         gid=self.hub.social.create_group('合成家庭会议',['rui','mia'],True)
@@ -90,3 +91,16 @@ class ModuleHTTPTests(unittest.TestCase):
         self.assertEqual(len(self.server.seen),1)
         self.assertIn('连接成功',dialog.result_label.text())
         dialog.deleteLater();APP.processEvents()
+
+    def test_focus_dynamic_reply_uses_wire_context_without_chat_storage(self):
+        self.server.answers=['先从眼前的小目标开始。'];feedback=[]
+        self.hub.feedback.connect(lambda role,text:feedback.append(text))
+        self.hub.start_focus('学习',duration=180)
+        deadline=time.monotonic()+5
+        while self.hub.focus_dialogue.busy and time.monotonic()<deadline:APP.processEvents();time.sleep(.01)
+        self.assertIn('先从眼前的小目标开始。',feedback)
+        self.assertEqual(len(self.server.seen),1)
+        self.assertIn('长期熟悉度',self.server.seen[0]['system'])
+        self.assertEqual(self.server.seen[0]['max_tokens'],120)
+        self.assertEqual(self.hub.focus_dialogue.history[-1]['content'],'先从眼前的小目标开始。')
+        self.hub.focus.finish();self.assertEqual(self.hub.focus_dialogue.history,[])

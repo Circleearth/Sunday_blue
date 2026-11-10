@@ -4,7 +4,7 @@ from pathlib import Path
 
 PHASES = {'focus': '专注', 'short_break': '短休息', 'long_break': '长休息'}
 DEFAULTS = {'focus_minutes': 25, 'short_break_minutes': 5, 'long_break_minutes': 15,
-            'auto_loop': False, 'max_rounds': 4, 'long_every': 4, 'sound_enabled': True, 'volume': 65,
+            'llm_feedback': True, 'auto_loop': False, 'max_rounds': 4, 'long_every': 4, 'sound_enabled': True, 'volume': 65,
             'sounds': {phase: '' for phase in PHASES}}
 
 

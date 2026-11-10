@@ -1,0 +1,12 @@
+{
+  "id": "kia-organizer",
+  "name": "Kia · 记录整理",
+  "version": "1.0.0",
+  "api_version": 1,
+  "entry": "main.py",
+  "description": "分类、去重、整理和检索共享记录；推断保留为待确认。",
+  "default_enabled": true,
+  "allowed_roles": [
+    "kia"
+  ]
+}

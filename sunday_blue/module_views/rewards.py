@@ -14,13 +14,15 @@ class RewardsPage(QWidget):
         note=QLabel('金币是虚拟激励，与真实预算分开。预算奖励只有在你确认实际消费后，才记入预算。');note.setWordWrap(True);layout.addWidget(note)
         self.items=QListWidget();layout.addWidget(self.items,1)
         row=QHBoxLayout()
-        for label,callback in [('添加奖励',self.add),('兑换所选',self.redeem),('调整现实预算',self.budget)]:
+        for label,callback in [('添加奖励',self.add),('兑换所选',self.redeem),('调整现实预算',self.budget),('月度兑换额度',self.allowance)]:
             button=QPushButton(label);button.clicked.connect(callback);row.addWidget(button)
         layout.addLayout(row);layout.addWidget(QLabel('最近兑换'));self.history=QListWidget();layout.addWidget(self.history,1)
         confirm=QPushButton('确认所选奖励已实际消费');confirm.clicked.connect(self.confirm);layout.addWidget(confirm)
         hub.changed.connect(lambda *_:self.refresh());self.refresh()
     def refresh(self):
         values=self.hub.rewards.balances();self.balance.setText(f"{values['coins']} 金币  ·  现实预算 ¥{values['budget_cents']/100:.2f}")
+        quota=self.hub.rewards.allowance.status()
+        self.balance.setText(self.balance.text()+f"  ·  现实奖励可兑换 ¥{quota['available_cents']/100:.2f}（含结转）")
         names=dict((r[0],r[1]) for r in list_roles(self.hub.root))
         previous=self.items.currentRow();self.items.clear()
         for r in self.hub.rewards.list():
@@ -66,6 +68,18 @@ class RewardsPage(QWidget):
         note,ok=QInputDialog.getText(self,'预算来源','调整原因：')
         if ok and QMessageBox.question(self,'确认实际预算变动',f'预算调整 ¥{amount:.2f}，原因：{note}。确认？')==QMessageBox.StandardButton.Yes:
             self.invoke(lambda:self.hub.rewards.adjust_budget(round(amount*100),note,uuid.uuid4().hex))
+    def allowance(self):
+        service=self.hub.rewards.allowance;state=service.status()
+        text=(f"本月额度 ¥{state['cents']/100:.2f} · 含结转剩余 ¥{state['available_cents']/100:.2f}\n"
+              f"上月 {state['last_hours']:.1f} 小时 / {state['last_days']} 天（共 {state['last_total']} 天）\n"
+              f"修改需 ≥{state['hours']} 小时、活跃比例 >{state['ratio']:.0%}，每月一次；修改次月生效。")
+        if not state['can_change']:QMessageBox.information(self,'月度额度',text);return
+        amount,ok=QInputDialog.getDouble(self,'月度额度',text+'\n新的月额度（元）：',state['next_cents']/100,1,100000,2)
+        if not ok:return
+        hours,ok=QInputDialog.getDouble(self,'修改条件','以后修改所需的上月专注小时：',state['hours'],1,744,1)
+        if ok and QMessageBox.question(self,'确认额度与条件',f'次月起 ¥{amount:.2f}；时长门槛 {hours} 小时。确认？')==QMessageBox.StandardButton.Yes:
+            self.invoke(lambda:service.change(round(amount*100),hours,state['ratio']))
+
     def confirm(self):
         item=self.history.currentItem()
         if not item:return

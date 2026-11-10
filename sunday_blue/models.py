@@ -50,6 +50,7 @@ class RoleProvider(Provider):
             except (OSError,sqlite3.Error):pass  # Diagnostic failure must not lose a reply.
 
     def _record(self,started,usage,error,max_tokens):
+        if self.purpose=='focus_feedback' and self.cancel.is_set():return
         database=ModuleDB(self.root)
         with database.connect() as db:
             db.execute('''CREATE TABLE IF NOT EXISTS request_diagnostics (

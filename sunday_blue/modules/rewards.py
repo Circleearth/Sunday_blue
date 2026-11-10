@@ -7,6 +7,8 @@ from ..roles import require_role
 class Rewards:
     def __init__(self, database):
         self.db=database
+        from .allowance import Allowance
+        self.allowance=Allowance(database)
         with self.db.connect() as db:
             db.executescript('''CREATE TABLE IF NOT EXISTS coin_ledger (
                 id TEXT PRIMARY KEY, amount INTEGER NOT NULL, reason TEXT, created TEXT);
@@ -53,6 +55,7 @@ class Rewards:
             if reward['kind']=='gift':require_role(self.db.root,reward['role_id'])
             if self.balance(db)<reward['cost']:raise ValueError('金币不足；休息不需要兑换，也不会扣关系。')
             rid=uuid.uuid4().hex
+            if reward['kind']=='budget':self.allowance.reserve(db,rid,reward['cents'])
             db.execute('INSERT INTO coin_ledger VALUES(?,?,?,?)',(rid,-reward['cost'],'redeem:'+reward_id,stamp()))
             db.execute('INSERT INTO redemptions VALUES(?,?,?,?,?,?,?,?,?,?)',(rid,request_id,reward_id,reward['title'],reward['cost'],
                 reward['kind'],'pending' if reward['kind']=='budget' else 'redeemed',reward['role_id'],reward['cents'],stamp()))

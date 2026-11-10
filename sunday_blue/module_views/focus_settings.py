@@ -27,6 +27,7 @@ class FocusSettings(QDialog):
             self.fields[key] = field; form.addRow(title, field)
         self.auto_loop = QCheckBox('自然到点后自动循环专注与休息（手动结束即停止）')
         self.auto_loop.setChecked(self.draft['auto_loop']); form.addRow(self.auto_loop)
+        self.llm=QCheckBox('人格动态气泡（每轮最多 4 次请求，失败用固定台词）');self.llm.setChecked(self.draft['llm_feedback']);form.addRow(self.llm)
         self.enabled = QCheckBox('阶段结束时播放声音'); self.enabled.setChecked(self.draft['sound_enabled'])
         form.addRow(self.enabled)
         self.volume = QSpinBox(); self.volume.setRange(0, 100); self.volume.setSuffix(' %')
@@ -66,7 +67,7 @@ class FocusSettings(QDialog):
 
     def values(self):
         return {k: field.value() for k, field in self.fields.items()} | {
-            'auto_loop': self.auto_loop.isChecked(), 'sound_enabled': self.enabled.isChecked(), 'volume': self.volume.value(), 'sounds': dict(self.sounds)}
+            'llm_feedback':self.llm.isChecked(), 'auto_loop': self.auto_loop.isChecked(), 'sound_enabled': self.enabled.isChecked(), 'volume': self.volume.value(), 'sounds': dict(self.sounds)}
 
     def listen(self, phase):
         self.preview.play(phase, self.values())

@@ -836,7 +836,7 @@ class MainWindow(QWidget):
             QMessageBox.information(self,'还有任务在运行','请停止或等待所有会话中的任务完成后再关闭。右侧 ● 表示有任务运行的角色。')
             event.ignore();return
         if hasattr(self,'module_hub') and self.module_hub.jobs:
-            QMessageBox.information(self,'会议还在运行','请先停止或等待会议回复完成再退出。');event.ignore();return
+            QMessageBox.information(self,'后台任务还在运行','请先停止或等待会议回复、同步任务完成再退出。');event.ignore();return
         self.config.value['last_role']=self.role
         self.config.value['active_sessions']=self.current_by_role
         self.config.save()

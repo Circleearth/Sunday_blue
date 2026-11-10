@@ -69,3 +69,24 @@
 更详细的下一轮制作任务只在 `handoff/codex-to-claude.md` 最新段维护，不另建任务系统。
 
 番茄钟版本回滚前先结束当前阶段（尤其是休息），再回退代码；旧版本不认识休息元数据。保留新增表和音频，不通过删库回滚。
+
+
+## 共享功能与限额增量（2026-11-10）
+
+仅按下表增量阅读；本次用户明确要求不制作 Claude 交接任务，维护记录放本索引及 README。
+
+| 模块 | 文件 | 数据边界 |
+|---|---|---|
+| 动态番茄钟气泡 | modules/focus_dialogue.py | 后台线程 + Qt 信号；事件请求 ID 丢弃过时回包，临时上下文不入聊天。每日调用计数独立 module_settings。 |
+| 月度现实奖励额度 | modules/allowance.py + rewards.py | allowance_policy / allowance_months / allowance_usage；人民币分；与兑换同事务占额，次月新额度，累积结转。 |
+| 共享提醒/打卡 | modules/planner.py | schedules / reminder_occurrences / checkins / checkin_history；循环实例稳定唯一键，保留历史。 |
+| 两渠道投递 | modules/reminder_delivery.py | 电脑声与 QQ 分别记状态；QQ 复用原插件 transport 函数，不改守护代码；外部发送与本地库不能承诺 exactly-once。 |
+| 记录整理 | modules/organizer.py；extensions/plugins/kia-organizer | organized_records / record_revisions；逻辑分类目录、来源/内容哈希去重、可撤销、不自动确认 AI 推断。 |
+| 国内滴答只读 | modules/dida.py | dida_tasks / dida_history；按稳定 ID 更新、快照去重，消失不推断删除；DPAPI 授权独立保存，无原项目运行依赖。 |
+| 共享页面 | module_views/planner.py | RemindersPage / CalendarPage / CheckinsPage；使用服务方法，不直接写 SQL。 |
+
+新测试 `test_shared_features.py`，动态气泡的真实本地 HTTP 验证在 `test_module_http.py`。真实国内只读联调已成功（29 条任务，仅读取，未打印正文或授权）；未发送真实 QQ 测试消息。第三方 Cookie 接口不是官方 OAuth 合同，变化或 401 时先区分凭据问题，不随意改已验证请求格式。
+
+新增表仅追加，原聊天、角色、人格、LivingMemory、QQ 守护存储不迁移。回退代码时保留全部新增表和本地加密授权；额度/投递历史不能通过删库“修复”。未配置 QQ / 滴答时核心本地功能仍可使用。现有角色删除不删除这些共享模块数据。
+
+2026-11-11 收尾：全量回归 135 tests / 63.545s / OK；中断恢复后仅复核新增共享功能，7 tests / 0.536s / OK。未新增业务范围、未制作 Claude 交接任务。国内滴答只读成功不等于远端写操作已开放；QQ 新共享渠道本轮未向真实联系人试发。

@@ -83,7 +83,7 @@ class Provider:
                 body['stream_options'] = {'include_usage': True}
         try:
             with requests.post(endpoint(c['base_url'], protocol), headers=headers, json=body,
-                               stream=stream, timeout=(15, 60), allow_redirects=False) as response:
+                               stream=stream, timeout=c.get("request_timeout", (15, 60)), allow_redirects=False) as response:
                 self.response = response
                 if response.status_code >= 300:
                     # Gateway error bodies can contain request credentials; omit them.
