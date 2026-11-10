@@ -177,6 +177,14 @@ class Settings(QDialog):
                 self.value['roles'][role] = dialog.value
         capabilities.clicked.connect(configure_capabilities)
         layout.addWidget(capabilities)
+        models = QPushButton('配置此角色的独立模型与推理')
+        def configure_model():
+            from .model_preferences import RoleModelDialog
+            role=self.permission_role.currentData()
+            dialog=RoleModelDialog(self.config.root,self.value,role,self)
+            if dialog.exec()==QDialog.DialogCode.Accepted:self.value['roles'][role]['model_profile']=dialog.profile
+        models.clicked.connect(configure_model)
+        layout.addWidget(models)
         self.roots = QListWidget()
         layout.addWidget(self.roots)
         row = QHBoxLayout()

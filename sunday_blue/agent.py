@@ -14,6 +14,7 @@ from .plugin_runtime import system_context,load,discover,turn_hooks
 from .roles import require_role
 from .personas import persona_text
 from .capabilities import TurnCapabilities, RESPONSIBILITIES
+from .models import RoleProvider
 
 _COMPACT = re.compile(r'^\s*/\s*compact\b[\s:：]*$', re.IGNORECASE)
 
@@ -54,6 +55,16 @@ def system_prompt(root, role, config):
         parts.append('本角色经用户确认的事实与偏好（与自动整理的历史记忆区分）：\n' + (root/'data'/'memory'/role/'long_term.md').read_text(encoding='utf-8')[:100000])
     parts.append('[本轮启用的流程与插件]\n' + extension_text(root, config['roles'][role]))
     parts.append('[动态情境]\n' + system_context(root,config,role))
+    from .modules.social import recent_context
+    shared = recent_context(root,role)
+    if shared: parts.append(shared)
+    if config['features'].get('activity'):
+        from .modules.activity import context as activity_context
+        parts.append(activity_context(root))
+    if (root/'data/modules.sqlite3').exists():
+        from .modules.database import ModuleDB
+        from .modules.relations import Relations
+        parts.append(Relations(ModuleDB(root)).context(role))
     return '\n\n'.join(parts)
 
 class Agent(QThread):
@@ -71,7 +82,8 @@ class Agent(QThread):
         self.cancel = threading.Event()
         self.clients = []
         self._mcp = {}
-        self.provider = Provider(config['api'], self.cancel)
+        self.provider = RoleProvider(self.root,self.role,config,self.cancel)
+        self.config['api'] = self.provider.config
         self.greeting=None;self.greeting_message=None;self.spoke=False
 
     def approve(self, title, subject, detail):
@@ -137,6 +149,9 @@ class Agent(QThread):
         if self.config['features'].get('collaboration'):
             from .role_events import SCHEMAS
             tools.extend(SCHEMAS)
+        if self.config['features'].get('activity'):
+            from .modules.activity import SCHEMA
+            tools.append(SCHEMA)
         if self.config['features'].get('mcp'):
             for spec in self.config.get('mcp_servers', []):
                 if not spec.get('enabled') or self.role not in spec.get('roles', []):
@@ -283,6 +298,9 @@ class Agent(QThread):
                     elif name == 'move': result = ft.move(**args)
                     elif name == 'memory_read': result = (self.root/'data'/'memory'/self.role/'long_term.md').read_text(encoding='utf-8')
                     elif name == 'memory_write': result = ft.write('', content=args['content'], memory=True)
+                    elif name == 'activity_recent':
+                        from .modules.activity import recent
+                        result = recent(self.root,**args)
                     elif name.startswith('event_'):
                         from .role_events import EventLedger
                         ledger = EventLedger(self.store)

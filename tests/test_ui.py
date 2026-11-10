@@ -35,7 +35,10 @@ class UITests(unittest.TestCase):
         while time.monotonic()<deadline:
             APP.processEvents()
             if predicate():return
-            QTest.qWait(20)
+            # qWait pumps Qt but may retain the GIL on Windows/PySide. Give the
+            # Python worker time between filesystem calls without extending the deadline.
+            QTest.qWait(10)
+            time.sleep(.01)
         self.fail('UI timeout')
     def test_role_drafts_history_and_fork(self):
         self.window.input.setPlainText('unsent draft')

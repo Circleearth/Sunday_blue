@@ -20,7 +20,7 @@ class CapabilityDialog(QDialog):
         row = QGridLayout(); self.grants = {}
         for index, (key, title) in enumerate(BUILTINS.items()):
             box = QCheckBox(title.split('（')[0])
-            box.setChecked(self.value.get('capabilities', {}).get(key, key != 'collaboration'))
+            box.setChecked(self.value.get('capabilities', {}).get(key, role in ('rui','kia') if key=='activity' else key != 'collaboration'))
             box.setToolTip('还需全局功能开关启用；不会新增任何目录或 MCP 授权。')
             self.grants[key] = box; row.addWidget(box,index//2,index%2)
             box.toggled.connect(self.reload)

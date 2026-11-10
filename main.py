@@ -27,6 +27,8 @@ def main():
         return 0
     try:
         window=MainWindow(Config(root))
+        from sunday_blue.modules.workspace import install_workspace
+        install_workspace(window)
     except Exception as exc:
         QMessageBox.critical(None,'启动失败',str(exc))
         return 1

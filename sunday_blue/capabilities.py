@@ -10,7 +10,8 @@ from .plugin_runtime import discover
 
 BUILTINS = {'files': '授权目录的文件读写', 'memory': '本角色已确认记忆（写入需审阅）',
             'mcp': '该角色已绑定的 MCP 服务（启动和调用需审阅）',
-            'collaboration': '受控协作记录（决定、待办与完成状态需确认）'}
+            'collaboration': '受控协作记录（决定、待办与完成状态需确认）',
+            'activity': '现实记录与专注统计（只读）'}
 ALWAYS = {'plugin:time-context', 'plugin:daypart-greetings'}
 RESPONSIBILITIES = {
     'kia': '默认负责记录、归档、信息提取与初步分类；不要把记录自动升级为完整规划或已确认决定。',
@@ -25,8 +26,8 @@ def allowed_catalog(root, config, role):
     config = config | {'_plugin_root': str(root)}
     cfg = config['roles'][role]
     result = {name: label for name, label in BUILTINS.items()
-              if config['features'].get(name, name == 'collaboration')
-              and cfg.get('capabilities', {}).get(name, name != 'collaboration')}
+              if config['features'].get(name, name in ('collaboration','activity'))
+              and cfg.get('capabilities', {}).get(name, role in ('rui','kia') if name=='activity' else name != 'collaboration')}
     if 'mcp' in result and not any(s.get('enabled') and role in s.get('roles', []) for s in config.get('mcp_servers', [])):
         result.pop('mcp')
     for name in dict.fromkeys(cfg.get('skills', [])):
@@ -34,6 +35,7 @@ def allowed_catalog(root, config, role):
     for name in dict.fromkeys(cfg.get('plugins', [])):
         result['prompt:' + name] = name + '（已授权提示词模块）'
     for pid, meta in discover(root).items():
+        if meta.get('module_only'):continue
         if enabled(config, role, pid, meta):
             result['plugin:' + pid] = (meta.get('name', pid) + '：' + meta.get('description', ''))[:160]
     return result

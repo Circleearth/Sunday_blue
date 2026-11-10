@@ -49,7 +49,7 @@ class RevisionCore(Fixture):
         with self.store.connect() as db:self.assertIn('partial',db.execute("SELECT detail FROM audit WHERE action='withdraw_turn'").fetchone()[0])
 
     def test_external_plugins_schema_parameters_and_uninstall(self):
-        c=self.config.snapshot();self.assertEqual(set(discover(self.root)),{'time-context','daypart-greetings','qq-reminders','livingmemory'})
+        c=self.config.snapshot();self.assertEqual(set(discover(self.root)),{'time-context','daypart-greetings','qq-reminders','livingmemory','focus-cheer'})
         c['roles']['rui']['plugin_settings']={'time-context':{'include_time':False}}
         c['roles']['rui']['native_plugins']={'qq-reminders':False}
         c['roles']['red']['native_plugins']={'qq-reminders':False}

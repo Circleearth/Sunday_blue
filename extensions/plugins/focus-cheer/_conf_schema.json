@@ -1,0 +1,3 @@
+{
+  "closing": {"type": "string", "default": "这份努力已经留下来了，先休息一下吧。", "description": "完成后的补充话语"}
+}

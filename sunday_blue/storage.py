@@ -87,6 +87,7 @@ class Config:
             self.value['last_role'] = loaded.get('last_role', 'rui')
             self.value['active_sessions'] = loaded.get('active_sessions', {})
             self.value['ui_theme'] = loaded.get('ui_theme', 'dark')
+            self.value['main_page'] = loaded.get('main_page', 'focus')
             self.value['ui_display'].update(loaded.get('ui_display', {}))
             self.value['close_to_tray'] = loaded.get('close_to_tray', False)
             self.value['chat_display'] = loaded.get('chat_display', {})

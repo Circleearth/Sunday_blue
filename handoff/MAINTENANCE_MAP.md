@@ -43,5 +43,7 @@
 2026-11-04：ui.py 继续负责增量行和滚动状态，_message_rows 维持同消息延迟分段顺序；Bubble.fit 必须先解除旧固定高度再计算，防止每次增长 4 像素。不要重新引入 _diag_log 临时调试全局。停止先 cancel 再等待 finished 后 Store.withdraw_turn，避免跨线程删写竞争。后台关闭由 tray.py 管理，不运行服务、不打包。
 # 角色注册与生命周期（2026-11-09）
 
+**2026-11-10 起新增工作先看 [模块索引](../docs/MODULE_INDEX.md) 和 codex-to-claude 最新交接。** 专注/商店/关系/会议 UI 在 `module_views`，业务在 `modules`；增量阅读，不重做已验收的角色管理，不默认截图。最新用户要求群聊参考当前发言角色自己的私聊记忆，并让私聊衔接最新群聊。
+
 所有新模块从 `roles.list_roles(root)` / `require_role(root, id)` 取角色；不要新增固定角色列表，不要把显示名用作路径。`role_lifecycle.py` 是唯一角色清理入口，`role_preferences.py` 是管理界面。插件有独立后台/数据时，必须增加明确归属与清理适配后才允许删除；未知状态默认阻止。审查及恢复约束见 `docs/ROLE_SYSTEM_REVIEW.md`，测试 `tests/test_roles.py`。删除流程不可用正式角色做测试。
 

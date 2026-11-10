@@ -273,7 +273,7 @@ async def main():
     raw = SavedConfig(json.loads(saved.read_text(encoding='utf-8')) if saved.exists() else {})
     raw['provider_settings'] = {'embedding_provider_id': 'sunday-ollama', 'llm_provider_id': 'sunday-chat'}
     plugin.config_manager = ConfigManager(raw)
-    plugin.context = Context(ChatProvider(ROOT), embedding)
+    plugin.context = Context(ChatProvider(ROOT, ROLE), embedding)
     init_i18n('zh')
     init_prompt_manager(str(DATA))
     plugin.initializer = PluginInitializer(plugin.context, plugin.config_manager, str(DATA))

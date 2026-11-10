@@ -7,7 +7,7 @@ from PySide6.QtCore import Qt, QTimer, Signal, QSize
 from PySide6.QtGui import QIcon, QPixmap, QColor, QPainter, QPen, QLinearGradient, QFont, QTextOption
 from PySide6.QtWidgets import (QApplication, QWidget, QFrame, QLabel, QPushButton, QHBoxLayout,
     QVBoxLayout, QListWidget, QListWidgetItem, QScrollArea, QPlainTextEdit, QTextBrowser,
-    QProgressBar, QDialog, QMessageBox, QInputDialog, QFileDialog, QSizeGrip, QSizePolicy, QMenu, QToolButton)
+    QProgressBar, QDialog, QMessageBox, QInputDialog, QFileDialog, QSizeGrip, QSizePolicy, QMenu, QToolButton, QStackedWidget)
 from .storage import Store, plain
 from .roles import list_roles, require_role
 from .agent import Agent, is_compact_command
@@ -68,14 +68,16 @@ class MainWindow(QWidget):
         main=QVBoxLayout(shell); main.setContentsMargins(1,1,1,1); main.setSpacing(0)
         top=TitleBar(); top.setObjectName('top'); top.setFixedHeight(56)
         bar=QHBoxLayout(top); bar.setContentsMargins(20,7,10,7)
-        bar.addWidget(text_label('Sunday Blue','brand'));bar.addStretch()
+        bar.addWidget(text_label('Sunday Blue','brand'))
+        self.module_nav=QHBoxLayout();bar.addLayout(self.module_nav);bar.addStretch()
         bar.addWidget(button('设置',self.settings,'ghost'))
         self.theme_button=button('☀  浅色' if self.ui_theme=='dark' else '☾  暗色',self.toggle_theme,'ghost'); bar.addWidget(self.theme_button)
         bar.addSpacing(10)
         for title,fn,obj in [('—',self.showMinimized,'ghost'),('□',self.maximize,'ghost'),('×',self.close,'close')]:
             b=button(title,fn,obj); b.setFixedSize(34,32); bar.addWidget(b)
         main.addWidget(top)
-        body=QHBoxLayout(); body.setSpacing(0); main.addLayout(body,1)
+        self.page_stack=QStackedWidget();self.chat_page=QWidget();self.page_stack.addWidget(self.chat_page);main.addWidget(self.page_stack,1)
+        body=QHBoxLayout(self.chat_page);body.setContentsMargins(0,0,0,0);body.setSpacing(0)
         self._sidebar(body); self._chat(body); self._character(body); self._rail(body)
         foot=QHBoxLayout(); foot.setContentsMargins(16,3,3,3)
         foot.addWidget(text_label('SUNDAY BLUE  /  0.1','eyebrow')); foot.addStretch()
@@ -90,7 +92,8 @@ class MainWindow(QWidget):
     def role_busy(self, role):
         from .memory_preferences import _jobs, _windows
         return (any(w.role == role for w in self.workers.values())
-                or any(job.isRunning() for job in _jobs) or bool(_windows))
+                or any(job.isRunning() for job in _jobs) or bool(_windows)
+                or (hasattr(self,'module_hub') and role in self.module_hub.busy_roles()))
 
     def manage_roles(self):
         from .role_preferences import RoleManager
@@ -111,6 +114,7 @@ class MainWindow(QWidget):
         self._populate_roles()
         self._force_rebuild=True
         self.switch_role(self.role)
+        if hasattr(self,'module_hub'):self.module_hub.changed.emit('roles')
 
     def maximize(self):
         self.showNormal() if self.isMaximized() else self.showMaximized()
@@ -647,7 +651,8 @@ class MainWindow(QWidget):
         if self.sid in self.workers:return
         text=self.input.toPlainText().strip()
         if not text:return
-        if not self.config.value['api']['model']:
+        from .models import resolve_api
+        if not resolve_api(self.config.value,self.role)['model']:
             self.settings(); return
         if self.sid is None:
             # Empty welcome state (e.g. right after archiving the only session): open a fresh one.
@@ -794,7 +799,8 @@ class MainWindow(QWidget):
         else:
             data=json.dumps(self.store.messages(self.sid,context=True),ensure_ascii=False)+session['summary']
             tokens=math.ceil(len(data)/2);prefix='历史估算（不含系统提示）'
-        limit=self.config.value['api']['context_limit'];percent=min(100,round(tokens/limit*100))
+        from .models import resolve_api
+        limit=resolve_api(self.config.value,self.role)['context_limit'];percent=min(100,round(tokens/limit*100))
         self.context_label.setText(f'{prefix}\n{tokens:,} / {limit:,} tokens · {percent}%')
         self.context_progress.setValue(percent)
 
@@ -829,7 +835,10 @@ class MainWindow(QWidget):
         if self.workers:
             QMessageBox.information(self,'还有任务在运行','请停止或等待所有会话中的任务完成后再关闭。右侧 ● 表示有任务运行的角色。')
             event.ignore();return
+        if hasattr(self,'module_hub') and self.module_hub.jobs:
+            QMessageBox.information(self,'会议还在运行','请先停止或等待会议回复完成再退出。');event.ignore();return
         self.config.value['last_role']=self.role
         self.config.value['active_sessions']=self.current_by_role
         self.config.save()
+        if hasattr(self,'module_hub'):self.module_hub.close()
         event.accept()

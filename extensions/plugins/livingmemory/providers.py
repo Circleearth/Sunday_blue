@@ -6,18 +6,19 @@ import requests
 from astrbot.core.provider.provider import Provider, EmbeddingProvider
 from sunday_blue.provider import Provider as HostProvider
 from sunday_blue.storage import Config, plain
+from sunday_blue.models import RoleProvider
 
 
 class ChatProvider(Provider):
     provider_config = {'id': 'sunday-chat'}
 
-    def __init__(self, root):
-        self.root = root
+    def __init__(self, root, role='rui'):
+        self.root, self.role = root, role
 
     async def text_chat(self, prompt, system_prompt='', **kwargs):
-        config = Config(self.root).value['api']
+        config = Config(self.root).snapshot()
         result, _, finish = await asyncio.to_thread(
-            HostProvider(config).complete, system_prompt,
+            RoleProvider(self.root,self.role,config,purpose='memory').complete, system_prompt,
             [{'role': 'user', 'content': prompt}])
         if finish in ('length', 'max_tokens'):
             raise RuntimeError('记忆整理输出被截断，请增加 API 最大输出长度。')

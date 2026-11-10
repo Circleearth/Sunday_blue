@@ -1,0 +1,10 @@
+{
+  "id": "focus-cheer",
+  "name": "专注陪伴 · 最小事件插件",
+  "version": "1.0.0",
+  "description": "只根据已完成的专注事件提供本地短反馈，不调用模型，不写入长期聊天。可作为新模块插件模板。",
+  "api_version": 1,
+  "entry": "main.py",
+  "default_enabled": false,
+  "module_only": true
+}

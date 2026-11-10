@@ -73,6 +73,10 @@ class Provider:
                 body['thinking'] = {'type': 'enabled', 'budget_tokens': thinking_budget}
         else:
             body['messages'] = openai_messages(system, messages)
+            if c.get('reasoning_effort'):
+                if c.get('reasoning_support') != 'openai_effort':
+                    raise ValueError('此连接未声明支持 reasoning_effort；请先在角色模型设置中确认服务商支持。')
+                body['reasoning_effort'] = c['reasoning_effort']
             if tools:
                 body['tools'] = [{'type': 'function', 'function': {'name': t['name'], 'description': t['description'], 'parameters': t['input_schema']}} for t in tools]
             if stream:
