@@ -72,3 +72,21 @@ class ModuleHTTPTests(unittest.TestCase):
         diagnostics=self.hub.diagnostics()[0]
         self.assertEqual(diagnostics['model'],'reasoning-fixture');self.assertEqual(diagnostics['reasoning'],'high')
         self.assertNotIn('fixture',diagnostics['usage']);self.assertEqual(diagnostics['error'],'')
+    def test_role_model_dialog_test_button_sends_real_request_and_cancel_writes_nothing(self):
+        from sunday_blue.model_preferences import RoleModelDialog
+        # open + cancel must not write any formal config value
+        before=self.config.snapshot()
+        dialog=RoleModelDialog(self.config.root,before,'red',None)
+        dialog.model.setText('changed-but-cancelled')
+        dialog.reject()
+        self.assertEqual(self.config.value['roles']['red'],before['roles']['red'])
+        # the test button makes a real request through the local fixture server
+        self.server.answers=['OK']
+        self.assertEqual(len(self.server.seen),0)
+        dialog.test()
+        deadline=time.monotonic()+6
+        while dialog.worker and dialog.worker.isRunning() and time.monotonic()<deadline:APP.processEvents();time.sleep(.01)
+        APP.processEvents()
+        self.assertEqual(len(self.server.seen),1)
+        self.assertIn('连接成功',dialog.result_label.text())
+        dialog.deleteLater();APP.processEvents()

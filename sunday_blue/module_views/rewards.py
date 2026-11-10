@@ -21,14 +21,23 @@ class RewardsPage(QWidget):
         hub.changed.connect(lambda *_:self.refresh());self.refresh()
     def refresh(self):
         values=self.hub.rewards.balances();self.balance.setText(f"{values['coins']} 金币  ·  现实预算 ¥{values['budget_cents']/100:.2f}")
+        names=dict((r[0],r[1]) for r in list_roles(self.hub.root))
         previous=self.items.currentRow();self.items.clear()
         for r in self.hub.rewards.list():
-            suffix=f" · ¥{r['cents']/100:.2f}（实际消费需确认）" if r['kind']=='budget' else ' · 角色礼物' if r['kind']=='gift' else f" · {r['minutes']} 分钟"
-            item=QListWidgetItem(f"{r['title']} · {r['cost']} 金币"+suffix);item.setData(Qt.ItemDataRole.UserRole,r);self.items.addItem(item)
+            if r['kind']=='gift':
+                suffix=f" · 送给 {names.get(r['role_id'],'未知角色')}"
+            elif r['kind']=='budget':
+                suffix=f" · ¥{r['cents']/100:.2f}（实际消费需确认）"
+            else:
+                suffix=f" · {r['minutes']} 分钟"
+            item=QListWidgetItem(f"{r['title']} · {r['cost']} 金币{suffix}");item.setData(Qt.ItemDataRole.UserRole,r);self.items.addItem(item)
         self.items.setCurrentRow(max(0,previous));self.history.clear()
         for r in self.hub.rewards.history():
             status='待确认实际消费' if r['status']=='pending' else '已确认消费' if r['status']=='confirmed' else '已兑换'
-            item=QListWidgetItem(f"{r['title']} · {status} · {r['cost']} 金币");item.setData(Qt.ItemDataRole.UserRole,r);self.history.addItem(item)
+            detail=''
+            if r['kind']=='gift':detail=f" · 送给 {names.get(r['role_id'],'未知角色')}"
+            elif r['kind']=='budget':detail=f" · ¥{r['cents']/100:.2f}"
+            item=QListWidgetItem(f"{r['title']} · {status} · {r['cost']} 金币{detail}");item.setData(Qt.ItemDataRole.UserRole,r);self.history.addItem(item)
     def invoke(self,fn):
         try:result=fn();self.hub.relations.project();self.refresh();self.hub.changed.emit('rewards');return result
         except Exception as exc:QMessageBox.warning(self,'未完成',str(exc))

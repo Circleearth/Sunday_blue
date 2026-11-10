@@ -1,3 +1,4 @@
+from datetime import datetime
 from html import escape
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QLabel,QComboBox,QPushButton,QTextBrowser,
@@ -5,23 +6,28 @@ from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QLabel,QComboBox,
 from ..roles import list_roles
 
 
+def _when(iso):
+    try:return datetime.fromisoformat(iso).astimezone().strftime('%m-%d %H:%M')
+    except Exception:return ''
+
+
 class SocialPage(QWidget):
     def __init__(self,hub,parent=None):
-        super().__init__(parent);self.hub=hub;self._rendered=None
+        super().__init__(parent);self.hub=hub;self._rendered=None;self._stopped=set();self._drafts={};self._current_group=None
         layout=QVBoxLayout(self);layout.setContentsMargins(28,22,28,22)
         title=QLabel('一起把日子过明白。');title.setObjectName('title');layout.addWidget(title)
-        row=QHBoxLayout();self.groups=QComboBox();self.groups.currentIndexChanged.connect(self.refresh);row.addWidget(self.groups,1)
+        row=QHBoxLayout();self.groups=QComboBox();self.groups.currentIndexChanged.connect(self._group_changed);row.addWidget(self.groups,1)
         for label,callback in [('创建会议',self.create),('主动交流设置',self.preferences),('请求记录',self.diagnostics)]:
             button=QPushButton(label);button.clicked.connect(callback);row.addWidget(button)
         layout.addLayout(row)
         self.memory=QCheckBox('角色参考各自最近私聊与长期记忆；私聊也衔接群聊经历');self.memory.toggled.connect(self.memory_changed);layout.addWidget(self.memory)
         self.messages=QTextBrowser();self.messages.setOpenExternalLinks(False);layout.addWidget(self.messages,1)
-        self.state=QLabel();self.state.setWordWrap(True);layout.addWidget(self.state)
+        self.state=QLabel();self.state.setWordWrap(True);self.state.setObjectName('muted');layout.addWidget(self.state)
         self.input=QPlainTextEdit();self.input.setMaximumHeight(90);layout.addWidget(self.input)
         row=QHBoxLayout();self.send=QPushButton('发送到会议');self.send.setObjectName('primary');self.send.clicked.connect(self.post);row.addWidget(self.send)
         self.retry=QPushButton('继续回复');self.retry.clicked.connect(self.resume);row.addWidget(self.retry)
         self.summary=QPushButton('结束话题并总结');self.summary.clicked.connect(self.summarize);row.addWidget(self.summary)
-        self.stop=QPushButton('停止回复');self.stop.clicked.connect(lambda:hub.cancel_group(self.groups.currentData()));row.addWidget(self.stop);layout.addLayout(row)
+        self.stop=QPushButton('停止回复');self.stop.clicked.connect(self.stop_clicked);row.addWidget(self.stop);layout.addLayout(row)
         hub.changed.connect(lambda *_:self.refresh());hub.failed.connect(self.error);self.refresh()
     def error(self,text):self.state.setText(text)
     def invoke(self,fn):
@@ -31,21 +37,48 @@ class SocialPage(QWidget):
         selected=self.groups.currentData();groups=self.hub.social.groups()
         current=[self.groups.itemData(i) for i in range(self.groups.count())]
         if current!=[g['id'] for g in groups]:
+            # 重建下拉前保存上一群草稿；期间屏蔽信号，改由下方显式恢复目标群草稿
+            if self._current_group is not None:self._drafts[self._current_group]=self.input.toPlainText()
             self.groups.blockSignals(True);self.groups.clear()
             for g in groups:self.groups.addItem(g['title'],g['id'])
-            self.groups.setCurrentIndex(max(0,self.groups.findData(selected)));self.groups.blockSignals(False)
+            index=max(0,self.groups.findData(selected));self.groups.setCurrentIndex(index)
+            gid=self.groups.itemData(index)
+            self.input.setPlainText(self._drafts.get(gid,'') if gid else '');self._current_group=gid
+            self.groups.blockSignals(False)
         gid=self.groups.currentData();busy=gid in self.hub.busy_groups()
+        if busy:self._stopped.discard(gid)
         self.send.setEnabled(bool(gid) and not busy);self.retry.setEnabled(bool(gid) and not busy);self.summary.setEnabled(bool(gid) and not busy);self.stop.setEnabled(busy)
         self.memory.setEnabled(bool(gid) and not busy)
-        if not gid:self.messages.setPlainText('创建一个群，选择一起交流的角色。群聊不会让角色直接读取彼此的私人历史。');return
+        if not gid:self.messages.setPlainText('创建一个群，选择一起交流的角色。群聊不会让角色直接读取彼此的私人历史。');self.state.setText('');return
         group=self.hub.social.group(gid);self.memory.blockSignals(True);self.memory.setChecked(bool(group['private_context']));self.memory.blockSignals(False)
+        names=dict((r[0],r[1]) for r in list_roles(self.hub.root))
         messages=self.hub.social.messages(gid);key=(gid,tuple(m['id'] for m in messages))
         if self._rendered!=key:
             bar=self.messages.verticalScrollBar();follow=bar.maximum()-bar.value()<24;position=bar.value()
-            self.messages.setHtml('<br>'.join('<p><b>'+escape(m['name'])+'</b><br>'+escape(m['content']).replace('\n','<br>')+'</p>' for m in messages))
+            # 发送者名称取历史快照（m['name']），不受角色改名破坏；附带时间
+            self.messages.setHtml('<br>'.join(
+                f'<p><b>{escape(m["name"])}</b><span style="color:#888888"> {_when(m["created"])}</span><br>{escape(m["content"]).replace(chr(10),"<br>")}</p>'
+                for m in messages))
             bar.setValue(bar.maximum() if follow or self._rendered is None or self._rendered[0]!=gid else min(position,bar.maximum()));self._rendered=key
-        if busy:self.state.setText('角色正在倾听并判断是否接话；允许沉默，不强迫每个人发言。')
-        elif self.hub.social.memory_status:self.state.setText('；'.join(k+'：'+v for k,v in self.hub.social.memory_status.items()))
+        if busy:
+            self.state.setText('角色正在倾听并判断是否接话；允许沉默，不强迫每个人发言。')
+        elif gid in self._stopped:
+            self.state.setText('已停止本次回复；可继续发消息，或点「继续回复」接上未说完的话题。')
+        else:
+            # 只按当前群成员过滤记忆支撑状态，不显示上一个群的状态
+            status=self.hub.social.memory_status
+            lines=[f'{names.get(rid,rid)}：{status[rid]}' for rid in group['members'] if rid in status]
+            self.state.setText('记忆支撑：'+'；'.join(lines) if lines else '')
+    def _group_changed(self,*_):
+        # 切群前保存上一群草稿，恢复本群草稿；刷新按钮不触碰输入框
+        if self._current_group is not None:self._drafts[self._current_group]=self.input.toPlainText()
+        gid=self.groups.currentData()
+        self.input.setPlainText(self._drafts.get(gid,''));self._current_group=gid
+        self.refresh()
+    def stop_clicked(self):
+        gid=self.groups.currentData()
+        if gid:self._stopped.add(gid)
+        self.hub.cancel_group(gid)
     def memory_changed(self,enabled):
         gid=self.groups.currentData()
         if gid:self.invoke(lambda:self.hub.social.set_memory_support(gid,enabled))
@@ -65,8 +98,10 @@ class SocialPage(QWidget):
             self.invoke(create)
     def post(self):
         text=self.input.toPlainText().strip()
-        if text and self.invoke(lambda:self.hub.send_group(self.groups.currentData(),text)):self.input.clear()
-    def resume(self):self.invoke(lambda:self.hub.retry_group(self.groups.currentData()))
+        if text and self.invoke(lambda:self.hub.send_group(self.groups.currentData(),text)):
+            self._stopped.discard(self.groups.currentData());self._drafts.pop(self.groups.currentData(),None);self.input.clear()
+    def resume(self):
+        self.invoke(lambda:self.hub.retry_group(self.groups.currentData()))
     def summarize(self):self.invoke(lambda:self.hub.summarize_group(self.groups.currentData()))
     def preferences(self):
         cfg=self.hub.social.get_settings();dialog=QDialog(self);dialog.setWindowTitle('主动交流与用量');form=QFormLayout(dialog);widgets={}

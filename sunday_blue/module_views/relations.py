@@ -14,7 +14,7 @@ class RelationsPage(QWidget):
     def refresh(self):
         selected=self.items.currentRow();self.items.clear()
         for r in self.hub.relations.list():
-            item=QListWidgetItem(f"{r['name']} · 长期关系 {r['affinity']:.0f} · {r['mood_label']}\n{r['last_event']}")
+            item=QListWidgetItem(f"{r['name']}\n长期关系 {r['affinity']:.0f} · 短期情绪 {r['mood_label']}\n{r['last_event']}")
             item.setData(Qt.ItemDataRole.UserRole,r['role_id']);self.items.addItem(item)
         self.items.setCurrentRow(max(0,selected))
     def report(self):
