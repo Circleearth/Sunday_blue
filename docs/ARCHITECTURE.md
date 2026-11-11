@@ -74,4 +74,12 @@ plugin_runtime 扫描 extensions/plugins/*/plugin.json，读取 _conf_schema.jso
 
 全量自动测试用隔离目录和本地 HTTP fixture。显式 `scripts/test_livingmemory_live.py --live-chat` 才使用当前 API 的少量真实调用，输入仍是合成测试文本，不读取用户会话。详见 [接入与维护](LIVINGMEMORY.md)。
 
-共享日程、分类记录、月度兑换额度和滴答只读适配层已接入，详细目录/表边界见 [模块索引](MODULE_INDEX.md) 的共享功能增量。动态番茄钟气泡只用短暂上下文与受限后台请求，不经过长期记忆写入链路。
+共享日程、分类记录、月度兑换额度和滴答适配层已接入，详细目录/表边界见 [模块索引](MODULE_INDEX.md) 的共享功能增量。动态番茄钟气泡只用短暂上下文与受限后台请求，不经过长期记忆写入链路。
+
+
+### 官方滴答任务同步与完成（2026-11-11）
+`module_views/planner.py::CheckinsPage/SyncJob` → `modules/dida.py` → `modules/dida_mcp.py`。
+官方 MCP 使用 API 口令 Bearer 授权，Streamable HTTP JSON/SSE；仅允许列清单、查询任务、获取单任务、完成任务及工具说明，未安装 CLI 或引入新依赖。
+读取与写入均由 QThread 执行；UI 渲染不触发完成操作。完成前读取当前任务，核对稳定 ID、dueDate、etag；先写操作凭据再请求远端。网络结果不确定时保留 unconfirmed，不盲目重试。同版本操作只能提交一次，循环下一期使用新日期/版本。
+`dida_mcp_auth` 使用 DPAPI；`dida_official_meta` 保存 projectId/etag/due/kind，`dida_completion_ops` 保存提交状态，原 `dida_tasks/history` 保存缓存与去重快照。新增表无破坏性迁移，回退代码保留数据及操作凭据。远端消失不推断完成或删除；已缓存未完成项不在活动查询中时按 ID 复核。
+官方说明：[MCP](https://help.dida365.com/articles/7438132116019216384)、[CLI](https://help.dida365.com/articles/7464976698707017728)。旧 Cookie v2/v3 路径仅为历史配置只读回退，不再作为本页授权入口。

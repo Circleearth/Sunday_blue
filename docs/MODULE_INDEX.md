@@ -82,7 +82,7 @@
 | 共享提醒/打卡 | modules/planner.py | schedules / reminder_occurrences / checkins / checkin_history；循环实例稳定唯一键，保留历史。 |
 | 两渠道投递 | modules/reminder_delivery.py | 电脑声与 QQ 分别记状态；QQ 复用原插件 transport 函数，不改守护代码；外部发送与本地库不能承诺 exactly-once。 |
 | 记录整理 | modules/organizer.py；extensions/plugins/kia-organizer | organized_records / record_revisions；逻辑分类目录、来源/内容哈希去重、可撤销、不自动确认 AI 推断。 |
-| 国内滴答只读 | modules/dida.py | dida_tasks / dida_history；按稳定 ID 更新、快照去重，消失不推断删除；DPAPI 授权独立保存，无原项目运行依赖。 |
+| 国内滴答同步/完成 | modules/dida.py / dida_mcp.py | dida_tasks / dida_history；按稳定 ID 更新、快照去重，消失不推断删除；DPAPI 授权独立保存，无原项目运行依赖。 |
 | 共享页面 | module_views/planner.py | RemindersPage / CalendarPage / CheckinsPage；使用服务方法，不直接写 SQL。 |
 
 新测试 `test_shared_features.py`，动态气泡的真实本地 HTTP 验证在 `test_module_http.py`。真实国内只读联调已成功（29 条任务，仅读取，未打印正文或授权）；未发送真实 QQ 测试消息。第三方 Cookie 接口不是官方 OAuth 合同，变化或 401 时先区分凭据问题，不随意改已验证请求格式。
@@ -90,3 +90,12 @@
 新增表仅追加，原聊天、角色、人格、LivingMemory、QQ 守护存储不迁移。回退代码时保留全部新增表和本地加密授权；额度/投递历史不能通过删库“修复”。未配置 QQ / 滴答时核心本地功能仍可使用。现有角色删除不删除这些共享模块数据。
 
 2026-11-11 收尾：全量回归 135 tests / 63.545s / OK；中断恢复后仅复核新增共享功能，7 tests / 0.536s / OK。未新增业务范围、未制作 Claude 交接任务。国内滴答只读成功不等于远端写操作已开放；QQ 新共享渠道本轮未向真实联系人试发。
+
+
+### 官方滴答增量（2026-11-11，覆盖上文只读阶段限制）
+- 页面：`module_views/planner.py::CheckinsPage`，滴答/本地打卡双标签，搜索、清单、状态筛选，勾选后异步完成并刷新。
+- 适配：`modules/dida_mcp.py` 固定官方地址与工具白名单；`modules/dida.py` 保存授权、任务与版本、完成提交凭据。新增表 `dida_official_meta` / `dida_completion_ops`，授权键 `dida_mcp_auth`。
+- 测试：`tests/test_dida_official.py` 覆盖本地 HTTP JSON/SSE、任务隔离、循环版本、失败不重试、历史去重、UI 渲染不触发写入。真实账户已通过官方只读通道同步 28 条活动任务；没有完成任何真实任务。完成写入只在隔离测试服务中验证。
+- 已完成列表为本地已同步历史，不拉取全部历史；未新增滴答习惯接口、远端创建/删除和后台自动轮询。仍使用“同步滴答清单”按钮获取其他客户端的变更。
+- 口令不入 Git；回退保留新增表/加密授权/提交凭据，禁止通过清库重置未确认的完成操作。
+- 本轮验证：全量 144 tests / 64.995s / OK（新增 9 项）；日志 `.cache/role-refactor-checkpoint/dida-official-final.log`。

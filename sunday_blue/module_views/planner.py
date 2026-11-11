@@ -161,54 +161,89 @@ class CalendarPage(BasePage):
 
 class SyncJob(QThread):
     outcome=Signal(str)
-    def __init__(self,service,parent):super().__init__(parent);self.service=service
+    def __init__(self,service,parent,task=None):super().__init__(parent);self.service=service;self.task=task
     def run(self):
-        try:self.outcome.emit(f'只读同步完成：{self.service.sync()} 条；历史保留，不推断删除。')
+        try:
+            if self.task:
+                message=self.service.complete(self.task['id'],self.task['due'],self.task.get('etag') or '')
+                try:self.service.sync()
+                except Exception:message+=' 列表刷新未成功，稍后可手动同步。'
+                self.outcome.emit(message)
+            else:self.outcome.emit(f'同步完成：{self.service.sync()} 条，历史记录已保留。')
         except Exception as exc:self.outcome.emit(str(exc) if isinstance(exc,ValueError) else '同步失败：'+type(exc).__name__)
 
 class CheckinsPage(BasePage):
     def __init__(self,hub,parent=None):
-        super().__init__(parent);self.hub=hub;layout=QVBoxLayout(self);layout.setContentsMargins(28,24,28,24)
-        title=QLabel('打卡 · 记录完成，不惩罚缺席');title.setObjectName('title');layout.addWidget(title)
-        self.items=QListWidget();layout.addWidget(self.items)
+        from PySide6.QtWidgets import QTabWidget
+        super().__init__(parent);self.hub=hub;self.job=None
+        layout=QVBoxLayout(self);layout.setContentsMargins(28,24,28,24);layout.setSpacing(14)
+        title=QLabel('把今天的事情，一件件完成。');title.setObjectName('title');layout.addWidget(title)
+        tabs=QTabWidget();layout.addWidget(tabs)
+        remote_page=QWidget();remote_layout=QVBoxLayout(remote_page);tabs.addTab(remote_page,'滴答清单')
+        note=QLabel('勾选任务即同步完成到滴答清单。循环任务只完成当前一期；不支持在这里撤销完成或删除。')
+        note.setWordWrap(True);note.setObjectName('muted');remote_layout.addWidget(note)
+        row=QHBoxLayout();self.query=QLineEdit();self.query.setPlaceholderText('搜索任务或清单…');row.addWidget(self.query,1)
+        self.scope=QComboBox()
+        for label,key in [('未完成','open'),('今天 / 逾期','today'),('已完成','done'),('全部缓存','all')]:self.scope.addItem(label,key)
+        row.addWidget(self.scope);self.projects=QComboBox();self.projects.addItem('全部清单','');row.addWidget(self.projects);remote_layout.addLayout(row)
+        self.summary=QLabel();remote_layout.addWidget(self.summary)
+        self.remote=QListWidget();self.remote.setWordWrap(True);remote_layout.addWidget(self.remote,1)
+        self.sync_status=QLabel('点击同步读取滴答清单。');self.sync_status.setWordWrap(True);remote_layout.addWidget(self.sync_status)
+        buttons=QHBoxLayout();self.auth_button=QPushButton('配置 API 口令');self.auth_button.clicked.connect(self.auth);buttons.addWidget(self.auth_button)
+        self.sync_button=QPushButton('同步滴答清单');self.sync_button.setObjectName('primary');self.sync_button.clicked.connect(self.sync);buttons.addWidget(self.sync_button)
+        remote_layout.addLayout(buttons)
+        local_page=QWidget();local_layout=QVBoxLayout(local_page);tabs.addTab(local_page,'本地打卡')
+        local_layout.addWidget(QLabel('这里的打卡保存在 Sunday_Blue，不会创建滴答任务。'))
+        self.items=QListWidget();local_layout.addWidget(self.items)
         for title,fn in [('添加打卡',self.add),('确认今天已完成',self.check)]:
-            b=QPushButton(title);b.clicked.connect(fn);layout.addWidget(b)
-        note=QLabel('滴答清单接入为独立只读适配层；未配置授权时不会访问账号，也不会把同步当成打卡完成。')
-        note.setWordWrap(True);layout.addWidget(note)
-        self.sync_status=QLabel();self.sync_status.setWordWrap(True);layout.addWidget(self.sync_status)
-        self.remote=QListWidget();layout.addWidget(self.remote)
-        buttons=QHBoxLayout();auth=QPushButton('配置国内滴答 Cookie');auth.clicked.connect(self.auth);buttons.addWidget(auth)
-        imported=QPushButton('导入已有授权配置');imported.clicked.connect(self.import_auth);buttons.addWidget(imported)
-        self.sync_button=QPushButton('只读同步滴答');self.sync_button.clicked.connect(self.sync);buttons.addWidget(self.sync_button);layout.addLayout(buttons)
-        self.job=None;hub.changed.connect(lambda *_:self.refresh());self.refresh()
+            button=QPushButton(title);button.clicked.connect(fn);local_layout.addWidget(button)
+        self.remote.itemChanged.connect(self.complete_checked)
+        self.query.textChanged.connect(self.refresh);self.scope.currentIndexChanged.connect(self.refresh);self.projects.currentIndexChanged.connect(self.refresh)
+        hub.changed.connect(lambda *_:self.refresh());self.refresh()
     def auth(self):
-        token,ok=QInputDialog.getText(self,'国内滴答授权','浏览器 Cookie t（本机 DPAPI 加密；非 OAuth token）：',QLineEdit.EchoMode.Password)
-        if ok:self.invoke(lambda:self.hub.dida.configure(token))
-    def import_auth(self):
-        import json
-        from pathlib import Path
-        path,_=QFileDialog.getOpenFileName(self,'选择已有滴答 config.json','','JSON (*.json)')
-        if not path:return
-        def load():
-            file=Path(path)
-            if file.stat().st_size>1024*1024:raise ValueError('配置文件过大')
-            value=json.loads(file.read_text(encoding='utf-8'))
-            if value.get('auth','cookie')!='cookie':raise ValueError('只支持国内 Cookie 授权')
-            self.hub.dida.configure(value['token']);self.sync_status.setText('已加密导入；后续不依赖原配置文件。')
-        self.invoke(load)
-
-    def sync(self):
+        token,ok=QInputDialog.getText(self,'官方滴答授权','API 口令（dp_ 开头，本机加密保存）：',QLineEdit.EchoMode.Password)
+        if ok:self.invoke(lambda:self.hub.dida.configure_api(token))
+    def complete_checked(self,item):
+        if self.job or item.checkState()!=Qt.CheckState.Checked:return
+        task=item.data(Qt.ItemDataRole.UserRole)
+        if not task or task['status']==2:return
+        # Display success only after an authoritative result, not on the initial click.
+        self.remote.blockSignals(True);item.setCheckState(Qt.CheckState.Unchecked);self.remote.blockSignals(False)
+        self.run_job(task)
+    def sync(self):self.run_job()
+    def run_job(self,task=None):
         if self.job:return
-        self.job=SyncJob(self.hub.dida,self);self.sync_button.setEnabled(False);self.sync_status.setText('正在只读同步…')
+        self.job=SyncJob(self.hub.dida,self,task);self.sync_button.setEnabled(False);self.auth_button.setEnabled(False);self.remote.setEnabled(False)
+        self.sync_status.setText('正在同步完成到滴答…' if task else '正在同步滴答清单…')
         self.job.outcome.connect(self.sync_status.setText)
         def finished():
-            job=self.job;self.job=None;job.deleteLater();self.sync_button.setEnabled(True);self.refresh();self.hub.changed.emit('planner')
+            job=self.job;self.job=None;self.hub.jobs.pop('dida-sync',None);job.deleteLater()
+            self.sync_button.setEnabled(True);self.auth_button.setEnabled(True);self.remote.setEnabled(True);self.refresh();self.hub.changed.emit('planner')
         self.job.finished.connect(finished);self.hub.jobs['dida-sync']=self.job
-        self.job.cancel=__import__('threading').Event()
-        self.job.finished.connect(lambda:self.hub.jobs.pop('dida-sync',None));self.job.start()
-    def refresh(self):
-        self.remote.clear()
-        for r in self.hub.dida.tasks():self.remote.addItem(f"{r['project']} · {r['title']} · {r['due']} · {'完成' if r['status']==2 else '未完成'}")
+        self.job.cancel=__import__('threading').Event();self.job.start()
+    def refresh(self,*args):
+        from datetime import date,datetime
+        rows=self.hub.dida.tasks();projects=sorted({r['project'] for r in rows})
+        if [self.projects.itemData(i) for i in range(1,self.projects.count())]!=projects:
+            selected=self.projects.currentData();self.projects.blockSignals(True);self.projects.clear();self.projects.addItem('全部清单','')
+            for name in projects:self.projects.addItem(name,name)
+            self.projects.setCurrentIndex(max(0,self.projects.findData(selected)));self.projects.blockSignals(False)
+        query=self.query.text().strip().casefold();scope=self.scope.currentData();project=self.projects.currentData();today=date.today().isoformat()
+        self.remote.blockSignals(True);position=self.remote.verticalScrollBar().value();self.remote.clear();shown=0
+        for r in rows:
+            done=r['status']==2
+            if scope=='open' and r['status'] not in (0,1) or scope=='done' and not done:continue
+            if scope=='today' and (done or not r['due'] or r['due'][:10]>today):continue
+            if project and r['project']!=project:continue
+            if query and query not in (r['title']+' '+r['project']).casefold():continue
+            due=r['due'][:10] or '未设日期';recurrence=' · 循环任务' if r['repeat'] else ''
+            item=QListWidgetItem(f"{r['title']}\n{r['project']} · {due}{recurrence}");item.setData(Qt.ItemDataRole.UserRole,r)
+            item.setToolTip(f"{r['title']}\n{r['due']}\n{'已完成' if done else '勾选后同步完成到滴答'}")
+            writable=self.hub.dida.official_enabled() and r.get('project_id') and r.get('kind')!='NOTE'
+            item.setFlags(Qt.ItemFlag.ItemIsEnabled|Qt.ItemFlag.ItemIsSelectable|(Qt.ItemFlag.ItemIsUserCheckable if writable and r['status'] in (0,1) else Qt.ItemFlag.NoItemFlags))
+            item.setCheckState(Qt.CheckState.Checked if done else Qt.CheckState.Unchecked);self.remote.addItem(item);shown+=1
+        self.remote.verticalScrollBar().setValue(position);self.remote.blockSignals(False)
+        self.summary.setText(f"显示 {shown} 项 · 未完成 {sum(r['status'] in (0,1) for r in rows)} 项 · 最近同步 {self.hub.db.get('dida_last_sync','尚未同步')}")
         self.items.clear()
         for r in self.hub.planner.checkins():
             item=QListWidgetItem(('✓ 已完成  ' if r['done'] else '○ 未记录  ')+r['title']);item.setData(Qt.ItemDataRole.UserRole,r);self.items.addItem(item)
