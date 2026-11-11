@@ -46,7 +46,7 @@ class MainWindow(QWidget):
         from .role_lifecycle import RoleLifecycle
         self.role_service=RoleLifecycle(config, self.store, self.role_busy)
         self.role_recovery_errors=self.role_service.resume_pending()
-        self.pending=None; self.pending_text=''; self.history_limit=120
+        self.pending=None; self.pending_text=''; self.history_limit=20
         self._shown=None; self._shown_until=0; self._reveal_shown={}; self._greeted_shown=set()
         self._more_button=None; self._welcome_shown=False; self._stretch_added=False
         self._force_rebuild=False; self._auto_follow=False
@@ -172,7 +172,7 @@ class MainWindow(QWidget):
         self.delete_action=self.session_menu.addAction('删除会话'); self.delete_action.triggered.connect(self._menu_delete)
         self.session_button=button('⋮',lambda:None,'ghost'); self.session_button.setFixedSize(34,32)
         self.session_button.clicked.connect(lambda:self._show_session_menu())
-        row.addWidget(self.session_button); layout.addLayout(row)
+        row.addWidget(button('历史记录',self.more_history,'ghost'));row.addWidget(self.session_button); layout.addLayout(row)
         self.chat_scroll=QScrollArea(); self.chat_scroll.setWidgetResizable(True)
         self.chat_content=QWidget(); self.chat_content.setObjectName('chatContent'); self.chat_content.setStyleSheet('QWidget#chatContent { background:transparent; }')
         self.chat_layout=QVBoxLayout(self.chat_content); self.chat_layout.setContentsMargins(0,10,5,10); self.chat_layout.setSpacing(14)
@@ -253,7 +253,7 @@ class MainWindow(QWidget):
         self.sid=saved_sid if saved_ok else (rows[0]['id'] if rows else self.store.create(role))
         if not saved_ok:self.current_by_role.pop(role,None)
         self.current_by_role[role]=self.sid
-        self.history_limit=120
+        self.history_limit=20
         self.refresh_sessions(); self.render()
         name=next(r for r in list_roles(self.config.root) if r[0]==role)
         self.side_name.setText(name[1]); self.chat_title.setText(name[1]); self.role_description.setText(name[2]+'\n人格持续保留 · 同角色共享记忆')
@@ -273,7 +273,7 @@ class MainWindow(QWidget):
 
     def select_history(self,item,previous=None):
         if not item:return
-        self.save_draft(); self.sid=item.data(Qt.ItemDataRole.UserRole); self.current_by_role[self.role]=self.sid; self.history_limit=120
+        self.save_draft(); self.sid=item.data(Qt.ItemDataRole.UserRole); self.current_by_role[self.role]=self.sid; self.history_limit=20
         self.input.setPlainText(self.drafts.get(self.sid,'')); self.render(); self.update_state()
         if self.sid in self.errors:self.show_notice(self.errors[self.sid])
 
@@ -469,7 +469,15 @@ class MainWindow(QWidget):
             self._more_button=None; self._welcome_shown=False; self._stretch_added=False
             self._welcome=None
         if self.notice.isVisible():self.notice.hide()
-        messages=self.store.messages(self.sid) if self.sid else []
+        messages,has_older=self.store.message_page(self.sid,20) if self.sid else ([],False)
+        keep={m['id'] for m in messages}
+        for mid in list(self._message_rows):
+            if mid not in keep:
+                for row in self._message_rows.pop(mid):
+                    self.chat_bubbles[:]=[b for b in self.chat_bubbles if not row.isAncestorOf(b)]
+                    self.chat_layout.removeWidget(row);row.hide();row.deleteLater()
+                self._reveal_shown.pop((self.sid,mid),None)
+                self.reveals.pop((self.sid,mid),None)
         if messages and self._welcome is not None:
             self.chat_layout.removeWidget(self._welcome);self._welcome.hide();self._welcome.deleteLater()
             self._welcome=None;self._welcome_shown=False
@@ -482,12 +490,12 @@ class MainWindow(QWidget):
             if not self.config.value['api']['model']:
                 col.addWidget(button('设置你的 API 连接  →',self.settings,'primary'))
             self.chat_layout.addWidget(welcome); self._welcome_shown=True;self._welcome=welcome
-        if len(messages)>self.history_limit and self._more_button is None:
+        if has_older and self._more_button is None:
             self._more_button=button('',self.more_history,'ghost'); self._more_button.setMaximumWidth(430)
             self.chat_layout.insertWidget(0,self._more_button)
         if self._more_button is not None:
-            self._more_button.setVisible(len(messages)>self.history_limit)
-            self._more_button.setText(f'加载更早的消息（还有 {len(messages)-self.history_limit} 条）')
+            self._more_button.setVisible(has_older)
+            self._more_button.setText('仅显示最近 20 条 · 按日期查看历史')
         greetings=self.greetings.for_session(self.sid)
         added=False
         for m in messages[-self.history_limit:]:
@@ -496,12 +504,12 @@ class MainWindow(QWidget):
                 if reveal and reveal['count']>self._reveal_shown.get((self.sid,m['id']),0):
                     self._add_message_widgets(m,failures=False);added=True
                 if m['id'] in greetings and m['id'] not in self._greeted_shown:
-                    self.add_bubble(greetings[m['id']],local=True); self._greeted_shown.add(m['id'])
+                    self.add_bubble(greetings[m['id']],local=True,message=m['id']); self._greeted_shown.add(m['id'])
                 continue
             self._add_message_widgets(m)
             self._shown_until=m['id']; added=True
             if m['id'] in greetings and m['id'] not in self._greeted_shown:
-                self.add_bubble(greetings[m['id']],local=True); self._greeted_shown.add(m['id'])
+                self.add_bubble(greetings[m['id']],local=True,message=m['id']); self._greeted_shown.add(m['id'])
         if not self._stretch_added:self.chat_layout.addStretch(1); self._stretch_added=True
         worker=self.workers.get(self.sid)
         if worker and getattr(worker,'live_text',''):
@@ -603,9 +611,9 @@ class MainWindow(QWidget):
                 if failure:self.add_bubble(failure,message=m['id'])
 
     def more_history(self):
-        bar=self.chat_scroll.verticalScrollBar();old_max=bar.maximum();old_value=bar.value();sid=self.sid
-        self.history_limit+=120;self._force_rebuild=True;self.render(preserve=True)
-        QTimer.singleShot(40,lambda:bar.setValue(old_value+bar.maximum()-old_max) if self.sid==sid else None)
+        if not self.sid:return
+        from .chat_history import ChatHistory
+        dialog=ChatHistory(self.store,self.sid,self);dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose);dialog.show()
 
     def _chat_width(self):
         return max(100,self.chat_scroll.viewport().width()-10)
@@ -801,8 +809,8 @@ class MainWindow(QWidget):
             tokens=usage.get('input_tokens',usage.get('prompt_tokens',0))+usage.get('cache_read_input_tokens',0)+usage.get('cache_creation_input_tokens',0)+usage.get('output_tokens',usage.get('completion_tokens',0))
             prefix='上次 API 用量'
         else:
-            data=json.dumps(self.store.messages(self.sid,context=True),ensure_ascii=False)+session['summary']
-            tokens=math.ceil(len(data)/2);prefix='历史估算（不含系统提示）'
+            characters=self.store.context_characters(self.sid,session['summarized_through'])+len(session['summary'])
+            tokens=math.ceil(characters/2);prefix='历史估算（不含系统提示）'
         from .models import resolve_api
         limit=resolve_api(self.config.value,self.role)['context_limit'];percent=min(100,round(tokens/limit*100))
         self.context_label.setText(f'{prefix}\n{tokens:,} / {limit:,} tokens · {percent}%')

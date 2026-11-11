@@ -284,3 +284,5 @@ python -m unittest discover -s tests -v
 协议参考：[Anthropic 流式消息](https://platform.claude.com/docs/en/build-with-claude/streaming)、[Anthropic 工具调用](https://platform.claude.com/docs/en/agents-and-tools/tool-use/handle-tool-calls)、[MCP stdio](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports)、[OpenAI Chat Completions](https://developers.openai.com/api/reference/resources/chat)、[Qt for Python](https://doc.qt.io/qtforpython-6/gettingstarted.html)。
 
 番茄钟新增：在“节奏与提示音”可启用自动循环，并设置 1–20 轮上限；手动结束停止循环。侧栏保留最近 20 条界面反馈，手动开始新轮标记旧气泡，不写入聊天或长期记忆。
+
+**长会话显示**：聊天窗口只保留最近 20 条消息记录，新增消息时移除屏幕外旧气泡。点击右上角「历史记录」按日期查看，每页最多 20 条；浏览历史不切换会话、不修改正文，不裁剪模型上下文或完整导出。分段回复仍可形成多个气泡。

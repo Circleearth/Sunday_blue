@@ -99,3 +99,6 @@ plugin_runtime 扫描 extensions/plugins/*/plugin.json，读取 _conf_schema.jso
 `modules/recovery.py` 复用 module_settings 保存恢复截止、情绪有效期和意愿，module_events 保存工作日结算和延后复盘。共享投递与旧 QQ daemon 均在外发之前检查保护；reminder_priority 是独立紧急标记，不改原提醒表。Relations 在记录/消费负事件时复核保护，绝不补扣。Social 的自动发起/追问检查保护；主动请求的聊天仍正常，但带简短恢复上下文。旧 daemon 必须重启才加载新代码。
 下班动态回复复用 FocusDialogue 的有限线程/调用预算与失败回退，用独立实例避免打断专注临时上下文。普通番茄钟结束不是下班，用户通过工作页明确结束工作日。
 回退：保留所有新增表、音频、人格和用户数据，仅回退代码。不要倒灌数据库或删除奖励调整记录；正在计时先结束，避免旧代码不认识新奖励规则。
+
+### 有界聊天显示
+`Store.message_page` 按 session/id 索引倒序 LIMIT 21，返回 20 条与更多标志；`chat_history.py` 独立只读按 created 日期分组、按 id 游标翻页。主 render 增量淘汰旧消息关联控件，始终保持最近 20 条存储消息（单条回复分段仍为多个气泡）。`messages(context=True)` 不变；上下文长度估算改 SQL length 并按最大 id/count 缓存，避免分段动画反复解码整段聊天。历史窗口始终固定所选会话，当前输入与回复不受影响。

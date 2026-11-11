@@ -94,7 +94,11 @@ class RevisionUI(UITests):
         w.advance_segments();w.advance_segments();self.assertEqual(len(w.chat_bubbles),3)
         for i in range(130):w.store.add(w.sid,'user',str(i))
         w._force_rebuild=True;w.render();QTest.qWait(120);w.more_history();QTest.qWait(120)
-        self.assertTrue(any(b.raw=='第一句。' for b in w.chat_bubbles));self.assertEqual(len(w.chat_bubbles),133)
+        self.assertFalse(any(b.raw=='第一句。' for b in w.chat_bubbles));self.assertEqual(len(w.chat_bubbles),20)
+        from sunday_blue.chat_history import ChatHistory
+        history=w.findChild(ChatHistory);self.assertIsNotNone(history)
+        while history.older.isEnabled():history.next()
+        self.assertIn('第一句。第二句。第三句。',history.view.toPlainText());history.close()
 
     def test_stop_waits_for_worker_then_restores_draft(self):
         w=self.window;w.config.value['api']['model']='mock'

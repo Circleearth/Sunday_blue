@@ -184,6 +184,30 @@ class Store:
             rows = db.execute('SELECT * FROM messages WHERE session=? AND id>? ORDER BY id', (sid, after)).fetchall()
         return [dict(r) | {'content': json.loads(r['content'])} for r in rows]
 
+    def message_page(self,sid,limit=20,day=None,before=None):
+        """Display-only bounded query. Agent context still uses messages(context=True)."""
+        limit=max(1,min(int(limit),100));where='session=?';args=[sid]
+        if day is not None:
+            from datetime import date
+            date.fromisoformat(day);where+=" AND substr(created,1,10)=?";args.append(day)
+        if before is not None:where+=' AND id<?';args.append(int(before))
+        with self.connect() as db:rows=db.execute('SELECT * FROM messages WHERE '+where+' ORDER BY id DESC LIMIT ?',(*args,limit+1)).fetchall()
+        more=len(rows)>limit
+        return [dict(r)|{'content':json.loads(r['content'])} for r in reversed(rows[:limit])],more
+
+    def message_days(self,sid):
+        with self.connect() as db:return [(r[0],r[1]) for r in db.execute('SELECT substr(created,1,10),count(*) FROM messages WHERE session=? GROUP BY substr(created,1,10) ORDER BY 1 DESC',(sid,))]
+
+    def context_characters(self,sid,after=0):
+        with self.connect() as db:
+            marker=tuple(db.execute('SELECT max(id),count(*) FROM messages WHERE session=? AND id>?',(sid,after)).fetchone())
+            key=(sid,after,marker)
+            cached=getattr(self,'_display_length_cache',{})
+            if key not in cached:
+                value=db.execute('SELECT COALESCE(sum(length(content)),0) FROM messages WHERE session=? AND id>?',(sid,after)).fetchone()[0]
+                self._display_length_cache={key:value};return value
+            return cached[key]
+
     def update(self, sid, **values):
         allowed = {'title', 'summary', 'summarized_through', 'usage'}
         if not values or not set(values) <= allowed:

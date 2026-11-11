@@ -117,3 +117,6 @@
 本轮单代理完成中断收尾及两项行为机制，没有启动新子代理；不读取真实私聊、不调用付费 LLM、不向真实 QQ 试发。
 
 最终收尾验证：全量 **179 tests / 109.050s / OK**；自然回复/群聊保护上下文最后增量复测 **26 tests / 9.765s / OK**（`recovery-incremental.log`）。原生 Qt 联动测试通过，未额外进行截图扫描。真实模型自然表达与 QQ 到达仍须使用者环境体验，测试未花费模型额度或外发消息。
+
+聊天加载优化：仅增量读 `storage.py::message_page/message_days/context_characters`、`ui.py::render/more_history`、`chat_history.py`；测试 `test_chat_history.py`。20 条是存储消息数，工具空回执不渲染；不影响 AI 完整上下文。历史按天且每页 20 条，不在主窗口无限追加。无数据库迁移。
+聊天验证：全量 181 项检查中 179 项通过，2 项要求旧“无限追加历史”行为的断言随后更新；聊天跟随、分页与修订相关 18 项复测全部通过（29.609s）。日志 `chat-history-final.log` / `chat-history-recheck.log`。
