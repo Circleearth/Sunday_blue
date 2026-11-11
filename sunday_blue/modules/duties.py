@@ -54,6 +54,14 @@ class Duties:
             CREATE TABLE IF NOT EXISTS duty_handoffs(id TEXT PRIMARY KEY,record_id TEXT UNIQUE,status TEXT,request TEXT,files TEXT,result TEXT,created TEXT,updated TEXT);
             CREATE TABLE IF NOT EXISTS duty_changes(id INTEGER PRIMARY KEY,slot_id TEXT,before_role TEXT,after_role TEXT,created TEXT);''')
             for sid,title,role in SLOTS:c.execute('INSERT OR IGNORE INTO duty_slots VALUES(?,?,?,?)',(sid,title,role if role in active else None,'{}'))
+        if (db.root/'extensions/skills/markdown-writing/SKILL.md').is_file():
+            with db.connect() as c:
+                c.execute('BEGIN IMMEDIATE')
+                if not c.execute("SELECT 1 FROM module_settings WHERE key='markdown_standard_installed'").fetchone():
+                    for row in c.execute("SELECT id,extensions FROM duty_slots WHERE id IN ('recorder','organizer')").fetchall():
+                        ext=json.loads(row['extensions']);ext['skills']=list(dict.fromkeys(ext.get('skills',[])+['markdown-writing']))
+                        c.execute('UPDATE duty_slots SET extensions=? WHERE id=?',(json.dumps(ext,ensure_ascii=False),row['id']))
+                    c.execute("INSERT INTO module_settings VALUES('markdown_standard_installed','true')")
     def slots(self):
         with self.db.connect() as c:rows={r['id']:dict(r) for r in c.execute('SELECT * FROM duty_slots')}
         return [rows[s[0]]|{'extensions':json.loads(rows[s[0]]['extensions'])} for s in SLOTS]

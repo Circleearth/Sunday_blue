@@ -102,3 +102,9 @@ plugin_runtime 扫描 extensions/plugins/*/plugin.json，读取 _conf_schema.jso
 
 ### 有界聊天显示
 `Store.message_page` 按 session/id 索引倒序 LIMIT 21，返回 20 条与更多标志；`chat_history.py` 独立只读按 created 日期分组、按 id 游标翻页。主 render 增量淘汰旧消息关联控件，始终保持最近 20 条存储消息（单条回复分段仍为多个气泡）。`messages(context=True)` 不变；上下文长度估算改 SQL length 并按最大 id/count 缓存，避免分段动画反复解码整段聊天。历史窗口始终固定所选会话，当前输入与回复不受影响。
+
+
+### Markdown 资料库与设置整合（2026-11-12）
+`modules/markdown_library.py` 提供受所选根目录约束的读取、检索、收藏/最近记录，配置键 `markdown_library` 保存在 modules.sqlite3。`module_views/markdown_reader.py` 复用 Qt 原生 QFileSystemModel（延迟列目录）、QTextBrowser（Markdown）、后台搜索线程；只接受 UTF-8 md/markdown，阻止联接/链接越界，远端资源不会自动加载。点击外部 http(s) 文字链接才交给系统浏览器，图片限定所选库内受限大小的位图。没有引入浏览器引擎或大型依赖。
+`Settings._duties_page` 嵌入现有 DutiesPage，优先复用主窗口 ModuleHub，独立设置窗口用仅含职责服务的轻量适配，不启动计时。职责操作仍直接落库，UI 明示即时保存边界。
+`Duties` 只在 Markdown Skill 已安装且未迁移时，在同一事务中为 recorder/organizer 追加共享规范，保留其他扩展，写 `markdown_standard_installed` 标记。不修改用户人格、角色私有文件权限或原文文档。capabilities 为该 Skill 设置按需关键词默认值。

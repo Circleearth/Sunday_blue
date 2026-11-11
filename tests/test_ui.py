@@ -92,7 +92,7 @@ class UITests(unittest.TestCase):
         self.assertIn(self.window.sid,{sid,new_sid,third})  # fell back to a real session, none created
     def test_settings_tabs_save_and_role_scopes(self):
         dlg=Settings(self.config,'rui',self.window);dlg.show();APP.processEvents()
-        self.assertEqual(dlg.tabs.count(),7)
+        self.assertEqual(dlg.tabs.count(),8)
         dlg.model.setText('mock-model');dlg.url.setText('http://localhost:1234/v1')
         dlg.permission_role.setCurrentIndex(1);APP.processEvents();self.assertEqual(dlg.permission_role.currentData(),'red')
         for index in range(dlg.tabs.count()):dlg.tabs.setCurrentIndex(index);APP.processEvents()

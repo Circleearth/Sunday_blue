@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import re
 import shutil
-from PySide6.QtCore import Qt, QThread, Signal, QUrl, QSize
+from PySide6.QtCore import Qt, QThread, Signal, QUrl, QSize, QObject
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QTabWidget, QWidget,
     QFormLayout, QLineEdit, QComboBox, QSpinBox, QCheckBox, QLabel, QPushButton,
@@ -63,6 +63,7 @@ class Settings(QDialog):
         self._skills_page()
         self._appearance_page()
         self._persona_page()
+        self._duties_page()
         self.nav.setCurrentRow(0)
         row = QHBoxLayout()
         row.addWidget(label('设置从下一次发送生效；运行中的任务使用启动时的配置。'))
@@ -80,6 +81,19 @@ class Settings(QDialog):
         layout.setContentsMargins(22, 20, 22, 18);layout.setSpacing(12)
         self.tabs.addWidget(page);self.nav.addItem(title)
         return layout
+
+    def _duties_page(self):
+        from .module_views.life_work import DutiesPage
+        hub=getattr(self.parent(),'module_hub',None)
+        if hub is None:
+            from .modules.database import ModuleDB
+            from .modules.duties import Duties
+            from .modules.organizer import Organizer
+            class SettingsDutyHub(QObject):changed=Signal(str)
+            hub=SettingsDutyHub(self);hub.root=self.config.root;hub.config=self.config;hub.db=ModuleDB(hub.root);hub.duties=Duties(hub.db);hub.organizer=Organizer(hub.db)
+        layout=self.page('职责与交接')
+        layout.addWidget(label('此页职责分配、能力绑定和交接操作立即保存，不受外层“取消”影响。'))
+        self.duties_page=DutiesPage(hub,self);layout.addWidget(self.duties_page,1)
 
     def role_combo(self, selected=None):
         combo = QComboBox()

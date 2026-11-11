@@ -120,3 +120,7 @@
 
 聊天加载优化：仅增量读 `storage.py::message_page/message_days/context_characters`、`ui.py::render/more_history`、`chat_history.py`；测试 `test_chat_history.py`。20 条是存储消息数，工具空回执不渲染；不影响 AI 完整上下文。历史按天且每页 20 条，不在主窗口无限追加。无数据库迁移。
 聊天验证：全量 181 项检查中 179 项通过，2 项要求旧“无限追加历史”行为的断言随后更新；聊天跟随、分页与修订相关 18 项复测全部通过（29.609s）。日志 `chat-history-final.log` / `chat-history-recheck.log`。
+
+
+2026-11-12 资料阅读增量：`modules/markdown_library.py` / `module_views/markdown_reader.py` / `settings.py::_duties_page`；书写规范在 `extensions/skills/markdown-writing/SKILL.md`，职责一次性绑定在 Duties 初始化中。顶部新增“资料”并移除独立“职责”（职责进入设置），保持原 11 页总数。无用户资料迁移。测试 `test_markdown_library.py` 覆盖读取边界/大小/UTF-8、正文搜索、目录链接、图片资源限制、Skill按需与换岗绑定、设置入口。仅以合成文档做一次原生布局预览，未读取 MasterData 正文。
+资料阅读验证：全量 **184 tests / 76.663s / OK**；最后的目录启用状态与相对链接调整后专项 **3 tests / 0.265s / OK**。日志 `.cache/role-refactor-checkpoint/markdown-reader-final.log`；真实 MasterData 只设置路径，未读取或修改正文。

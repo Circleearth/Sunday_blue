@@ -58,6 +58,7 @@ class TurnCapabilities:
         deferred={'skill:'+name for name in bound['skills'] if name not in config['roles'][role].get('skills',[])}|{'plugin:'+name for name in bound['plugins']}
         for key in self.catalog:
             default={'mode':'on_demand','keywords':'工作,任务,运动,饮食,睡眠,精力,记录,整理,复盘,学习,汇总,手机,屏幕'} if key=='duties' else {'mode':'on_demand'} if key in deferred else {}
+            if key=='skill:markdown-writing':default={'mode':'on_demand','keywords':'md,markdown,文档,笔记,整理,记录,归档,文件,写入'}
             spec = policies.get(key,default)
             keywords = [s.strip() for s in spec.get('keywords', '').split(',') if s.strip()]
             explicit = re.search(r'(?<!\w)@' + re.escape(key) + r'(?![\w:-])', user_text)
