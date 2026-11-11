@@ -30,7 +30,9 @@ class Relations:
                 delta,mood=0,0
                 if event['kind']=='focus.completed':delta,mood=1,8
                 elif event['kind']=='rewards.redeemed' and body.get('kind')=='gift':delta,mood=1,5
-                elif event['kind']=='activity.setback':delta,mood=-1,-6
+                elif event['kind']=='activity.setback':
+                    from .recovery import Recovery
+                    if not Recovery(self.db).protected():delta,mood=-1,-6
                 if role in active and (delta or mood):
                     row=db.execute('SELECT * FROM relationships WHERE role_id=?',(role,)).fetchone()
                     current=time.time();affinity=row['affinity'] if row else 50
@@ -59,6 +61,12 @@ class Relations:
     def report_setback(self,role_id,note):
         require_role(self.db.root,role_id)
         if not str(note).strip():raise ValueError('请写下实际发生的情况，不根据缺少记录推断失败。')
+        from .recovery import Recovery
+        if not Recovery(self.db).negative_allowed('setback:'+role_id):
+            import hashlib
+            key=hashlib.sha256((day()+'|'+role_id+'|'+str(note)).encode()).hexdigest()
+            with self.db.connect() as db:self.db.emit(db,'review:'+key,'activity.review_deferred',{'role_id':role_id,'note':str(note)[:500],'day':day(),'reason':'恢复保护或反馈冷却；不补扣分'})
+            return {'status':'deferred','note':'已保留供以后复盘，保护或冷却期间不扣分；不补扣历史分数。'}
         with self.db.connect() as db:
             self.db.emit(db,'setback:'+role_id+':'+day(),'activity.setback',{'role_id':role_id,'note':str(note)[:500]})
         self.project()

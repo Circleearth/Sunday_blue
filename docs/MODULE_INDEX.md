@@ -108,3 +108,12 @@
 - 新持久化表 `reminder_delivery_details`；`Planner.update` 编辑计划而保留已产生的投递历史。用户关闭设置不会使工作线程访问已销毁的控件。
 - 新测试 `tests/test_reminder_channels.py`：真实 transport 对本地 HTTP 服务投递、定时去重/失败重试、UI 心跳、草稿配置、关闭窗口、空令牌、编辑历史。全量 151 tests / 92.055s / OK，日志 `.cache/role-refactor-checkpoint/reminder-channels-final.log`。
 - 真实 QQ 只读诊断：接收者已配置、凭据存在、令牌有效；本轮未向真实 QQ 联系人试发。发送链路通过隔离本地 HTTP 验证，不把这个结果表述成真实用户已收到。无需 Claude 交接。
+
+
+### 最新增量：工作 / 生活 / 职责 / 恢复
+优先读 `modules/work.py`、`life.py`、`duties.py`、`duty_tools.py`、`recovery.py`；对应 UI 为 `module_views/life_work.py`。Focus/Hub 做结算和页面接入，Agent/capabilities/native_plugins 做按需权限；role_lifecycle 阻止删除仍任职的人格。`ui.py` 导航改为可滚动，页面共 11 个。
+规则覆盖上文旧“所有专注均金币”：v2 工作积分与学习金币分开；运动走上报；家务同日同标题计时/打卡共用奖额。旧结算不迁移，旧在途计时保留 legacy。
+测试索引：`test_work_service.py`、`test_life_flows.py`、`test_duties.py`、`test_life_work_views.py`、`test_recovery.py`。中断前全量 173 项通过；最终验证见本节后续结果与 `.cache/role-refactor-checkpoint/recovery-final.log`。
+本轮单代理完成中断收尾及两项行为机制，没有启动新子代理；不读取真实私聊、不调用付费 LLM、不向真实 QQ 试发。
+
+最终收尾验证：全量 **179 tests / 109.050s / OK**；自然回复/群聊保护上下文最后增量复测 **26 tests / 9.765s / OK**（`recovery-incremental.log`）。原生 Qt 联动测试通过，未额外进行截图扫描。真实模型自然表达与 QQ 到达仍须使用者环境体验，测试未花费模型额度或外发消息。

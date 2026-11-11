@@ -51,7 +51,8 @@ class PomodoroTests(unittest.TestCase):
             self.focus.start('工作', phase=expected, duration=130); self.advance(130)
             self.assertEqual(self.focus.cycle()['next_phase'], 'focus')
         self.assertEqual(len(self.focus.records()), 4)
-        self.assertEqual(self.rewards.balances()['coins'], 8)
+        self.assertEqual(self.rewards.balances()['coins'], 0)
+        self.assertEqual(sum(r['work_points'] for r in self.focus.records()),8)
         self.assertEqual(len(self.completed), 8)
 
     def test_pause_restart_settings_snapshot_and_sleep(self):

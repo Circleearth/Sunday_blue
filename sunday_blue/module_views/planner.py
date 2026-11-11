@@ -77,6 +77,7 @@ class RemindersPage(BasePage):
         pos=self.items.verticalScrollBar().value();hpos=self.history.verticalScrollBar().value()
         rows=self.hub.planner.schedules()+self.hub.planner.legacy_qq()
         self.overview.setText(f"{sum(bool(r['enabled']) for r in rows)} 个进行中 · QQ {'已配置' if self.hub.db.get('shared_qq',{}).get('openid') else '未配置，可在提醒设置中连接'}")
+        if getattr(self.hub,'recovery',None) and self.hub.recovery.protected():self.overview.setText(self.overview.text()+' · 保护中：非紧急提醒暂缓，记录保留')
         self.items.clear();query=self.search.text().strip().casefold();scope=self.filter.currentData()
         repeats={'once':'仅一次','daily':'每天','weekly':'每周'}
         for r in rows:
@@ -111,13 +112,15 @@ class RemindersPage(BasePage):
         for name,w in [('内容',title),('时间',due),('重复',repeat),('',local),('',qq)]:form.addRow(name,w)
         if record:
             title.setText(record['title']);due.setDateTime(QDateTime.fromString(record['next_due'],Qt.DateFormat.ISODate));repeat.setCurrentIndex(repeat.findData(record['repeat']));local.setChecked(bool(record['local']));qq.setChecked(bool(record['qq']))
+        urgent=QCheckBox('紧急事项：恢复或疲劳期间仍提醒');urgent.setChecked(bool(record and self.hub.planner.urgent(record['id'])));form.addRow(urgent)
         error=QLabel();error.setWordWrap(True);form.addRow(error)
         save=QPushButton('保存');save.setObjectName('primary');form.addRow(save)
         def persist():
             try:
                 args=(title.text(),due.dateTime().toPython().astimezone().isoformat(),repeat.currentData(),local.isChecked(),qq.isChecked())
-                if record:self.hub.planner.update(record['id'],*args)
-                else:self.hub.planner.add(*args)
+                if record:self.hub.planner.update(record['id'],*args);rid=record['id']
+                else:rid=self.hub.planner.add(*args)
+                self.hub.planner.set_urgent(rid,urgent.isChecked())
                 self.hub.changed.emit('planner');dlg.accept()
             except ValueError as exc:error.setText(str(exc))
         save.clicked.connect(persist);dlg.exec()

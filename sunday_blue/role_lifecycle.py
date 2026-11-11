@@ -49,6 +49,9 @@ class RoleLifecycle:
 
     def dependencies(self, role):
         blockers = []
+        from .modules.duties import assigned
+        duties=assigned(self.root,role)
+        if duties:blockers.append('该人格仍承担固定职责：'+', '.join(duties)+'；请先在职责页更换或解除分配。')
         if self.busy(role):
             blockers.append('该角色仍有聊天、记忆窗口或后台操作；请先结束或关闭。')
         qq = self.root / 'data/plugins/qq-reminders/state.sqlite3'

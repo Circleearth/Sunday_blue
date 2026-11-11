@@ -11,7 +11,7 @@ from .plugin_runtime import discover
 BUILTINS = {'files': '授权目录的文件读写', 'memory': '本角色已确认记忆（写入需审阅）',
             'mcp': '该角色已绑定的 MCP 服务（启动和调用需审阅）',
             'collaboration': '受控协作记录（决定、待办与完成状态需确认）',
-            'activity': '现实记录与专注统计（只读）'}
+            'activity': '现实记录与专注统计（只读）', 'duties': '当前固定职责的数据管理与交接'}
 ALWAYS = {'plugin:time-context', 'plugin:daypart-greetings'}
 RESPONSIBILITIES = {
     'kia': '默认负责记录、归档、信息提取与初步分类；不要把记录自动升级为完整规划或已确认决定。',
@@ -28,9 +28,14 @@ def allowed_catalog(root, config, role):
     result = {name: label for name, label in BUILTINS.items()
               if config['features'].get(name, name in ('collaboration','activity'))
               and cfg.get('capabilities', {}).get(name, role in ('rui','kia') if name=='activity' else name != 'collaboration')}
+    from .modules.duties import assigned
+    if assigned(root,role) and config['features'].get('duties',True) and cfg.get('capabilities',{}).get('duties',True):result['duties']=BUILTINS['duties']
+    else:result.pop('duties',None)
     if 'mcp' in result and not any(s.get('enabled') and role in s.get('roles', []) for s in config.get('mcp_servers', [])):
         result.pop('mcp')
-    for name in dict.fromkeys(cfg.get('skills', [])):
+    from .modules.duties import effective_extensions
+    bound=effective_extensions(root,role)
+    for name in dict.fromkeys(cfg.get('skills', [])+bound['skills']):
         result['skill:' + name] = name + '（已授权 Skill）'
     for name in dict.fromkeys(cfg.get('plugins', [])):
         result['prompt:' + name] = name + '（已授权提示词模块）'
@@ -47,8 +52,13 @@ class TurnCapabilities:
         self.catalog = allowed_catalog(root, config, role)
         self.active = set()
         policies = config['roles'][role].get('capability_loading', {})
+        from .modules.duties import effective_extensions
+        bound=effective_extensions(root,role)
+        self.bound=bound
+        deferred={'skill:'+name for name in bound['skills'] if name not in config['roles'][role].get('skills',[])}|{'plugin:'+name for name in bound['plugins']}
         for key in self.catalog:
-            spec = policies.get(key, {})
+            default={'mode':'on_demand','keywords':'工作,任务,运动,饮食,睡眠,精力,记录,整理,复盘,学习,汇总,手机,屏幕'} if key=='duties' else {'mode':'on_demand'} if key in deferred else {}
+            spec = policies.get(key,default)
             keywords = [s.strip() for s in spec.get('keywords', '').split(',') if s.strip()]
             explicit = re.search(r'(?<!\w)@' + re.escape(key) + r'(?![\w:-])', user_text)
             if (key in ALWAYS or spec.get('mode', 'always') == 'always' or explicit
@@ -66,7 +76,9 @@ class TurnCapabilities:
         role = config['roles'][self.role]
         for key in BUILTINS:
             config['features'][key] = key in self.active
-        role['skills'] = [name for name in dict.fromkeys(role.get('skills', [])) if 'skill:' + name in self.active]
+        from .modules.duties import effective_extensions
+        bound=effective_extensions(self.root,self.role)
+        role['skills'] = [name for name in dict.fromkeys(role.get('skills', [])+bound['skills']) if 'skill:' + name in self.active]
         role['plugins'] = [name for name in dict.fromkeys(role.get('plugins', [])) if 'prompt:' + name in self.active]
         role['native_plugins'] = {pid: 'plugin:' + pid in self.active for pid in discover(self.root)}
         return config

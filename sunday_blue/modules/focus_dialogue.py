@@ -23,7 +23,7 @@ class FocusDialogue(QObject):
         self.history=(self.history+[{'role':'user','content':event},{'role':'assistant','content':event}])[-4:]
         self.hub.feedback.emit(role,event)
         if end:self.reset('')
-    def respond(self,role,key,event,end=False):
+    def respond(self,role,key,event,end=False,guidance=''):
         if key!=self.session:
             if self.busy:
                 _,previous,_=self._pending;self.hub.feedback.emit(self._pending_role,previous)
@@ -39,6 +39,8 @@ class FocusDialogue(QObject):
             relation=next((r for r in self.hub.relations.list() if r['role_id']==role),{})
             system=('长期熟悉度：'+str(relation.get('affinity',50))+'；不要在回复中报分数。\n'+'\n'.join(name+'：'+value[:800] for name,value in read_persona(self.hub.root,role).items())+'\n'+self.hub.relations.context(role)+
                 '\n你在番茄钟侧栏陪伴用户。按人格和当前情绪自然回应本次事件，用一句不超过60字的话，不说工具回执，不施压。只依据事件，不编造用户行为。')
+            from .recovery import Recovery
+            system+='\n'+guidance[:600]+'\n'+Recovery(self.hub.db).context()
             messages=self.history[-4:]+[{'role':'user','content':event[:300]}]
             reserved=len((system+str(messages)).encode('utf-8'))+120
             if self.used+reserved>24000:raise ValueError('Budget')

@@ -12,6 +12,7 @@ class Planner:
                 CREATE TABLE IF NOT EXISTS reminder_occurrences (
                 id TEXT PRIMARY KEY,schedule_id TEXT,due TEXT,title TEXT,local_status TEXT,qq_status TEXT,
                 UNIQUE(schedule_id,due));
+                CREATE TABLE IF NOT EXISTS reminder_priority(schedule_id TEXT PRIMARY KEY,urgent INTEGER);
                 CREATE TABLE IF NOT EXISTS checkins (id TEXT PRIMARY KEY,title TEXT,enabled INTEGER);
                 CREATE TABLE IF NOT EXISTS checkin_history (checkin_id TEXT,day TEXT,created TEXT,PRIMARY KEY(checkin_id,day));""")
     def add(self,title,due,repeat='once',local=True,qq=False):
@@ -21,6 +22,11 @@ class Planner:
         rid=uuid.uuid4().hex
         with self.db.connect() as db:db.execute('INSERT INTO schedules VALUES(?,?,?,?,?,?,1)',(rid,title,when.isoformat(),repeat,int(local),int(qq)))
         return rid
+    def set_urgent(self,rid,urgent):
+        with self.db.connect() as c:c.execute('INSERT INTO reminder_priority VALUES(?,?) ON CONFLICT(schedule_id) DO UPDATE SET urgent=excluded.urgent',(rid,int(bool(urgent))))
+    def urgent(self,rid):
+        with self.db.connect() as c:
+            row=c.execute('SELECT urgent FROM reminder_priority WHERE schedule_id=?',(rid,)).fetchone();return bool(row and row[0])
     def update(self,rid,title,due,repeat='once',local=True,qq=False):
         title=str(title).strip();when=datetime.fromisoformat(due)
         if not title or len(title)>200 or repeat not in ('once','daily','weekly') or not(local or qq):raise ValueError('请填写标题、重复方式和提醒渠道')

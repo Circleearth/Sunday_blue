@@ -143,7 +143,8 @@ class Social:
                 support,status=private_support(self.db.root,role,self.local.config,latest)
                 self.memory_status[role]=status
             from ..capabilities import RESPONSIBILITIES
-            responsibility=self.local.config['roles'][role].get('responsibility',RESPONSIBILITIES.get(role,''))
+            from .duties import installed,context
+            responsibility=context(self.db.root,role) if installed(self.db.root) else self.local.config['roles'][role].get('responsibility',RESPONSIBILITIES.get(role,''))
             system=(persona_text(self.db.root,role)+'\n本应用职责：'+responsibility+'\n你在多人群聊中。你记得自己与用户的私聊，也记得共同群聊。'
                     '可以自然延续与当前话题相关的经历，但不要机械复述私聊，尤其不要无关地公开敏感细节。'
                     '你没有读取其他角色私聊的权限；他们只有在群里公开说出的内容才是共同经历。'
@@ -151,6 +152,8 @@ class Social:
                     '确有必要时可用 @角色名 邀请另一位成员回应，但不强求大家轮流发言。'
                     '需要发言时写一小段，最多约 100 字，不代其他角色发言，不重复追责，不编造现实行为。'
                     '用户没有记录不等于没完成；建议挑战可拒绝，休息不需要购买。\n'+support)
+            from .recovery import Recovery
+            system+='\n'+Recovery(self.db).context()
             text=self._ask(role,gid,system,transcript,cancel)
             if text!='[SILENT]':
                 self.post(gid,text,role,names[role],'assistant',key)
@@ -235,7 +238,7 @@ class Social:
 
     def proactive_candidate(self,focus_running=False):
         cfg=self.get_settings()
-        if not cfg['proactive_enabled'] or focus_running or self._quiet():return None
+        if not cfg['proactive_enabled'] or focus_running or self._quiet() or not self.can_interrupt():return None
         gid=cfg.get('group_id')
         if not gid:return None
         group=self.group(gid)

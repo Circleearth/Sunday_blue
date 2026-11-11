@@ -90,3 +90,12 @@ plugin_runtime 扫描 extensions/plugins/*/plugin.json，读取 _conf_schema.jso
 - `modules/reminder_delivery.py`：诊断/试发用单个后台线程槽，定时 QQ 最多两个并发请求。`test_send(text,cfg)` 是实际投递与试发的同一入口，复用原插件 `_creds/_token/_qq_send`；不修改原守护进程。只有显式点击检查/试发才联网，连接诊断只验证令牌，不承诺接收者可达。
 - 网络请求保持原 transport 的 20 秒令牌、30 秒发送超时。GUI 信号只负责展示；发送工作线程先持久化回执，再通知 UI。新表 `reminder_delivery_details` 保存尝试次数、时间和脱敏错误。异常不自动重发；进程中断留下 sending 时可人工核对后重试，外部发送不能保证 exactly-once。
 - 编辑只修改未来计划，不覆盖既有 occurrence。原 QQ 插件任务继续只读；共享提醒不转存到原插件数据库，防止两套调度重复发消息。回退保留新增投递详情表，不能清空业务历史。
+
+
+### 职责、真实生活与恢复（2026-11-11）
+`modules/work.py` 管理两级任务与审计；`focus_task_links` 保存 run→task 与当时标题/进度，结算事务同时写活动、积分或金币、任务历史和事件。`focus_reward_policy` 为升级前在途计时保留 legacy 规则；新计时 v2，旧流水不改写。`work_points` 不参与商城余额。
+`modules/life.py` 管理 exercise_records / daily_life / life_revisions / housework_records / housework_awards；补记和修改是事务，运动重算当天额度只追加奖励差额。体力/专注/视疲劳读取同一份实际记录，未知输入有明确提示，不启动模型测量。
+`modules/duties.py` 固定七槽 duty_slots，替换只改 role_id；duty_changes 留审计，duty_handoffs 关联 organized_records。记录与交接同事务，完成分类不改原文及确认状态。`duty_tools.py` 每次调用复核职责权限，事实写入走用户确认，原文捕获可快速保存为 proposal。按需能力路由继承槽位插件/Skills；第三方 allowed_roles 与显式禁用保持有效。旧 Kia 整理插件在新版职责库存在时退场，代码与数据不删除。
+`modules/recovery.py` 复用 module_settings 保存恢复截止、情绪有效期和意愿，module_events 保存工作日结算和延后复盘。共享投递与旧 QQ daemon 均在外发之前检查保护；reminder_priority 是独立紧急标记，不改原提醒表。Relations 在记录/消费负事件时复核保护，绝不补扣。Social 的自动发起/追问检查保护；主动请求的聊天仍正常，但带简短恢复上下文。旧 daemon 必须重启才加载新代码。
+下班动态回复复用 FocusDialogue 的有限线程/调用预算与失败回退，用独立实例避免打断专注临时上下文。普通番茄钟结束不是下班，用户通过工作页明确结束工作日。
+回退：保留所有新增表、音频、人格和用户数据，仅回退代码。不要倒灌数据库或删除奖励调整记录；正在计时先结束，避免旧代码不认识新奖励规则。

@@ -10,7 +10,12 @@ def tools():
         schema('capture','收录原文或提炼内容，始终待用户确认；同源内容自动去重',{'title':string,'body':string,'category':{'type':'string','description':'必须为宿主已有分类；未知时先询问用户'},'day':string},('title','body')),
         schema('organize','将已有记录归入已有分类，保留原文与可撤销版本',{'id':string,'category':{'type':'string','description':'必须为宿主已有分类；未知时先询问用户'},'title':string},('id','category'))]
 def plugin(config,role,name,args):
-    if role!='kia':raise PermissionError('仅 Kia 可使用整理工具')
+    from sunday_blue.modules.duties import installed,assigned
+    root=Path(config['_plugin_root'])
+    if installed(root):
+        slots=set(assigned(root,role));allowed={'search':{'recorder','organizer'},'capture':{'recorder'},'organize':{'organizer'}}
+        if not slots & allowed.get(name,set()):raise PermissionError('当前人格未承担该记录/整理职责')
+    elif role!='kia':raise PermissionError('仅 Kia 可使用整理工具')
     service=Organizer(ModuleDB(Path(config['_plugin_root'])))
     if name=='search':return {'categories':service.categories(),'records':service.search(args.get('query',''),args.get('day'))}
     if name=='capture':return service.capture(args['title'],args['body'],args.get('category','收件箱'),args.get('day'),origin='kia',confirmed=False)

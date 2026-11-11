@@ -53,3 +53,9 @@
 
 
 本阶段验证：全量 127 tests / 65.021s / OK（focus-loop-final.log）；其后仅补充循环状态提示文案。
+
+
+## 2026-11-11 — Agent-Agens 后续可选细节（非阻塞，不自动开工）
+用户要求本轮核心由单代理收尾，禁止重复扫描或重做结算。本轮已实现工作/生活/职责页面、奖励分流、下班恢复和疲劳保护，先读 docs/MODULE_INDEX.md 最新增量。
+可独立安排的低判断工作：职责能力配置窗口把“每行 ID”输入升级为已安装插件/Skill 多选列表；优化工作/生活页窄窗换行。范围仅 module_views/life_work.py 和对应 UI 测试，复用 Duties.set_extensions 校验，不改角色绑定权限、奖励公式、数据库或 QQ 发送链路。插件 allowed_roles 和按需加载必须保留，不复制角色密钥/参数；不增加自动安装扩展。
+验收：保存→换人格→绑定仍在；未激活扩展不进入工具集；无任务/长标题/窄窗无截断。运行 python -m unittest discover -s tests -p test_life_work_views.py -v 及 test_duties.py；不截图全盘，不调用真实 API，不改真实数据。本项仅待用户将来安排，不是尚未完成的核心链路。

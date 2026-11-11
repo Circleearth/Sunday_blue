@@ -12,7 +12,10 @@ from .focus_preferences import PHASES, options, save_options
 
 class Focus:
     def __init__(self,database,on_change=lambda *a:None,clock=time.monotonic,on_complete=lambda result:None):
+        from .work import Work
         self.db,self.changed,self.clock=database,on_change,clock
+        from .life import Life
+        Rewards(database);Work(database);Life(database)
         self.completed=on_complete
         self.lock=threading.RLock();self.anchor=None;self.last_settlement=None
         with self.db.connect() as db:
@@ -23,12 +26,16 @@ class Focus:
                 CREATE TABLE IF NOT EXISTS activity_records (
                 id TEXT PRIMARY KEY,category TEXT,label TEXT,role_id TEXT,seconds REAL,day TEXT,started TEXT,finished TEXT);
                 CREATE TABLE IF NOT EXISTS focus_timers (
-                run_id TEXT PRIMARY KEY,phase TEXT,duration REAL,long_every INTEGER,end_reason TEXT);''')
+                run_id TEXT PRIMARY KEY,phase TEXT,duration REAL,long_every INTEGER,end_reason TEXT);
+                CREATE TABLE IF NOT EXISTS focus_task_links(run_id TEXT PRIMARY KEY,task_id TEXT,title TEXT,progress_start REAL);
+                CREATE TABLE IF NOT EXISTS focus_reward_policy(run_id TEXT PRIMARY KEY,policy TEXT);
+                CREATE TABLE IF NOT EXISTS work_points(id TEXT PRIMARY KEY,amount INTEGER,reason TEXT,created TEXT);''')
+            db.execute("INSERT OR IGNORE INTO focus_reward_policy SELECT id,'legacy' FROM focus_runs WHERE state IN ('running','paused')")
             # Never award time while the process was closed or unavailable.
             db.execute("UPDATE focus_runs SET state='paused' WHERE state='running'")
 
     def categories(self):
-        return self.db.get('focus_categories',['工作','学习','运动','家务'])
+        return [c for c in self.db.get('focus_categories',['工作','学习','家务']) if c!='运动']
 
     def options(self):return options(self.db)
 
@@ -47,8 +54,8 @@ class Focus:
 
     def _active(self):
         with self.db.connect() as db:
-            row=db.execute('''SELECT r.*,COALESCE(t.phase,'focus') AS phase,COALESCE(t.duration,0) AS duration
-                FROM focus_runs r LEFT JOIN focus_timers t ON t.run_id=r.id
+            row=db.execute('''SELECT r.*,COALESCE(t.phase,'focus') AS phase,COALESCE(t.duration,0) AS duration,l.task_id
+                FROM focus_runs r LEFT JOIN focus_timers t ON t.run_id=r.id LEFT JOIN focus_task_links l ON l.run_id=r.id
                 WHERE r.state IN ('running','paused')''').fetchone()
         return dict(row) if row else None
 
@@ -79,9 +86,11 @@ class Focus:
             elif auto_finish and row['duration'] and row['elapsed']+delta>=row['duration']:
                 self.finish()
 
-    def start(self,category,label='',role_id='rui',phase='focus',duration=0):
+    def start(self,category,label='',role_id='rui',phase='focus',duration=0,task_id=None):
         category=str(category).strip();label=str(label).strip()
         if not category or len(category)>40 or len(label)>200:raise ValueError('类别需为 1–40 字，说明不超过 200 字。')
+        if category=='运动':raise ValueError('运动请使用生活页的运动上报，不再使用番茄钟发币')
+        if task_id and (category!='工作' or phase!='focus'):raise ValueError('工作任务仅能绑定工作专注阶段')
         require_role(self.db.root,role_id)
         if phase not in PHASES or isinstance(duration,bool) or not isinstance(duration,(int,float)) or not 0<=duration<=14400:
             raise ValueError('无效的番茄钟阶段或时长。')
@@ -90,6 +99,12 @@ class Focus:
             if self._active():raise ValueError('已有专注计时，请先结束或继续当前计时。')
             rid=uuid.uuid4().hex
             with self.db.connect() as db:
+                db.execute('BEGIN IMMEDIATE')
+                if task_id:
+                    from .work import Work
+                    task=Work.validate_binding(db,task_id)
+                    db.execute('INSERT INTO focus_task_links VALUES(?,?,?,?)',(rid,task_id,task['title'],task['progress']))
+                db.execute("INSERT INTO focus_reward_policy VALUES(?,'v2')",(rid,))
                 db.execute('INSERT INTO focus_runs VALUES(?,?,?,?,?,?,?,?,?)',(rid,category,label,role_id,'running',0,stamp(),None,None))
                 if duration:
                     db.execute('INSERT INTO focus_timers VALUES(?,?,?,?,NULL)',(rid,phase,duration,self.options()['long_every']))
@@ -123,7 +138,7 @@ class Focus:
             if not row:
                 if self.last_settlement:return self.last_settlement
                 raise ValueError('没有可以结算的专注。')
-            seconds=row['elapsed'];valid=seconds>120 and row['phase']=='focus';record=None;coins=0;personal=False
+            seconds=row['elapsed'];valid=seconds>120 and row['phase']=='focus';record=None;coins=0;points=0;bonus=0;personal=False;task_info={}
             timed_complete=bool(row['duration'] and seconds>=row['duration'])
             with self.db.connect() as db:
                 db.execute('BEGIN IMMEDIATE')
@@ -135,18 +150,40 @@ class Focus:
                     record.update(seconds=round(seconds,2),day=day(),finished=stamp())
                     db.execute('INSERT INTO activity_records VALUES(?,?,?,?,?,?,?,?)',tuple(record[k] for k in
                         ('id','category','label','role_id','seconds','day','started','finished')))
-                    earned=db.execute('''SELECT COALESCE(sum(c.amount),0) FROM coin_ledger c
-                        JOIN activity_records a ON c.reason='focus:'||a.id WHERE a.day=?''',(day(),)).fetchone()[0]
-                    coins=max(0,min(int(seconds//60),180-earned))
-                    db.execute('INSERT OR IGNORE INTO coin_ledger VALUES(?,?,?,?)',('focus:'+row['id'],coins,'focus:'+row['id'],stamp()))
+                    policy=db.execute('SELECT policy FROM focus_reward_policy WHERE run_id=?',(row['id'],)).fetchone()
+                    legacy=not policy or policy[0]=='legacy'
+                    if row['category']=='工作' and not legacy:
+                        points=int(seconds//60)
+                        db.execute('INSERT OR IGNORE INTO work_points VALUES(?,?,?,?)',('work:'+row['id'],points,'work:'+row['id'],stamp()))
+                    elif legacy or row['category'] in ('学习','家务'):
+                        earned=db.execute("SELECT COALESCE(sum(c.amount),0) FROM coin_ledger c JOIN activity_records a ON c.reason='focus:'||a.id WHERE a.day=? AND (? OR a.category=?)",(day(),int(legacy),row['category'])).fetchone()[0]
+                        rate=300 if row['category']=='家务' and not legacy else 60
+                        cap=12 if row['category']=='家务' and not legacy else 180
+                        coins=max(0,min(int(seconds//rate),cap-earned))
+                        if row['category']=='家务' and not legacy:
+                            from .life import Life
+                            total=db.execute("SELECT COALESCE(sum(seconds),0) FROM activity_records WHERE day=? AND category='家务' AND lower(trim(label))=lower(trim(?))",(day(),row['label'])).fetchone()[0]
+                            coins=Life.housework_credit(db,row['label'],day(),int(total//300))
+                        db.execute('INSERT OR IGNORE INTO coin_ledger VALUES(?,?,?,?)',('focus:'+row['id'],coins,'focus:'+row['id'],stamp()))
+                        if row['category']=='学习' and not legacy:
+                            study=db.execute("SELECT COALESCE(sum(seconds),0) FROM activity_records WHERE day=? AND category='学习'",(day(),)).fetchone()[0]
+                            if study>=600:
+                                bonus=3 if db.execute("INSERT OR IGNORE INTO coin_ledger VALUES(?,?,?,?)",('study-first:'+day(),3,'study-first:'+day(),stamp())).rowcount else 0
+                                coins+=bonus
+                    link=db.execute('SELECT * FROM focus_task_links WHERE run_id=?',(row['id'],)).fetchone()
+                    if link:
+                        task=db.execute('SELECT title,progress,status FROM work_tasks WHERE id=?',(link['task_id'],)).fetchone()
+                        task_info={'task_id':link['task_id'],'task_title':link['title'],'task_progress':task['progress'],'task_progress_start':link['progress_start'],'task_status':task['status']}
+                        from .work import Work
+                        Work._record(db,link['task_id'],'focus',{'run_id':row['id'],'seconds':seconds,'points':points,**task_info})
                     personal=seconds>previous
-                    self.db.emit(db,'focus:'+row['id'],'focus.completed',record|{'coins':coins})
+                    self.db.emit(db,'focus:'+row['id'],'focus.completed',record|{'coins':coins,'work_points':points,**task_info})
                 stats=self._stats(db)
                 feedback=('这段努力已经记下了。先松松肩膀，下一步由你决定。' if valid else '这一小段先不计入有效记录；调整一下再开始也可以。')
                 if row['phase']!='focus':feedback='休息结束，按自己的节奏开始下一轮。休息不计记录或金币。'
                 result=dict(valid=valid,record=record,coins_earned=coins,balance=stats['balance'],today_seconds=stats['today_seconds'],
                             streak=stats['streak'],personal_best=personal,milestones=stats['milestones'],feedback=feedback,
-                            run_id=row['id'],phase=row['phase'],completed_timer=timed_complete)
+                            run_id=row['id'],phase=row['phase'],completed_timer=timed_complete,work_points=points,study_bonus=bonus,**task_info)
                 db.execute('UPDATE focus_timers SET end_reason=? WHERE run_id=?',('complete' if timed_complete else 'early',row['id']))
                 db.execute("UPDATE focus_runs SET state='finished',finished=?,settlement=? WHERE id=?",(stamp(),json.dumps(result,ensure_ascii=False),row['id']))
             self.anchor=None;self.last_settlement=result
@@ -170,6 +207,6 @@ class Focus:
 
     def records(self):
         with self.db.connect() as db:
-            return [dict(r) for r in db.execute('''SELECT a.*,COALESCE(c.amount,0) AS coins
-                FROM activity_records a LEFT JOIN coin_ledger c ON c.id='focus:'||a.id
+            return [dict(r) for r in db.execute('''SELECT a.*,COALESCE(c.amount,0) AS coins,COALESCE(w.amount,0) AS work_points,l.task_id,l.title AS task_title
+                FROM activity_records a LEFT JOIN coin_ledger c ON c.id='focus:'||a.id LEFT JOIN work_points w ON w.id='work:'||a.id LEFT JOIN focus_task_links l ON l.run_id=a.id
                 ORDER BY a.finished DESC,a.rowid DESC LIMIT 30''')]

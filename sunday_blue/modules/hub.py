@@ -34,6 +34,12 @@ class ModuleHub(QObject):
         from .planner import Planner
         from .organizer import Organizer
         self.planner=Planner(self.db);self.organizer=Organizer(self.db)
+        from .work import Work
+        from .life import Life
+        from .duties import Duties
+        self.work=Work(self.db);self.life=Life(self.db);self.duties=Duties(self.db)
+        from .recovery import Recovery
+        self.recovery=Recovery(self.db)
         from .dida import Dida
         self.dida=Dida(self.db)
         from .focus_alarm import FocusAlarm
@@ -47,18 +53,35 @@ class ModuleHub(QObject):
         from .focus_dialogue import FocusDialogue
         self.focus_dialogue=FocusDialogue(self)
         self.social=Social(self.db,config,self.changed.emit);self.jobs={};self._last_event=0
-        self.social.can_interrupt=lambda:self.focus.status()['state']!='running'
+        self.social.can_interrupt=lambda:self.focus.status()['state']!='running' and not self.recovery.protected()
         self.timer=QTimer(self);self.timer.setInterval(5000);self.timer.timeout.connect(self.tick)
         self.focus_timer=QTimer(self);self.focus_timer.setInterval(1000);self.focus_timer.timeout.connect(self._focus_tick)
         self.changed.connect(self._on_changed)
         if start_timer:self.timer.start();self.focus_timer.start()
 
-    def start_focus(self,category,label='',role_id='rui',phase='focus',duration=0):
+    def end_work(self,minutes=60):
+        state=self.focus.status()
+        if state['state']!='idle':
+            if state['category']!='工作':raise ValueError('请先结束当前非工作计时，再结算下班')
+            self.db.set('focus_loop',{});self.focus.finish()
+        previous=self.recovery.status().get('settlement_key')
+        summary=self.recovery.end_work(minutes);self.changed.emit('recovery')
+        if previous!=self.recovery.status().get('settlement_key'):
+            from .focus_dialogue import FocusDialogue
+            if not hasattr(self,'afterwork_dialogue'):
+                self.afterwork_dialogue=FocusDialogue(self);self.closed.connect(self.afterwork_dialogue.close)
+            director=next((s['role_id'] for s in self.duties.slots() if s['id']=='director'),None)
+            if director:
+                event=f"下班结算：今天记录了 {summary['minutes']} 分钟有效工作；完成任务：{', '.join(summary['completed']) or '尚无确认完成的任务'}；已报告进展 {len(summary['progress'])} 项。今天的投入已经记下，接下来安心休息。"
+                self.afterwork_dialogue.respond(director,'afterwork:'+self.recovery.status()['settlement_key'],event,True,guidance='这是下班恢复的回应，不是继续专注指令。具体认可真实成果，不编造成就；不派学习、运动或打卡任务，不用固定夸奖。')
+        return summary
+
+    def start_focus(self,category,label='',role_id='rui',phase='focus',duration=0,task_id=None):
         if self.focus.status()['state']!='idle':raise ValueError('已有计时正在进行')
         options=self.focus.options()
         self.db.set('focus_loop',{'category':category,'label':label,'role_id':role_id,
-            'remaining':options['max_rounds'],'enabled':options['auto_loop'] and phase=='focus'})
-        return self.focus.start(category,label,role_id,phase,duration)
+            'task_id':task_id,'remaining':options['max_rounds'],'enabled':options['auto_loop'] and phase=='focus'})
+        return self.focus.start(category,label,role_id,phase,duration,task_id=task_id)
 
     def _continue_focus(self,result):
         chain=self.db.get('focus_loop',{})
@@ -67,7 +90,7 @@ class ModuleHub(QObject):
         if chain['remaining']<=0:
             chain['enabled']=False;self.db.set('focus_loop',chain);return
         phase=self.focus.cycle()['next_phase'];self.db.set('focus_loop',chain)
-        try:self.focus.start(chain['category'],chain['label'],chain['role_id'],phase,self.focus.options()[phase+'_minutes']*60)
+        try:self.focus.start(chain['category'],chain['label'],chain['role_id'],phase,self.focus.options()[phase+'_minutes']*60,task_id=chain.get('task_id') if phase=='focus' else None)
         except Exception as exc:
             chain['enabled']=False;self.db.set('focus_loop',chain);self.failed.emit(str(exc))
 

@@ -83,7 +83,10 @@ class ReminderDelivery(QObject):
     def tick(self):
         if self.closed:return
         changed=False
+        from .recovery import Recovery
+        protection=Recovery(self.hub.db).protected()
         for item in self.hub.planner.due():
+            if protection and not self.hub.planner.urgent(item['schedule_id']):continue
             if item['local_status']=='pending':
                 self.hub.planner.mark(item['id'],'local','sent');changed=True
                 self.hub.reminder_alarm.play('focus',self.hub.focus.options()|self.hub.db.get('reminder_sound',{'sound_enabled':True,'volume':65,'sounds':{'focus':''}}))

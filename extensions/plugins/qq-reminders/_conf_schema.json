@@ -71,5 +71,11 @@
     "description": "测试发送端点覆盖（留空=走 QQ Bot OpenAPI 正式链路）",
     "default": "",
     "hint": "非空时守护进程把提醒 POST 到该地址，用于不发真实 QQ 消息的验证"
+  },
+  "urgent_during_recovery": {
+    "type": "bool",
+    "description": "紧急渠道：下班恢复/疲劳期间仍发送此角色的QQ提醒",
+    "default": false,
+    "hint": "默认暂缓且不消耗重试次数；仅确有紧急用途时开启。共享提醒可逐条设置紧急。"
   }
 }

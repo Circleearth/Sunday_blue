@@ -133,6 +133,11 @@ def _deliver(rows):
             continue
         # Settings resolve per reminder's creating role.
         cfg = _cfg_for_role(role)
+        if not cfg.get('urgent_during_recovery', False):
+            from sunday_blue.modules.database import ModuleDB
+            from sunday_blue.modules.recovery import Recovery
+            if Recovery(ModuleDB(ROOT)).protected():
+                continue  # Keep the original due item; do not spend retries while protected.
         final = text
         if cfg.get("llm_polish"):
             # Per-day cap so an accidental "polish on" can't burn LLM budget.

@@ -38,7 +38,10 @@ def system_prompt(root, role, config):
     identity = require_role(root, role)
     parts = [f'你是 Sunday Blue 中的角色，显示名称：{identity["name"]}；稳定 ID：{role}。保持以下人格。']
     parts.append('[角色身份层]\n' + persona_text(root, role))
-    responsibility = config['roles'][role].get('responsibility', RESPONSIBILITIES.get(role, ''))
+    from .modules.duties import context as duty_context,installed as duties_installed
+    responsibility = duty_context(root,role)
+    if not responsibility:
+        responsibility = ('当前没有分配管理职责；保留原有人格，不自行接管其他职责的数据。' if duties_installed(root) else config['roles'][role].get('responsibility', RESPONSIBILITIES.get(role, '')))
     if responsibility: parts.append('本应用的职责范围（不改变气质和说话方式）：' + responsibility)
     parts.append('''宿主运行规则（优先于旧平台流程）：你运行在独立 Sunday Blue 软件中。
 只使用本轮实际提供的工具；不要声称存在 Claude Code 命令、旧网关、自动调度或未配置服务。
@@ -65,6 +68,8 @@ def system_prompt(root, role, config):
         from .modules.database import ModuleDB
         from .modules.relations import Relations
         parts.append(Relations(ModuleDB(root)).context(role))
+        from .modules.recovery import Recovery
+        parts.append(Recovery(ModuleDB(root)).context())
     return '\n\n'.join(parts)
 
 class Agent(QThread):
@@ -152,6 +157,9 @@ class Agent(QThread):
         if self.config['features'].get('activity'):
             from .modules.activity import SCHEMA
             tools.append(SCHEMA)
+        if self.config['features'].get('duties'):
+            from .modules.duty_tools import schema
+            tools.extend(schema(self.root,self.role))
         if self.config['features'].get('mcp'):
             for spec in self.config.get('mcp_servers', []):
                 if not spec.get('enabled') or self.role not in spec.get('roles', []):
@@ -301,6 +309,9 @@ class Agent(QThread):
                     elif name == 'activity_recent':
                         from .modules.activity import recent
                         result = recent(self.root,**args)
+                    elif name == 'duty_action':
+                        from .modules.duty_tools import dispatch
+                        result = dispatch(self.root,self.role,approve=self.approve,actual_text=plain(actual_user['content']) if actual_user else '',**args)
                     elif name.startswith('event_'):
                         from .role_events import EventLedger
                         ledger = EventLedger(self.store)

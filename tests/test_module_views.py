@@ -23,14 +23,15 @@ class ModuleViewTests(unittest.TestCase):
         for job in self.hub.jobs.values():job.cancel.set();job.wait(5000)
         APP.processEvents();self.window.close();self.window.deleteLater();APP.processEvents();self.temp.cleanup()
     def test_navigation_focus_settlement_and_persistence(self):
-        self.assertEqual(self.window.page_stack.count(),8)
+        self.assertEqual(self.window.page_stack.count(),11)
         self.assertEqual(self.config.value['main_page'],'focus')
         page=self.pages['FocusPage'];clock=[0];self.hub.focus.clock=lambda:clock[0]
         page.begin();self.assertEqual(self.hub.focus.status()['state'],'running');self.assertFalse(page.start.isEnabled())
         for _ in range(25):clock[0]+=5;self.hub.focus.checkpoint()
         page.toggle();self.assertEqual(self.hub.focus.status()['state'],'paused')
         with patch.object(QMessageBox,'information') as result:page.settle()
-        self.assertTrue(result.called);self.assertEqual(self.hub.rewards.balances()['coins'],2)
+        self.assertTrue(result.called);self.assertEqual(self.hub.rewards.balances()['coins'],0)
+        self.assertEqual(self.hub.focus.last_settlement['work_points'],2)
         self.assertEqual(page.records.count(),1)
         self.window.module_navigation.button(0).click();self.assertIs(self.window.page_stack.currentWidget(),self.window.chat_page)
     def test_focus_page_restores_persisted_activity_fields_and_draft_preserved(self):

@@ -91,7 +91,10 @@ class FocusPage(QWidget):
         companion, side = _card(); self.columns.addWidget(companion, 2)
         heading = QLabel('这一轮，专心做什么'); heading.setObjectName('cardTitle'); side.addWidget(heading)
         side.addWidget(QLabel('活动类别')); self.category = QComboBox(); self.category.setEditable(True)
-        self.category.addItems(hub.focus.categories()); side.addWidget(self.category)
+        self.category.addItems([c for c in hub.focus.categories() if c!='运动']); side.addWidget(self.category)
+        self.task_caption=QLabel('绑定工作任务（可选）');side.addWidget(self.task_caption)
+        self.task=QComboBox();self.task.addItem('不绑定任务',None);side.addWidget(self.task)
+        self.category.currentTextChanged.connect(self.task_visibility)
         self.label = QLineEdit(); self.label.setPlaceholderText('给这段专注一个小目标（可选）'); side.addWidget(self.label)
         side.addSpacing(8); side.addWidget(QLabel('陪伴角色'))
         self.roles = QComboBox()
@@ -107,7 +110,7 @@ class FocusPage(QWidget):
         self.stats.setObjectName('cardTitle'); stats_layout.addWidget(self.stats); layout.addWidget(summary)
         history, history_layout = _card(); caption = QLabel('最近的专注 · 保留真实努力'); caption.setObjectName('cardTitle')
         history_layout.addWidget(caption)
-        note = QLabel('严格超过 2 分钟才计有效记录；休息不发金币。以下为最近 30 条。')
+        note = QLabel('严格超过 2 分钟才计有效记录。学习每天累计有效 10 分钟额外奖励 3 金币；工作每有效分钟 1 积分，不兑换商城。家务每 5 分钟 1 金币，每日最多 12 金币；休息不奖励。以下为最近 30 条。')
         note.setWordWrap(True); note.setObjectName('muted'); history_layout.addWidget(note)
         self.records = QListWidget(); self.records.setWordWrap(True); self.records.setMinimumHeight(130)
         self.records.setMaximumHeight(220); history_layout.addWidget(self.records); layout.addWidget(history)
@@ -115,6 +118,11 @@ class FocusPage(QWidget):
         hub.focus_completed.connect(self.completed); self.roles.currentIndexChanged.connect(self.art)
         self.timer = QTimer(self); self.timer.setInterval(1000); self.timer.timeout.connect(self.refresh)
         hub.closed.connect(self.timer.stop); self.timer.start(); self.refresh(True)
+
+    def task_visibility(self,*args):
+        show=self.category.currentText()=='工作' and self.phase=='focus'
+        self.task_caption.setVisible(show);self.task.setVisible(show)
+        self.task.setEnabled(show and self.hub.focus.status()['state']=='idle')
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -150,7 +158,8 @@ class FocusPage(QWidget):
                 item=self.feed.item(i)
                 if not item.text().startswith('【上一轮】'):item.setText('【上一轮】'+item.text())
         result = self.invoke(lambda: self.hub.start_focus(self.category.currentText(), self.label.text(),
-            self.roles.currentData(), self.phase, self.target.value()*60))
+            self.roles.currentData(), self.phase, self.target.value()*60,
+            task_id=self.task.currentData() if self.category.currentText()=='工作' and self.phase=='focus' else None))
         if result: self.banner.hide(); self.silence.hide(); self.hub.focus_alarm.stop()
         self.refresh(True)
 
@@ -168,8 +177,9 @@ class FocusPage(QWidget):
         self.refresh(True)
 
     def result_text(self, result):
-        return (PHASES[result['phase']]+'已结束 · '+f"本次 +{result['coins_earned']} 金币 · 今日 {int(result['today_seconds']//60)} 分钟\n"
-                + result['feedback'])
+        reward=(f"本次 +{result.get('work_points',0)} 工作积分" if (result.get('record') or {}).get('category')=='工作' else f"本次 +{result['coins_earned']} 金币")
+        task=('\n任务：'+result['task_title']+f" · 实际进度 {result.get('task_progress',0)}%" if result.get('task_title') else '')
+        return PHASES[result['phase']]+'已结束 · '+reward+f" · 今日 {int(result['today_seconds']//60)} 分钟\n"+result['feedback']+task
 
     def completed(self, result):
         self._settled_id = result['run_id']; self.phase = self.hub.focus.cycle()['next_phase']
@@ -184,6 +194,13 @@ class FocusPage(QWidget):
     def refresh(self, full=False):
         state = self.hub.focus.status(); active = state['state'] != 'idle'
         if full:
+            selected_task=state.get('task_id') if active else self.task.currentData()
+            choices=[(None,'不绑定任务')]+[(r['id'],r['title']) for r in self.hub.work.tasks(True) if (not r['archived'] and r['status'] not in ('done','paused')) or active and r['id']==selected_task]
+            if [(self.task.itemData(i),self.task.itemText(i)) for i in range(self.task.count())]!=choices:
+                self.task.blockSignals(True);self.task.clear()
+                for task_id,title in choices:self.task.addItem(title,task_id)
+                self.task.setCurrentIndex(max(0,self.task.findData(selected_task)));self.task.blockSignals(False)
+            if active:self.task.setCurrentIndex(max(0,self.task.findData(selected_task)))
             roles = list_roles(self.hub.root)
             choices = [(self.roles.itemData(i), self.roles.itemText(i)) for i in range(self.roles.count())]
             if choices != [(r[0], r[1]) for r in roles]:
@@ -219,14 +236,14 @@ class FocusPage(QWidget):
         self.hint.setText('旧版正计时已保留，请手动结束本轮。' if active and not duration else '到点自动结算并提醒。下一阶段由你开始，不自动连跑。')
         if options['auto_loop']:
             self.hint.setText(f"自动循环最多 {options['max_rounds']} 轮专注；手动结束即停止。")
-        self.art()
+        self.art();self.task_visibility()
         if full:
             stats = self.hub.focus.stats()
             self.stats.setText(f"今日专注  {int(stats['today_seconds']//60)} 分钟     ·     完成 {stats['today_count']} 次     ·     连续 {stats['streak']} 天     ·     余额 {stats['balance']} 金币")
-            records = self.hub.focus.records(); key = [(r['id'], r['seconds'], r['coins']) for r in records]
+            records = self.hub.focus.records(); key = [(r['id'], r['seconds'], r['coins'],r.get('work_points',0)) for r in records]
             if key != self._records_key:
                 self._records_key = key; self.records.clear()
                 for r in records:
-                    coins = f' · +{r["coins"]} 金币' if r['coins'] else ' · 未达时长不发币'
+                    coins = (f' · +{r.get("work_points",0)} 工作积分' if r['category']=='工作' else f' · +{r["coins"]} 金币' if r['coins'] else ' · 已记录，本次无金币')
                     self.records.addItem(f"{r['category']}  ·  {int(r['seconds']//60)} 分钟{coins}  ·  {r['label'] or '认真生活的一小段'}\n{_hm(r['started'])} — {_hm(r['finished'])}")
                 if not records: self.records.addItem('今天的第一段专注，从现在开始。')
