@@ -124,3 +124,7 @@
 
 2026-11-12 资料阅读增量：`modules/markdown_library.py` / `module_views/markdown_reader.py` / `settings.py::_duties_page`；书写规范在 `extensions/skills/markdown-writing/SKILL.md`，职责一次性绑定在 Duties 初始化中。顶部新增“资料”并移除独立“职责”（职责进入设置），保持原 11 页总数。无用户资料迁移。测试 `test_markdown_library.py` 覆盖读取边界/大小/UTF-8、正文搜索、目录链接、图片资源限制、Skill按需与换岗绑定、设置入口。仅以合成文档做一次原生布局预览，未读取 MasterData 正文。
 资料阅读验证：全量 **184 tests / 76.663s / OK**；最后的目录启用状态与相对链接调整后专项 **3 tests / 0.265s / OK**。日志 `.cache/role-refactor-checkpoint/markdown-reader-final.log`；真实 MasterData 只设置路径，未读取或修改正文。
+
+2026-11-12 文档编辑增量：`modules/document_changes.py`（修订日志、幂等交接、断点恢复），`modules/markdown_library.py::save`（用户保存），`files.py::write`（职责角色写入桥接），`module_views/document_revisions.py`（快照与差异），`markdown_reader.py::can_leave/save_document` + `modules/workspace.py`/`ui.py::closeEvent`（未保存保护）。职责动态提示在 duties.context，查询接口在 duty_tools。测试入口 `test_document_changes.py`：保存/无变化、Kia写入/拒绝、冲突/恢复、Qt后台保存响应、导航保存/放弃/取消。没有改动真实 MasterData、私聊或人格文件。
+
+文档修订验证：全量 **189 tests / 75.204s / OK**，日志 `.cache/role-refactor-checkpoint/document-edit-final.log`。使用隔离测试资料验证内置文件工具与 Qt 交互，未调用真实 LLM、未读取或修改 MasterData 正文。

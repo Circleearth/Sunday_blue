@@ -108,3 +108,10 @@ plugin_runtime 扫描 extensions/plugins/*/plugin.json，读取 _conf_schema.jso
 `modules/markdown_library.py` 提供受所选根目录约束的读取、检索、收藏/最近记录，配置键 `markdown_library` 保存在 modules.sqlite3。`module_views/markdown_reader.py` 复用 Qt 原生 QFileSystemModel（延迟列目录）、QTextBrowser（Markdown）、后台搜索线程；只接受 UTF-8 md/markdown，阻止联接/链接越界，远端资源不会自动加载。点击外部 http(s) 文字链接才交给系统浏览器，图片限定所选库内受限大小的位图。没有引入浏览器引擎或大型依赖。
 `Settings._duties_page` 嵌入现有 DutiesPage，优先复用主窗口 ModuleHub，独立设置窗口用仅含职责服务的轻量适配，不启动计时。职责操作仍直接落库，UI 明示即时保存边界。
 `Duties` 只在 Markdown Skill 已安装且未迁移时，在同一事务中为 recorder/organizer 追加共享规范，保留其他扩展，写 `markdown_standard_installed` 标记。不修改用户人格、角色私有文件权限或原文文档。capabilities 为该 Skill 设置按需关键词默认值。
+
+### Markdown 保存与修订交接（2026-11-12）
+`MarkdownLibrary.save` 与 `FileTools.write` 复用 WRITE_LOCK。手动保存二次核验原始字节，保留 BOM/CRLF、备份并原子替换；AI 仍走已有权限/信任/确认流程，仅已指派 recorder/organizer 在所选资料库写 md/markdown 时接入。data/personas/extensions/.git 排除共享修订。
+
+`modules/document_changes.py` 在 modules.sqlite3 的 document_changes 保存完整前后快照与哈希，prepare 在替换前落盘；finish 在单一 SQLite 事务中生成 organized_records proposal、duty_handoffs、document.changed，并以修订 ID 幂等。磁盘文件与 SQLite 并非同一事务：异常时保留 prepared；启动/保存/查看修订时在写锁内核对当前哈希，等于 after 则补交接、等于 before 标记未写入，其他冲突保留待核对，不盲目回滚。快照与 data/backups 不自动清理。
+
+页面通过后台线程保存、计算差异及生成交接，Qt 信号回到主线程；编辑时只维护脏标记。workspace 导航及主窗口关闭调用 can_leave，异步保存成功才继续原动作；失败保留草稿。修订弹窗 document_revisions.py 展示完整前后和有界差异（大文档只显示快照，避免昂贵 diff）。双方 duty_action 支持 handoffs/file_revision；人格动态上下文只补最近三条待处理标题，不灌入全文，不自动认定用户文档中的推断为事实。新增记录属于共享资料审计，不是私聊或长期记忆。

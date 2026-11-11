@@ -1,4 +1,4 @@
-"""Read-only Markdown library. User navigation does not grant agent file permissions."""
+"""Scoped Markdown library and reviewed manual saves. User navigation does not grant agent file permissions."""
 from pathlib import Path
 import os
 from ..files import no_links,inside
@@ -19,7 +19,7 @@ class MarkdownLibrary:
         if not p.is_file() or p.suffix.lower() not in ('.md','.markdown'):raise ValueError('请选择 Markdown 文件')
         if p.stat().st_size>MAX_DOCUMENT:raise ValueError('文档超过 2 MB，请用外部编辑器打开，避免卡住阅读界面')
         return p
-    def read(self,path,remember=True):
+    def read(self,path,remember=True,snapshot=False):
         p=self.checked(path)
         raw=p.read_bytes()
         if len(raw)>MAX_DOCUMENT:raise ValueError('文档过大')
@@ -27,7 +27,7 @@ class MarkdownLibrary:
         except UnicodeDecodeError:raise ValueError('请将文档保存为 UTF-8 编码') from None
         if remember:
             value=self.preferences();value['recent']=([str(p)]+[s for s in value.get('recent',[]) if s!=str(p)])[:30];self.db.set('markdown_library',value)
-        return p,text
+        return (p,text,raw) if snapshot else (p,text)
     def favorite(self,path):
         p=str(self.checked(path));value=self.preferences();items=value.get('favorites',[])
         if p in items:items.remove(p)
@@ -59,3 +59,33 @@ class MarkdownLibrary:
                         if len(result)>=100:return result,True
                 except (OSError,ValueError):continue
         return result,truncated
+
+    def save(self,path,text,original):
+        import os,uuid
+        from ..files import WRITE_LOCK
+        from .document_changes import DocumentChanges
+        if not isinstance(text,str) or len(text.encode('utf-8'))>MAX_DOCUMENT:raise ValueError('保存内容超过 2 MB')
+        with WRITE_LOCK:
+            p=self.checked(path)
+            if p.read_bytes()!=original:raise ValueError('文件已被其他程序或角色修改，本次未覆盖。草稿保留；请复制草稿后刷新并核对差异。')
+            changes=DocumentChanges(self.db)
+            if not changes.eligible(p):raise ValueError('软件自身目录不支持共享修订；请选择独立的资料文件夹')
+            changes.recover(p)
+            before=original.decode('utf-8-sig')
+            # Ignore newline representation changes introduced by the text widget.
+            if before.replace('\r\n','\n')==text:return {'status':'unchanged','data':original}
+            newline='\r\n' if b'\r\n' in original and original.count(b'\n')==original.count(b'\r\n') else '\n'
+            data=text.replace('\r\n','\n').replace('\n',newline).encode('utf-8')
+            if original.startswith(b'\xef\xbb\xbf'):data=b'\xef\xbb\xbf'+data
+            if len(data)>MAX_DOCUMENT:raise ValueError('编码及换行转换后的内容超过 2 MB')
+            rid=changes.prepare(p,original,data,'user');backup=self.db.root/'data/backups'/('markdown-'+rid+'.bak');backup.parent.mkdir(parents=True,exist_ok=True);backup.write_bytes(original)
+            temporary=p.with_name('.'+p.name+'.'+uuid.uuid4().hex+'.tmp')
+            try:
+                with temporary.open('xb') as out:out.write(data);out.flush();os.fsync(out.fileno())
+                self.checked(p)
+                if p.read_bytes()!=original:raise ValueError('保存期间文件发生变化，本次未覆盖；草稿保留')
+                os.replace(temporary,p)
+            finally:temporary.unlink(missing_ok=True)
+            try:handoff=changes.finish(rid);warning=''
+            except Exception:handoff=None;warning='文件已保存，交接暂未写入。修订已留存，重新点击保存或打开修订记录可重试。'
+            return {'status':'saved','data':data,'revision_id':rid,'handoff_id':handoff,'warning':warning}

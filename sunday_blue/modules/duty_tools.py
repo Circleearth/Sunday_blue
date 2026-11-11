@@ -5,7 +5,7 @@ from .database import ModuleDB,day
 from .duties import Duties,assigned
 from ..roles import require_role
 
-ACTIONS={'director':{'summary','work_list','work_create','work_update'},'exercise':{'summary','exercise_record'},'diet':{'summary','daily_record'},'recovery':{'summary','daily_record'},'study':{'summary'},'recorder':{'summary','capture'},'organizer':{'summary','handoffs','organize','fail'}}
+ACTIONS={'director':{'summary','work_list','work_create','work_update'},'exercise':{'summary','exercise_record'},'diet':{'summary','daily_record'},'recovery':{'summary','daily_record'},'study':{'summary'},'recorder':{'summary','capture','handoffs','file_revision'},'organizer':{'summary','handoffs','organize','fail','file_revision'}}
 WRITE={'work_create','work_update','exercise_record','daily_record'}
 GUIDE='只记录用户实际报告的事实；写入需要确认。记录员快速收原文，整理员查交接、复用分类、完成后清出待办；分类不明问用户。'
 
@@ -14,7 +14,7 @@ def permitted(root,role):return set().union(*(ACTIONS.get(s,set()) for s in assi
 def schema(root,role):
     actions=sorted(permitted(root,role))
     if not actions:return []
-    description=('按当前职责操作共享真实数据。'+GUIDE+' action参数：summary 可给 day；work_create: title,parent_id?,estimate_minutes?,due?,priority?,dida_id?；work_update: id,fields对象；exercise_record: kind,minutes,intensity(light/moderate/high),day?,record_id?；daily_record: day及饮食meal/睡眠sleep_hours/手机分钟phone_total,phone_fun/屏幕小时screen_hours/主观energy(0–100)/note；capture: title,body(用户本次原文),request?,files?；organize: id,category,title?,note?；fail: id,error。未提供的值不要编造。')
+    description=('按当前职责操作共享真实数据。'+GUIDE+' action参数：summary 可给 day；work_create: title,parent_id?,estimate_minutes?,due?,priority?,dida_id?；work_update: id,fields对象；exercise_record: kind,minutes,intensity(light/moderate/high),day?,record_id?；daily_record: day及饮食meal/睡眠sleep_hours/手机分钟phone_total,phone_fun/屏幕小时screen_hours/主观energy(0–100)/note；capture: title,body(用户本次原文),request?,files?；organize: id,category,title?,note?；fail: id,error；file_revision: id（交接中的修订 ID，读取改前改后与差异）。未提供的值不要编造。')
     return [{'name':'duty_action','description':description,'input_schema':{'type':'object','properties':{'action':{'type':'string','enum':actions},'args':{'type':'object'}},'required':['action','args'],'additionalProperties':False}}]
 
 def summary(db,slots,target):
@@ -81,6 +81,10 @@ def dispatch(root,role,action,args,approve=None,actual_text=''):
     if action=='handoffs':
         from .organizer import Organizer
         return {'categories':Organizer(db).categories(),'items':duties.handoffs(bool(args.get('include_done',False)))}
+    if action=='file_revision':
+        from .document_changes import DocumentChanges
+        changes=DocumentChanges(db);row=changes.get(args['id'])
+        return {k:row[k] for k in ('id','path','actor','state','created','handoff_id')}|{'before':row['before_text'][:12000],'after':row['after_text'][:12000],'diff':changes.difference(row['before_text'],row['after_text']),'truncated':max(len(row['before_text']),len(row['after_text']))>12000}
     if action=='organize':return duties.complete_handoff(**args)
     if action=='fail':return duties.fail_handoff(**args)
     raise ValueError('未知职责动作')

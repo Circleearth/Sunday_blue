@@ -43,7 +43,13 @@ def effective_extensions(root,role):
 
 def context(root,role):
     slots=assigned(root,role)
-    return '\n'.join(RULES[s] for s in slots if s in RULES)
+    result='\n'.join(RULES[s] for s in slots if s in RULES)
+    if set(slots)&{'recorder','organizer'}:
+        from .database import ModuleDB
+        with ModuleDB(root).connect() as c:
+            rows=c.execute("SELECT r.title FROM duty_handoffs h JOIN organized_records r ON r.id=h.record_id WHERE h.status!='done' ORDER BY h.created DESC LIMIT 3").fetchall()
+        if rows:result+='\n有待核对交接：'+'；'.join(r[0] for r in rows)+'。需要时加载职责工具 handoffs 查看；文件修订用 file_revision 读取，不自动覆盖用户修改。'
+    return result
 
 class Duties:
     def __init__(self,db):

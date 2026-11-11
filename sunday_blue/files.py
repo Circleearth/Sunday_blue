@@ -155,11 +155,22 @@ class FileTools:
                 backup.write_bytes(original)
             p.parent.mkdir(parents=True, exist_ok=True)
             no_links(p.parent)
+            journal=None;revision=None
+            if not memory and p.suffix.lower() in ('.md','.markdown'):
+                from .modules.database import ModuleDB
+                from .modules.document_changes import DocumentChanges
+                database=ModuleDB(self.root)
+                from .modules.duties import assigned
+                if database.get('markdown_library',{}).get('root') and set(assigned(self.root,self.role)) & {'recorder','organizer'}:
+                    journal=DocumentChanges(database)
+                    if not journal.eligible(p,self.role):journal=None
+                    else:journal.recover(p)
             tmp = p.with_name('.' + p.name + '.' + uuid.uuid4().hex + '.tmp')
             try:
                 data = content.encode('utf-8')
                 if original and original.startswith(b'\xef\xbb\xbf'):
                     data = b'\xef\xbb\xbf' + data
+                if journal:revision=journal.prepare(p,original,data,self.role)
                 tmp.write_bytes(data)
                 no_links(p)
                 os.replace(tmp, p)
@@ -167,6 +178,10 @@ class FileTools:
                 tmp.unlink(missing_ok=True)
             result = {'status': 'written', 'path': str(p), 'backup': str(backup) if backup else None,
                       'sha256': hashlib.sha256(data).hexdigest()}
+            if revision:
+                result['revision_id']=revision
+                try:result['handoff_id']=journal.finish(revision)
+                except Exception:result['handoff_warning']='文件已写入，交接待重试；修订快照已保留'
             self.audit('write', json.dumps(result, ensure_ascii=False))
             return result
 

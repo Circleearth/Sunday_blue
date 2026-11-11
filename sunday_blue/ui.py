@@ -836,6 +836,10 @@ class MainWindow(QWidget):
             self.manage_roles()
 
     def closeEvent(self,event):
+        if hasattr(self,'page_stack'):
+            for index in range(self.page_stack.count()):
+                page=self.page_stack.widget(index)
+                if hasattr(page,'can_leave') and not page.can_leave(self.close):event.ignore();return
         self.config.value['last_role']=self.role
         self.config.value['active_sessions']=self.current_by_role
         self.config.save()

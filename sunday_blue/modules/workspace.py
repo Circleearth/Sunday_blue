@@ -11,7 +11,13 @@ def install_workspace(window):
     buttons=QButtonGroup(window);buttons.setExclusive(True);window.module_navigation=buttons
     positions={key:index for index,(key,_,_) in enumerate(entries)}
     def select(key):
-        window.page_stack.setCurrentIndex(positions[key]);window.config.value['main_page']=key
+        current=window.page_stack.currentWidget();target=positions[key]
+        if current is not window.page_stack.widget(target) and hasattr(current,'can_leave') and not current.can_leave(lambda:select(key)):
+            old=buttons.button(window.page_stack.currentIndex())
+            if old:old.setChecked(True)
+            return
+        window.page_stack.setCurrentIndex(target);window.config.value['main_page']=key
+        if buttons.button(target):buttons.button(target).setChecked(True)
     for index,(key,title,page) in enumerate(entries):
         button=QPushButton(title);button.setCheckable(True);button.setObjectName('ghost');buttons.addButton(button,index)
         window.module_nav.addWidget(button);button.clicked.connect(lambda checked=False,k=key:select(k))
