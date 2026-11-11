@@ -169,4 +169,7 @@ class Focus:
         with self.db.connect() as db:return self._stats(db)
 
     def records(self):
-        with self.db.connect() as db:return [dict(r) for r in db.execute('SELECT * FROM activity_records ORDER BY finished DESC,rowid DESC LIMIT 30')]
+        with self.db.connect() as db:
+            return [dict(r) for r in db.execute('''SELECT a.*,COALESCE(c.amount,0) AS coins
+                FROM activity_records a LEFT JOIN coin_ledger c ON c.id='focus:'||a.id
+                ORDER BY a.finished DESC,a.rowid DESC LIMIT 30''')]

@@ -2,6 +2,7 @@
 import importlib.util
 import re
 import threading
+from pathlib import Path
 from PySide6.QtCore import QObject,Signal
 
 class ReminderDelivery(QObject):
@@ -39,3 +40,37 @@ class ReminderDelivery(QObject):
         self.active.discard(rid);self.hub.planner.mark(rid,'qq','sent' if success else 'failed')
         self.hub.changed.emit('planner')
         if not success:self.hub.failed.emit('QQ 提醒未确认送达，请在提醒页检查渠道并手动重试。')
+
+    def _transport(self):
+        path=self.hub.root/'extensions/plugins/qq-reminders/daemon/run.py'
+        if not path.exists():
+            # tests build an empty source root; the package's own repository keeps the plugin
+            path=Path(__file__).resolve().parents[2]/'extensions/plugins/qq-reminders/daemon/run.py'
+        spec=importlib.util.spec_from_file_location('sunday_shared_qq_transport',str(path))
+        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        return module
+
+    def diagnose(self):
+        """Read-only channel check: shared config, DSH credentials and token fetch."""
+        cfg=self.hub.db.get('shared_qq',{})
+        result={'openid_ok':bool(str(cfg.get('openid','')).strip()),'creds_ok':False,'token_ok':False,'error':''}
+        if not result['openid_ok']:result['error']='shared_qq 未配置接收者 openid';return result
+        module=self._transport()
+        creds=module._creds(str(cfg.get('profile','qqbot')))
+        if not creds:result['error']='未找到 %s 的 DSH 凭据（~/.dsh/profiles/%s/cordis.patch.yml）'%(cfg.get('profile','qqbot'),cfg.get('profile','qqbot'));return result
+        result['creds_ok']=True
+        try:
+            module._token(creds,{'http_proxy':str(cfg.get('proxy',''))});result['token_ok']=True
+        except Exception as exc:
+            result['error']=f'token 获取失败：{exc}'
+        return result
+
+    def test_send(self,text='🟢 Sunday Blue 试发消息：收到即说明主动提醒链路可用'):
+        cfg=self.hub.db.get('shared_qq',{})
+        module=self._transport()
+        creds=module._creds(str(cfg.get('profile','qqbot')))
+        if not creds:raise ValueError('未找到 %s 的 DSH 凭据'%cfg.get('profile','qqbot'))
+        token=module._token(creds,{'http_proxy':str(cfg.get('proxy',''))})
+        ok=module._qq_send(creds,token,str(cfg.get('openid','')),text,{'http_proxy':str(cfg.get('proxy',''))})
+        if not ok:raise ValueError('QQ 接口返回失败；看守护日志排查')
+        return True

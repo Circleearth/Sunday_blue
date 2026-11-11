@@ -223,9 +223,10 @@ class FocusPage(QWidget):
         if full:
             stats = self.hub.focus.stats()
             self.stats.setText(f"今日专注  {int(stats['today_seconds']//60)} 分钟     ·     完成 {stats['today_count']} 次     ·     连续 {stats['streak']} 天     ·     余额 {stats['balance']} 金币")
-            records = self.hub.focus.records(); key = [(r['id'], r['seconds']) for r in records]
+            records = self.hub.focus.records(); key = [(r['id'], r['seconds'], r['coins']) for r in records]
             if key != self._records_key:
                 self._records_key = key; self.records.clear()
                 for r in records:
-                    self.records.addItem(f"{r['category']}  ·  {int(r['seconds']//60)} 分钟  ·  {r['label'] or '认真生活的一小段'}\n{_hm(r['started'])} — {_hm(r['finished'])}")
+                    coins = f' · +{r["coins"]} 金币' if r['coins'] else ' · 未达时长不发币'
+                    self.records.addItem(f"{r['category']}  ·  {int(r['seconds']//60)} 分钟{coins}  ·  {r['label'] or '认真生活的一小段'}\n{_hm(r['started'])} — {_hm(r['finished'])}")
                 if not records: self.records.addItem('今天的第一段专注，从现在开始。')

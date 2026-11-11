@@ -95,3 +95,40 @@ class SharedTests(TestCase):
             hub.close()
             for page in pages:page.deleteLater()
             hub.deleteLater();APP.processEvents()
+    def test_focus_records_include_earned_coins_and_qq_channel_diagnosis(self):
+        hub=ModuleHub(self.config,Store(self.config.data),start_timer=False)
+        try:
+            self.assertEqual(hub.focus.records(),[])
+            clock=[0];hub.focus.clock=lambda:clock[0]
+            hub.focus.start('学习')
+            for _ in range(25):clock[0]+=5;hub.focus.checkpoint()  # 125s, past the 120s valid threshold
+            hub.focus.finish()
+            records=hub.focus.records()
+            self.assertEqual(len(records),1)
+            self.assertGreater(records[0]['coins'],0)
+            self.assertIn('coins',records[0])
+            page=__import__('sunday_blue.module_views.focus',fromlist=['FocusPage']).FocusPage(hub)
+            self.assertIn('+',page.records.item(0).text())
+            diagnosis=hub.reminder_delivery.diagnose()
+            self.assertEqual(diagnosis['openid_ok'],False)
+            self.assertIn('openid',diagnosis['error'])
+            hub.db.set('shared_qq',{'profile':'qqbot','openid':'owner-openid','proxy':''})
+            from unittest.mock import patch
+            from sunday_blue.modules.reminder_delivery import ReminderDelivery
+            class _FakeTransport:
+                @staticmethod
+                def _creds(profile):return {'appId':'a','appSecret':'b'} if profile=='qqbot' else None
+                @staticmethod
+                def _token(creds,cfg):return 'token'
+                @staticmethod
+                def _qq_send(creds,token,openid,text,cfg):return True
+            with patch.object(ReminderDelivery,'_transport',lambda self:_FakeTransport):
+                diagnosis=hub.reminder_delivery.diagnose()
+                self.assertEqual((diagnosis['openid_ok'],diagnosis['creds_ok'],diagnosis['token_ok']),(True,True,True))
+                self.assertTrue(hub.reminder_delivery.test_send())
+                hub.db.set('shared_qq',{'profile':'missing','openid':'owner-openid','proxy':''})
+                diagnosis=hub.reminder_delivery.diagnose()
+                self.assertEqual((diagnosis['creds_ok'],diagnosis['token_ok']),(False,False))
+                self.assertIn('凭据',diagnosis['error'])
+        finally:
+            hub.close();hub.deleteLater();APP.processEvents()

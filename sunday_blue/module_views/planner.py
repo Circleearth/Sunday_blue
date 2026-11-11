@@ -86,12 +86,46 @@ class RemindersPage(BasePage):
         if ok:self.hub.db.set('reminder_sound',{'sound_enabled':True,'volume':volume,'sounds':{'focus':path}})
 
     def qq(self):
-        value=self.hub.db.get('shared_qq',{});dlg=QDialog(self);dlg.setWindowTitle('共享 QQ 渠道');form=QFormLayout(dlg)
+        value=self.hub.db.get('shared_qq',{})
+        if not value:
+            # first-time setup: borrow the channel that the per-role QQ plugin already has working
+            for rid,rv in (self.hub.config.value.get('roles') or {}).items():
+                ps=(rv.get('plugin_settings') or {}).get('qq-reminders') or {}
+                if ps.get('qq_openid'):
+                    value={'profile':ps.get('dsh_profile','qqbot'),'openid':ps['qq_openid'],'proxy':ps.get('http_proxy','')}
+                    break
+        dlg=QDialog(self);dlg.setWindowTitle('共享 QQ 渠道');form=QFormLayout(dlg)
         profile=QLineEdit(value.get('profile','qqbot'));openid=QLineEdit(value.get('openid',''));proxy=QLineEdit(value.get('proxy',''))
         for title,w in [('现有 bot profile',profile),('接收者 openid',openid),('代理（可空）',proxy)]:form.addRow(title,w)
         form.addRow(QLabel('复用已绑定 QQ bot 凭据，不修改原插件或角色配置。'))
-        save=QPushButton('保存');save.clicked.connect(dlg.accept);form.addRow(save)
-        if dlg.exec():self.hub.db.set('shared_qq',{'profile':profile.text().strip(),'openid':openid.text().strip(),'proxy':proxy.text().strip()})
+        status=QLabel();status.setObjectName('muted');status.setWordWrap(True);form.addRow(status)
+        row=QHBoxLayout()
+        def save_channel():
+            self.hub.db.set('shared_qq',{'profile':profile.text().strip(),'openid':openid.text().strip(),'proxy':proxy.text().strip()})
+            self.refresh();dlg.accept()
+        save=QPushButton('保存');save.clicked.connect(save_channel);row.addWidget(save)
+        check=QPushButton('检查连通')
+        def run_check():
+            st=self.hub.reminder_delivery.diagnose()
+            status.setText(self._diagnose_text(st))
+        check.clicked.connect(run_check)
+        sendtest=QPushButton('试发一条')
+        def run_test():
+            sendtest.setEnabled(False);check.setEnabled(False);save.setEnabled(False)
+            try:
+                status.setText('正在试发一条消息到你的 QQ（需网络，约 10 秒）…')
+                ok=self.invoke(lambda:self.hub.reminder_delivery.test_send())
+                status.setText('试发成功：你的 QQ 应已收到一条测试消息。' if ok is not None else '试发失败，见上方提示；到点的提醒会自动挂起重试。')
+            finally:
+                sendtest.setEnabled(True);check.setEnabled(True);save.setEnabled(True)
+        sendtest.clicked.connect(run_test)
+        row.addWidget(check);row.addWidget(sendtest);row.addStretch();form.addRow(row)
+        self.invoke(lambda:status.setText(self._diagnose_text(self.hub.reminder_delivery.diagnose()))) if self.hub.db.get('shared_qq') else status.setText('尚未保存共享 QQ 渠道；可点「检查连通」先看凭据与网络。')
+        dlg.exec()
+    def _diagnose_text(self,st):
+        return ('接收者 %s · DSH 凭据 %s · 连通 %s%s')%(
+            '已配置' if st['openid_ok'] else '缺失','有效' if st['creds_ok'] else '缺失',
+            'OK' if st['token_ok'] else '未通过',f'（{st["error"]}）' if st['error'] else '')
     def retry(self):
         item=self.history.currentItem()
         if not item:return

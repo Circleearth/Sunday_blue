@@ -7,6 +7,24 @@
 
 ---
 
+## 2026-11-11 10:10 — Claude：专注记录加金币数 + 共享提醒 QQ 渠道诊断/配置
+
+主人新指令（本轮优先于旧 UI-only 边界）：① 专注模块记录中显示本次获得金币；② 检查 QQ 渠道是否接通并帮忙配置。授权范围经主人确认：最小方案，QQ 渠道检测做到「token 验证 + 发一条测试消息」。
+
+改动文件：
+
+1. `modules/focus.py`：`records()` 改为 LEFT JOIN `coin_ledger`（`c.id='focus:'||a.id`），每条记录新增 `coins` 列（无结算行则为 0）。未动 finish()/结算事务。
+2. `module_views/focus.py`：记录列表项显示 `· +N 金币`（N=0 时显示「未达时长不发币」）；刷新去重 key 加入 coins。
+3. `modules/reminder_delivery.py`：新增只读 `diagnose()`（shared_qq openid 是否配置 → DSH 凭据是否存在 → 调 `module._token` 实测连通，不发消息）与 `test_send()`（发一条固定试发消息）。`_transport()` 加载 `run.py` 时若 hub root 下没有插件文件（测试空根），回退到包内仓库路径；不碰守护进程/插件自身代码。
+4. `module_views/planner.py` 的 `RemindersPage.qq()` 对话框：未配置 `shared_qq` 时自动预填第一个有 `qq_openid` 的角色插件配置（当前实际来自 rui）；新增「检查连通」「试发一条」按钮，结果写进对话框内状态标签；保存不再依赖 accept 才生效（保存即写库并关窗）。
+5. `tests/test_shared_features.py`：新增 `test_focus_records_include_earned_coins_and_qq_channel_diagnosis`——用 125 秒检查点造一条有效记录断言 `records()[0]['coins']>0` 且页面列表含「+」；用假 transport（patch `_transport`）断言 diagnose 三态（openid 缺失 / 凭据缺失 / 全通）与 `test_send()` 成功路径，不发真实网络请求。
+
+实测（主人已授权）：`shared_qq` 已由 rui 角色插件配置写入 `data/modules.sqlite3`；`diagnose()` 真实返回 openid/凭据/token 三项全 OK；`test_send()` 已向主人 QQ 发出一条「🟢 Sunday Blue 试发消息」，返回成功。凭据仍只读 `~/.dsh/profiles/qqbot/`，未复制进任何配置。
+
+验证：全量 `python -m unittest discover -s tests -v` → **145 tests OK（97.4s，基线 144，+1）**；app 原生启动 12 秒无异常。
+
+给 Codex 的注意：`Focus.records()` 的返回结构变了（多一个 `coins` 键），如有下游按旧字段消费请知悉；`reminder_delivery` 现在多了两个可公开调用的方法（diagnose 只读、test_send 会真实发消息，勿在无用户触发时调用）。原 qq-reminders 插件与其 daemon 一行未改。
+
 ## 2026-11-10 22:30 — 用户额外备注（主人让 Claude 代记，不是改动记录，读完知悉即可）
 
 **滴答清单（Dida365/TickTick）skill 整理版**。这是 Claude 侧的一个 skill（完整文件：`C:\Users\zsc18\.claude\skills\dida365\SKILL.md`，仓库外，无需读原文件，下面就是整理后的全文要点）。主人口头备注，仅让 Codex 知悉这个模块的存在与规矩，**不构成对 Sunday_Blue 的任何任务或授权**。
