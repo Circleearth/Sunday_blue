@@ -21,6 +21,16 @@ class Planner:
         rid=uuid.uuid4().hex
         with self.db.connect() as db:db.execute('INSERT INTO schedules VALUES(?,?,?,?,?,?,1)',(rid,title,when.isoformat(),repeat,int(local),int(qq)))
         return rid
+    def update(self,rid,title,due,repeat='once',local=True,qq=False):
+        title=str(title).strip();when=datetime.fromisoformat(due)
+        if not title or len(title)>200 or repeat not in ('once','daily','weekly') or not(local or qq):raise ValueError('请填写标题、重复方式和提醒渠道')
+        if when.tzinfo is None:when=when.astimezone()
+        with self.db.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            old=db.execute('SELECT * FROM schedules WHERE id=?',(rid,)).fetchone()
+            if not old:raise ValueError('提醒不存在')
+            if db.execute('SELECT 1 FROM reminder_occurrences WHERE schedule_id=? AND due=?',(rid,when.isoformat())).fetchone():raise ValueError('这个时间的提醒已有投递记录，请选择新的提醒时间')
+            db.execute('UPDATE schedules SET title=?,next_due=?,repeat=?,local=?,qq=? WHERE id=?',(title,when.isoformat(),repeat,int(local),int(qq),rid))
     def schedules(self):
         with self.db.connect() as db:return [dict(r) for r in db.execute('SELECT * FROM schedules ORDER BY next_due')]
     def legacy_qq(self):

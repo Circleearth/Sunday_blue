@@ -99,3 +99,12 @@
 - 已完成列表为本地已同步历史，不拉取全部历史；未新增滴答习惯接口、远端创建/删除和后台自动轮询。仍使用“同步滴答清单”按钮获取其他客户端的变更。
 - 口令不入 Git；回退保留新增表/加密授权/提交凭据，禁止通过清库重置未确认的完成操作。
 - 本轮验证：全量 144 tests / 64.995s / OK（新增 9 项）；日志 `.cache/role-refactor-checkpoint/dida-official-final.log`。
+
+
+### 提醒 UI / QQ 卡顿修复（2026-11-11）
+- 保留 Claude 的专注金币显示（9f99eb3），本轮只改共享提醒页面及渠道。
+- 页面入口 `module_views/planner.py::RemindersPage`；渠道/声音设置拆到 `module_views/reminder_settings.py`。网络相关入口在 `modules/reminder_delivery.py`，后续禁止从 UI 同步调用 diagnose/test_send，应使用 start_check 与 check_result 信号。
+- 修复打开设置/点击检查/试发阻塞 UI、测试忽略未保存表单、空 token 被视为成功、失败无原因、投递记录刷新丢选中项，以及误称共享链路自动重试。定时与试发复用发送入口，最多两个定时发送并发；诊断与试发仅允许一个进行中。
+- 新持久化表 `reminder_delivery_details`；`Planner.update` 编辑计划而保留已产生的投递历史。用户关闭设置不会使工作线程访问已销毁的控件。
+- 新测试 `tests/test_reminder_channels.py`：真实 transport 对本地 HTTP 服务投递、定时去重/失败重试、UI 心跳、草稿配置、关闭窗口、空令牌、编辑历史。全量 151 tests / 92.055s / OK，日志 `.cache/role-refactor-checkpoint/reminder-channels-final.log`。
+- 真实 QQ 只读诊断：接收者已配置、凭据存在、令牌有效；本轮未向真实 QQ 联系人试发。发送链路通过隔离本地 HTTP 验证，不把这个结果表述成真实用户已收到。无需 Claude 交接。

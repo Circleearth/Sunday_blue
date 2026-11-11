@@ -83,3 +83,10 @@ plugin_runtime 扫描 extensions/plugins/*/plugin.json，读取 _conf_schema.jso
 读取与写入均由 QThread 执行；UI 渲染不触发完成操作。完成前读取当前任务，核对稳定 ID、dueDate、etag；先写操作凭据再请求远端。网络结果不确定时保留 unconfirmed，不盲目重试。同版本操作只能提交一次，循环下一期使用新日期/版本。
 `dida_mcp_auth` 使用 DPAPI；`dida_official_meta` 保存 projectId/etag/due/kind，`dida_completion_ops` 保存提交状态，原 `dida_tasks/history` 保存缓存与去重快照。新增表无破坏性迁移，回退代码保留数据及操作凭据。远端消失不推断完成或删除；已缓存未完成项不在活动查询中时按 ID 复核。
 官方说明：[MCP](https://help.dida365.com/articles/7438132116019216384)、[CLI](https://help.dida365.com/articles/7464976698707017728)。旧 Cookie v2/v3 路径仅为历史配置只读回退，不再作为本页授权入口。
+
+
+### 提醒页与 QQ 异步链路（2026-11-11）
+- `module_views/planner.py::RemindersPage`：列表/投递记录双标签、筛选、编辑；`module_views/reminder_settings.py`：非模态 QQ/提示音设置。测试使用表单快照，不偷偷保存配置；关闭窗口不撤销已发起的网络请求。
+- `modules/reminder_delivery.py`：诊断/试发用单个后台线程槽，定时 QQ 最多两个并发请求。`test_send(text,cfg)` 是实际投递与试发的同一入口，复用原插件 `_creds/_token/_qq_send`；不修改原守护进程。只有显式点击检查/试发才联网，连接诊断只验证令牌，不承诺接收者可达。
+- 网络请求保持原 transport 的 20 秒令牌、30 秒发送超时。GUI 信号只负责展示；发送工作线程先持久化回执，再通知 UI。新表 `reminder_delivery_details` 保存尝试次数、时间和脱敏错误。异常不自动重发；进程中断留下 sending 时可人工核对后重试，外部发送不能保证 exactly-once。
+- 编辑只修改未来计划，不覆盖既有 occurrence。原 QQ 插件任务继续只读；共享提醒不转存到原插件数据库，防止两套调度重复发消息。回退保留新增投递详情表，不能清空业务历史。

@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt,QDate,QDateTime,QThread,Signal
 from PySide6.QtGui import QTextCharFormat,QColor,QPen,QPainter
 from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QLabel,QListWidget,QListWidgetItem,
     QPushButton,QDialog,QFormLayout,QLineEdit,QComboBox,QCheckBox,QDateTimeEdit,QMessageBox,
-    QInputDialog,QCalendarWidget,QPlainTextEdit,QSplitter,QFileDialog)
+    QInputDialog,QCalendarWidget,QPlainTextEdit,QSplitter)
 from ..modules.organizer import CATEGORIES
 from ..design_system import tokens
 
@@ -32,100 +32,110 @@ class BasePage(QWidget):
 
 class RemindersPage(BasePage):
     def __init__(self,hub,parent=None):
-        super().__init__(parent);self.hub=hub;layout=QVBoxLayout(self);layout.setContentsMargins(28,24,28,24)
-        title=QLabel('提醒 · 给未来的自己');title.setObjectName('title');layout.addWidget(title)
-        note=QLabel('共享提醒不属于任何角色。重复提醒保留每次历史；本页本机提醒需软件进程运行。');note.setWordWrap(True);layout.addWidget(note)
-        self.items=QListWidget();layout.addWidget(self.items,2)
-        row=QHBoxLayout()
-        for name,fn in [('添加提醒',self.add),('启用 / 停用',self.toggle),('QQ 渠道',self.qq),('电脑提示音',self.sound),('刷新',self.refresh)]:
-            b=QPushButton(name);b.clicked.connect(fn);row.addWidget(b)
-        layout.addLayout(row);layout.addWidget(QLabel('投递历史 · 失败 / 中断可手动重试 QQ，可能存在已送达但未确认的情况'))
-        self.history=QListWidget();layout.addWidget(self.history,1)
-        retry=QPushButton('重试所选 QQ 投递');retry.clicked.connect(self.retry);layout.addWidget(retry)
+        from PySide6.QtWidgets import QTabWidget
+        super().__init__(parent);self.hub=hub;layout=QVBoxLayout(self);layout.setContentsMargins(28,24,28,24);layout.setSpacing(16)
+        header=QHBoxLayout();title=QLabel('提醒');title.setObjectName('title');header.addWidget(title);header.addStretch()
+        settings=QPushButton('提醒设置');settings.clicked.connect(self.qq);header.addWidget(settings)
+        add=QPushButton('新建提醒');add.setObjectName('primary');add.clicked.connect(self.add);header.addWidget(add);layout.addLayout(header)
+        note=QLabel('把要记得的事留在这里。电脑和 QQ 按所选渠道提醒；共享提醒需要应用保持运行。');note.setWordWrap(True);note.setObjectName('muted');layout.addWidget(note)
+        self.overview=QLabel();layout.addWidget(self.overview)
+        tabs=QTabWidget();self.tabs=tabs;self._reminder_theme=None;layout.addWidget(tabs,1)
+        upcoming=QWidget();up=QVBoxLayout(upcoming);up.setContentsMargins(0,16,0,0);tabs.addTab(upcoming,'提醒列表')
+        filters=QHBoxLayout();self.search=QLineEdit();self.search.setPlaceholderText('搜索提醒…');filters.addWidget(self.search,1)
+        self.filter=QComboBox()
+        for label,key in [('进行中','active'),('已停用 / 结束','inactive'),('全部提醒','all')]:self.filter.addItem(label,key)
+        filters.addWidget(self.filter);up.addLayout(filters)
+        self.items=QListWidget();self.items.setWordWrap(True);self.items.setSpacing(5);up.addWidget(self.items,1)
+        self.empty=QLabel('暂无提醒。点击右上角「新建提醒」安排一件事。');self.empty.setObjectName('muted');up.addWidget(self.empty)
+        row=QHBoxLayout();self.toggle_button=QPushButton('暂停提醒');self.toggle_button.clicked.connect(self.toggle);row.addWidget(self.toggle_button)
+        self.edit_button=QPushButton('编辑时间与内容');self.edit_button.clicked.connect(self.edit);row.addWidget(self.edit_button);row.addStretch();up.addLayout(row)
+        history_page=QWidget();hp=QVBoxLayout(history_page);hp.setContentsMargins(0,16,0,0);tabs.addTab(history_page,'投递记录')
+        desc=QLabel('保留最近 100 次提醒。QQ「已接受」表示接口已确认，不代表客户端已读。');desc.setWordWrap(True);desc.setObjectName('muted');hp.addWidget(desc)
+        self.history=QListWidget();self.history.setWordWrap(True);self.history.setSpacing(5);hp.addWidget(self.history,1)
+        self.retry_button=QPushButton('重试所选 QQ 投递');self.retry_button.clicked.connect(self.retry);hp.addWidget(self.retry_button,alignment=Qt.AlignmentFlag.AlignLeft)
+        self.items.currentItemChanged.connect(self.update_actions);self.history.currentItemChanged.connect(self.update_actions)
+        self.search.textChanged.connect(self.refresh);self.filter.currentIndexChanged.connect(self.refresh)
         hub.changed.connect(lambda *_:self.refresh());self.refresh()
-    def refresh(self):
+    def update_actions(self,*args):
+        item=self.items.currentItem();r=item.data(Qt.ItemDataRole.UserRole) if item else {}
+        editable=bool(r) and not r.get('legacy');self.toggle_button.setEnabled(editable);self.edit_button.setEnabled(editable)
+        self.toggle_button.setText('暂停提醒' if r.get('enabled') else '启用提醒')
+        item=self.history.currentItem();r=item.data(Qt.ItemDataRole.UserRole) if item else {}
+        self.retry_button.setEnabled(r.get('qq_status') in ('failed','sending') and r.get('id') not in self.hub.reminder_delivery.active)
+    @staticmethod
+    def display_time(value):
+        from datetime import datetime
+        try:return datetime.fromisoformat(value).astimezone().strftime('%m月%d日 %H:%M')
+        except (ValueError,TypeError):return str(value)
+    def refresh(self,*args):
+        theme=self.hub.config.value.get('ui_theme','dark')
+        if self._reminder_theme!=theme:
+            from .reminder_settings import style_reminders
+            style_reminders(self.tabs,[self.items,self.history],theme);self._reminder_theme=theme
         selected=self.items.currentItem();rid=selected.data(Qt.ItemDataRole.UserRole)['id'] if selected else None
-        self.items.clear()
-        for r in self.hub.planner.schedules()+self.hub.planner.legacy_qq():
-            item=QListWidgetItem(('原 QQ 插件 · ' if r.get('legacy') else '')+f"{'启用' if r['enabled'] else '停用/结束'} · {r['title']}\n{r['next_due']} · {r['repeat']} · {'电脑 ' if r['local'] else ''}{'QQ' if r['qq'] else ''}")
+        selected=self.history.currentItem();hid=selected.data(Qt.ItemDataRole.UserRole)['id'] if selected else None
+        pos=self.items.verticalScrollBar().value();hpos=self.history.verticalScrollBar().value()
+        rows=self.hub.planner.schedules()+self.hub.planner.legacy_qq()
+        self.overview.setText(f"{sum(bool(r['enabled']) for r in rows)} 个进行中 · QQ {'已配置' if self.hub.db.get('shared_qq',{}).get('openid') else '未配置，可在提醒设置中连接'}")
+        self.items.clear();query=self.search.text().strip().casefold();scope=self.filter.currentData()
+        repeats={'once':'仅一次','daily':'每天','weekly':'每周'}
+        for r in rows:
+            if scope=='active' and not r['enabled'] or scope=='inactive' and r['enabled']:continue
+            if query and query not in r['title'].casefold():continue
+            source=' · 原 QQ 插件（只读）' if r.get('legacy') else ''
+            channels=' / '.join(c for c,on in [('电脑',r['local']),('QQ',r['qq'])] if on)
+            item=QListWidgetItem(f"{r['title']}\n{self.display_time(r['next_due'])} · {repeats.get(r['repeat'],r['repeat'])} · {channels}{source}"+(' · 已停用 / 结束' if not r['enabled'] else ''))
             item.setData(Qt.ItemDataRole.UserRole,r);self.items.addItem(item)
             if r['id']==rid:self.items.setCurrentItem(item)
-        self.history.clear()
-        labels={'sent':'已发送','pending':'待发送','sending':'待确认回执','failed':'失败','off':'未启用','missed':'过期保留'}
+        self.empty.setVisible(self.items.count()==0);self.items.verticalScrollBar().setValue(pos)
+        self.history.clear();details=self.hub.reminder_delivery.details()
+        labels={'sent':'已接受','pending':'待发送','sending':'发送中 / 回执未确认','failed':'失败 / 未确认','off':'未启用','missed':'已过期，未补发'}
         for r in self.hub.planner.history():
-            item=QListWidgetItem(f"{r['due']} · {r['title']} · 电脑 {labels.get(r['local_status'],r['local_status'])} / QQ {labels.get(r['qq_status'],r['qq_status'])}")
-            item.setData(Qt.ItemDataRole.UserRole,r);self.history.addItem(item)
-    def add(self):
-        dlg=QDialog(self);dlg.setWindowTitle('添加共享提醒');form=QFormLayout(dlg)
+            detail=details.get(r['id'],{});error=detail.get('error','')
+            local='已提醒' if r['local_status']=='sent' else labels.get(r['local_status'],r['local_status'])
+            text=f"{r['title']}\n{self.display_time(r['due'])} · 电脑：{local} · QQ：{labels.get(r['qq_status'],r['qq_status'])}"
+            if error:text+='\n'+error
+            item=QListWidgetItem(text);item.setData(Qt.ItemDataRole.UserRole,r);self.history.addItem(item)
+            if r['id']==hid:self.history.setCurrentItem(item)
+        self.history.verticalScrollBar().setValue(hpos);self.update_actions()
+    def edit(self):
+        item=self.items.currentItem()
+        if item and not item.data(Qt.ItemDataRole.UserRole).get('legacy'):self.add(item.data(Qt.ItemDataRole.UserRole))
+    def add(self,record=None):
+        record=record if isinstance(record,dict) else None
+        dlg=QDialog(self);dlg.setWindowTitle('编辑提醒' if record else '新建提醒');dlg.setMinimumWidth(440);form=QFormLayout(dlg)
         title=QLineEdit();due=QDateTimeEdit(QDateTime.currentDateTime().addSecs(300));due.setCalendarPopup(True)
         repeat=QComboBox()
         for name,key in [('一次','once'),('每天','daily'),('每周','weekly')]:repeat.addItem(name,key)
         local=QCheckBox('电脑提示音');local.setChecked(True);qq=QCheckBox('QQ bot 提醒')
         for name,w in [('内容',title),('时间',due),('重复',repeat),('',local),('',qq)]:form.addRow(name,w)
-        save=QPushButton('保存');save.clicked.connect(dlg.accept);form.addRow(save)
-        if dlg.exec():self.invoke(lambda:self.hub.planner.add(title.text(),due.dateTime().toPython().astimezone().isoformat(),repeat.currentData(),local.isChecked(),qq.isChecked()))
+        if record:
+            title.setText(record['title']);due.setDateTime(QDateTime.fromString(record['next_due'],Qt.DateFormat.ISODate));repeat.setCurrentIndex(repeat.findData(record['repeat']));local.setChecked(bool(record['local']));qq.setChecked(bool(record['qq']))
+        error=QLabel();error.setWordWrap(True);form.addRow(error)
+        save=QPushButton('保存');save.setObjectName('primary');form.addRow(save)
+        def persist():
+            try:
+                args=(title.text(),due.dateTime().toPython().astimezone().isoformat(),repeat.currentData(),local.isChecked(),qq.isChecked())
+                if record:self.hub.planner.update(record['id'],*args)
+                else:self.hub.planner.add(*args)
+                self.hub.changed.emit('planner');dlg.accept()
+            except ValueError as exc:error.setText(str(exc))
+        save.clicked.connect(persist);dlg.exec()
     def toggle(self):
         item=self.items.currentItem()
         if item:
             r=item.data(Qt.ItemDataRole.UserRole)
             if r.get('legacy'):QMessageBox.information(self,'原 QQ 提醒','此条由原 QQ 插件管理，请在原插件中调整；这里仅汇总展示。');return
             self.invoke(lambda:self.hub.planner.enable(r['id'],not r['enabled']))
-    def sound(self):
-        from ..modules.focus_preferences import import_sound
-        choice,ok=QInputDialog.getItem(self,'电脑提示音','选择提醒声音',['默认音效','选择 MP3 / WAV','试听当前声音'],0,False)
-        if not ok:return
-        config=self.hub.focus.options()|self.hub.db.get('reminder_sound',{'sound_enabled':True,'volume':65,'sounds':{'focus':''}})
-        if choice=='试听当前声音':self.hub.reminder_alarm.play('focus',config);return
-        path=''
-        if choice=='选择 MP3 / WAV':
-            source,_=QFileDialog.getOpenFileName(self,'选择提醒声音','','音频 (*.mp3 *.wav)')
-            if not source:return
-            path=self.invoke(lambda:import_sound(self.hub.root,source))
-            if not path:return
-        volume,ok=QInputDialog.getInt(self,'提醒音量','音量（0 静音）',config['volume'],0,100)
-        if ok:self.hub.db.set('reminder_sound',{'sound_enabled':True,'volume':volume,'sounds':{'focus':path}})
-
     def qq(self):
-        value=self.hub.db.get('shared_qq',{})
-        if not value:
-            # first-time setup: borrow the channel that the per-role QQ plugin already has working
-            for rid,rv in (self.hub.config.value.get('roles') or {}).items():
-                ps=(rv.get('plugin_settings') or {}).get('qq-reminders') or {}
-                if ps.get('qq_openid'):
-                    value={'profile':ps.get('dsh_profile','qqbot'),'openid':ps['qq_openid'],'proxy':ps.get('http_proxy','')}
-                    break
-        dlg=QDialog(self);dlg.setWindowTitle('共享 QQ 渠道');form=QFormLayout(dlg)
-        profile=QLineEdit(value.get('profile','qqbot'));openid=QLineEdit(value.get('openid',''));proxy=QLineEdit(value.get('proxy',''))
-        for title,w in [('现有 bot profile',profile),('接收者 openid',openid),('代理（可空）',proxy)]:form.addRow(title,w)
-        form.addRow(QLabel('复用已绑定 QQ bot 凭据，不修改原插件或角色配置。'))
-        status=QLabel();status.setObjectName('muted');status.setWordWrap(True);form.addRow(status)
-        row=QHBoxLayout()
-        def save_channel():
-            self.hub.db.set('shared_qq',{'profile':profile.text().strip(),'openid':openid.text().strip(),'proxy':proxy.text().strip()})
-            self.refresh();dlg.accept()
-        save=QPushButton('保存');save.clicked.connect(save_channel);row.addWidget(save)
-        check=QPushButton('检查连通')
-        def run_check():
-            st=self.hub.reminder_delivery.diagnose()
-            status.setText(self._diagnose_text(st))
-        check.clicked.connect(run_check)
-        sendtest=QPushButton('试发一条')
-        def run_test():
-            sendtest.setEnabled(False);check.setEnabled(False);save.setEnabled(False)
-            try:
-                status.setText('正在试发一条消息到你的 QQ（需网络，约 10 秒）…')
-                ok=self.invoke(lambda:self.hub.reminder_delivery.test_send())
-                status.setText('试发成功：你的 QQ 应已收到一条测试消息。' if ok is not None else '试发失败，见上方提示；到点的提醒会自动挂起重试。')
-            finally:
-                sendtest.setEnabled(True);check.setEnabled(True);save.setEnabled(True)
-        sendtest.clicked.connect(run_test)
-        row.addWidget(check);row.addWidget(sendtest);row.addStretch();form.addRow(row)
-        self.invoke(lambda:status.setText(self._diagnose_text(self.hub.reminder_delivery.diagnose()))) if self.hub.db.get('shared_qq') else status.setText('尚未保存共享 QQ 渠道；可点「检查连通」先看凭据与网络。')
-        dlg.exec()
-    def _diagnose_text(self,st):
-        return ('接收者 %s · DSH 凭据 %s · 连通 %s%s')%(
-            '已配置' if st['openid_ok'] else '缺失','有效' if st['creds_ok'] else '缺失',
-            'OK' if st['token_ok'] else '未通过',f'（{st["error"]}）' if st['error'] else '')
+        from .reminder_settings import ReminderSettings
+        dialog=getattr(self,'settings_dialog',None)
+        if dialog is not None:
+            dialog.show();dialog.raise_();dialog.activateWindow();return
+        self.settings_dialog=ReminderSettings(self.hub,self)
+        self.settings_dialog.destroyed.connect(self._settings_closed)
+        self.settings_dialog.show()
+    def _settings_closed(self):self.settings_dialog=None
     def retry(self):
         item=self.history.currentItem()
         if not item:return
