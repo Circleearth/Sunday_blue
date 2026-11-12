@@ -42,6 +42,14 @@ class LifeWorkViewTests(unittest.TestCase):
         self.assertEqual(self.hub.life.daily(page.selected_day())['phone_fun'],30)
         with patch('sunday_blue.module_views.life_work.QMessageBox.warning') as warning:
             page.bed.load(None);page.save_daily();self.assertTrue(warning.called)
+        self.hub.life.exercise('快走',20,'moderate');self.hub.changed.emit('life');self.assertEqual(page.exercises.count(),1)
+        self.assertEqual(page.trend.count(),7)
+        from sunday_blue.module_views.life_work import hm_pair,clock_pair
+        blank=hm_pair();self.assertIsNone(blank.value())
+        blank.hours.setValue(1);self.assertEqual(blank.value(),60)
+        blank.mins.setValue(-1);blank.hours.setValue(-1);self.assertIsNone(blank.value())
+        empty_clock=clock_pair();self.assertIsNone(empty_clock.value())
+        empty_clock.hours.setValue(6);self.assertEqual(empty_clock.value(),'06:00')
     def test_duty_handoff_pending_failed_and_completed_views(self):
         page=self.page(DutiesPage);self.assertEqual(page.slots.topLevelItemCount(),7)
         row=self.hub.duties.capture('原始记录','需要后续归档','请整理到生活备忘');self.hub.changed.emit('duties')

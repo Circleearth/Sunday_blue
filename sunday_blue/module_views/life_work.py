@@ -17,30 +17,39 @@ def button(text,fn,layout,primary=False):
     if primary:widget.setObjectName('primary')
     widget.clicked.connect(fn);layout.addWidget(widget);return widget
 
-def hm_pair(default_minutes=0):
-    """Aligned input: [x] 小时 [x] 分钟. Returns widget with .value() -> total minutes
-    (0/0 reads as None = unrecorded for durations) and .load(minutes)."""
+def hm_pair(default_minutes=None):
+    """Aligned input: [x] 小时 [x] 分钟. Both start at '未记录'; typing a number
+    replaces the placeholder in that box. .value() -> total minutes, None only
+    when neither box was touched (both still '未记录'). .load(minutes or None)."""
     widget=QWidget();row=QHBoxLayout(widget);row.setContentsMargins(0,0,0,0)
-    hours=QSpinBox();mins=QSpinBox();hours.setRange(0,24);mins.setRange(0,59)
-    hours.setValue(default_minutes//60);mins.setValue(default_minutes%60)
-    def total():return hours.value()*60+mins.value()
-    widget.value=lambda:(total() or None)
-    widget.load=lambda m:hours.setValue((m or 0)//60) or mins.setValue((m or 0)%60)
+    hours=QSpinBox();mins=QSpinBox();hours.setRange(-1,24);mins.setRange(-1,59)
+    hours.setSpecialValueText('未记录');mins.setSpecialValueText('未记录')
+    hours.setValue((default_minutes or 0)//60 if default_minutes is not None else -1)
+    mins.setValue((default_minutes or 0)%60 if default_minutes is not None else -1)
+    def _v(spin):return spin.value() if spin.value()>=0 else 0
+    widget.value=lambda:(_v(hours)*60+_v(mins) if hours.value()>=0 or mins.value()>=0 else None)
+    def load(m):
+        if m is None:hours.setValue(-1);mins.setValue(-1)
+        else:hours.setValue(m//60);mins.setValue(m%60)
+    widget.load=load
+    widget.hours=hours;widget.mins=mins
     row.addWidget(hours);row.addWidget(QLabel(' 小时'));row.addWidget(mins);row.addWidget(QLabel(' 分钟'));row.addStretch()
     return widget
 
 def clock_pair():
-    """Required clock time as [x] 小时 [x] 分钟; '未记录' means not filled yet.
-    .value() -> 'HH:mm' string or None; .load('HH:mm' or None)."""
+    """Required clock time as [x] 小时 [x] 分钟, both starting '未记录'.
+    Typing one box replaces its placeholder; the untouched one counts as 0.
+    .value() -> 'HH:mm', None only when neither box was touched. .load('HH:mm' or None)."""
     widget=QWidget();row=QHBoxLayout(widget);row.setContentsMargins(0,0,0,0)
     hours=QSpinBox();mins=QSpinBox();hours.setRange(-1,23);mins.setRange(-1,59)
     hours.setSpecialValueText('未记录');mins.setSpecialValueText('未记录');hours.setValue(-1);mins.setValue(-1)
-    widget.value=lambda:('%02d:%02d'%(hours.value(),mins.value()) if hours.value()>=0 and mins.value()>=0 else None)
+    widget.value=lambda:('%02d:%02d'%(max(0,hours.value()),max(0,mins.value())) if hours.value()>=0 or mins.value()>=0 else None)
     def load(text):
         if text:
             a,b=text.split(':');hours.setValue(int(a));mins.setValue(int(b))
         else:hours.setValue(-1);mins.setValue(-1)
     widget.load=load
+    widget.hours=hours;widget.mins=mins
     row.addWidget(hours);row.addWidget(QLabel(' 小时'));row.addWidget(mins);row.addWidget(QLabel(' 分钟'));row.addStretch()
     return widget
 
