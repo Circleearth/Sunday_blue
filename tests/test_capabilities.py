@@ -19,6 +19,8 @@ class WireHandler(BaseHTTPRequestHandler):
     def log_message(self, *args): pass
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+        if self.path.endswith('/count_tokens'):
+            self.send_response(200);self.send_header('Content-Type','application/json');self.end_headers();self.wfile.write(b'{"input_tokens":100}');return
         self.server.seen.append(body)
         anthropic = self.path.endswith('/messages')
         activate = self.server.activate and len(self.server.seen) == 1

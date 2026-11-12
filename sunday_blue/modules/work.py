@@ -41,7 +41,7 @@ class Work:
         if set(values)-cls.FIELDS:raise ValueError('不支持修改这些任务字段')
         out=dict(values)
         if 'title' in out:out['title']=cls._text(out['title'],'任务名称',200)
-        if 'estimate_minutes' in out:out['estimate_minutes']=cls._number(out['estimate_minutes'],'预计分钟',525600)
+        if 'estimate_minutes' in out:out['estimate_minutes']=cls._number(0 if out['estimate_minutes'] is None else out['estimate_minutes'],'预计分钟',525600)
         if 'progress' in out:out['progress']=cls._number(out['progress'],'完成进度',100)
         if 'priority' in out:out['priority']=cls._number(out['priority'],'优先级',3,True)
         if 'status' in out and (not isinstance(out['status'],str) or out['status'] not in cls.STATES):raise ValueError('任务状态无效')

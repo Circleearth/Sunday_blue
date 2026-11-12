@@ -189,6 +189,7 @@ class MainWindow(QWidget):
         self.input.setFixedHeight(80); self.input.send.connect(self.send); c.addWidget(self.input)
         actions=QHBoxLayout(); actions.addWidget(text_label('Enter 发送  ·  Shift + Enter 换行','muted')); actions.addStretch()
         self.retry_button=button('重试',self.retry,'ghost'); actions.addWidget(self.retry_button)
+        self.compact_button=button('压缩上下文',self.request_compact,'ghost');actions.addWidget(self.compact_button)
         self.stop_button=button('停止并撤回',self.stop,'ghost'); actions.addWidget(self.stop_button)
         self.send_button=button('发送  ↗',self.send,'primary'); actions.addWidget(self.send_button); c.addLayout(actions); layout.addWidget(composer)
         body.addWidget(panel,1)
@@ -663,6 +664,9 @@ class MainWindow(QWidget):
         if self.sid in self.workers:return
         text=self.input.toPlainText().strip()
         if not text:return
+        if is_compact_command(text):
+            self.request_compact()
+            return
         from .models import resolve_api
         if not resolve_api(self.config.value,self.role)['model']:
             self.settings(); return
@@ -680,13 +684,20 @@ class MainWindow(QWidget):
         if not msgs or msgs[-1]['role']!='user':self.show_notice('没有等待回复的消息。');return
         self.start_worker()
 
-    def start_worker(self):
+    def request_compact(self):
+        if not self.sid or self.sid in self.workers:return
+        if QMessageBox.question(self,'压缩上下文','将历史整理为摘要，并保留近期对话；原始聊天记录不删除。需要一次模型请求，是否继续？')!=QMessageBox.StandardButton.Yes:return
+        if is_compact_command(self.input.toPlainText()):self.input.clear()
+        self.start_worker(compact=True)
+
+    def start_worker(self,compact=False):
         # Normal chat turns. Typing "/compact" in the composer is intercepted inside the agent.
         sid=self.sid
         self.errors.pop(sid,None)
-        worker=Agent(self.config.root,self.config.snapshot(),self.store,sid)
+        worker=Agent(self.config.root,self.config.snapshot(),self.store,sid,compact=compact)
         worker.live_text=''; worker.start_after=max((m['id'] for m in self.store.messages(sid)),default=0); self.workers[sid]=worker
         worker.withdraw_id=next((m['id'] for m in reversed(self.store.messages(sid)) if m['role']=='user' and isinstance(m['content'],str)),None)
+        if compact:worker.withdraw_id=None
         worker.withdraw_requested=False
         worker.text.connect(self.on_text); worker.status.connect(self.on_status); worker.changed.connect(self.on_changed)
         worker.failed.connect(self.on_error); worker.approval.connect(self.on_approval)
@@ -789,7 +800,7 @@ class MainWindow(QWidget):
 
     def update_state(self):
         active=self.sid in self.workers
-        self.send_button.setEnabled(not active);self.retry_button.setEnabled(not active);self.stop_button.setEnabled(active)
+        self.compact_button.setEnabled(not active);self.send_button.setEnabled(not active);self.retry_button.setEnabled(not active);self.stop_button.setEnabled(active)
         self.chat_status.setText(self.statuses.get(self.sid,'就绪 · 对话保存在本地'))
         for rid,b in self.role_buttons.items():
             busy=any(w.role==rid for w in self.workers.values())
@@ -809,8 +820,7 @@ class MainWindow(QWidget):
             tokens=usage.get('input_tokens',usage.get('prompt_tokens',0))+usage.get('cache_read_input_tokens',0)+usage.get('cache_creation_input_tokens',0)+usage.get('output_tokens',usage.get('completion_tokens',0))
             prefix='上次 API 用量'
         else:
-            characters=self.store.context_characters(self.sid,session['summarized_through'])+len(session['summary'])
-            tokens=math.ceil(characters/2);prefix='历史估算（不含系统提示）'
+            self.context_label.setText('当前 Token 数未知；等待服务商用量回执。可手动压缩，原始记录保留。');self.context_progress.setValue(0);return
         from .models import resolve_api
         limit=resolve_api(self.config.value,self.role)['context_limit'];percent=min(100,round(tokens/limit*100))
         self.context_label.setText(f'{prefix}\n{tokens:,} / {limit:,} tokens · {percent}%')
@@ -845,6 +855,15 @@ class MainWindow(QWidget):
         self.config.save()
         if hasattr(self,'tray') and self.tray.hide_on_close():event.ignore();return
         from .memory_preferences import _jobs
+        busy=bool(self.workers or any(job.isRunning() for job in _jobs) or (hasattr(self,'module_hub') and self.module_hub.jobs))
+        if getattr(getattr(self,'tray',None),'exiting',False) and busy:
+            self._shutdown_waiting=True
+            for worker in list(self.workers.values()):worker.stop()
+            if hasattr(self,'module_hub'):
+                for job in self.module_hub.jobs.values():job.cancel.set()
+            self.show_notice('正在停止后台任务并等待资源释放，请稍候；窗口保持可操作。')
+            self.tray.show();event.ignore();QTimer.singleShot(350,self.close);return
+        self._shutdown_waiting=False
         if any(job.isRunning() for job in _jobs):
             QMessageBox.information(self,'记忆操作正在进行','请等待当前模型启停或记忆整理操作完成后退出。')
             event.ignore();return

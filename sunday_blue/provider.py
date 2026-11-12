@@ -6,6 +6,8 @@ from urllib.parse import urlsplit
 import requests
 from .storage import protect
 
+_COUNT_UNSUPPORTED=set()
+
 class Cancelled(Exception):
     pass
 
@@ -44,6 +46,25 @@ class Provider:
         self.config = config
         self.cancel = cancel or threading.Event()
         self.response = None
+
+    def count_tokens(self,system,messages,tools=None):
+        if not self.config.get('model'):return None
+        counter_key=(self.config.get('base_url'),self.config.get('model'))
+        if self.config['protocol']!='anthropic' or counter_key in _COUNT_UNSUPPORTED:return None
+        c=self.config;key=protect(c.get('key_encrypted',''),decrypt=True)
+        headers={'anthropic-version':'2023-06-01','Content-Type':'application/json'}
+        headers['Authorization' if c.get('auth')=='bearer' else 'x-api-key']=('Bearer '+key) if c.get('auth')=='bearer' else key
+        body={'model':c['model'],'system':system,'messages':[{'role':m['role'],'content':m['content']} for m in messages]}
+        if tools:body['tools']=tools
+        try:
+            with requests.post(endpoint(c['base_url'],'anthropic')+'/count_tokens',headers=headers,json=body,timeout=(5,20),allow_redirects=False) as response:
+                if response.status_code!=200:
+                    if response.status_code in (404,405,501):_COUNT_UNSUPPORTED.add(counter_key)
+                    return None
+                count=response.json().get('input_tokens')
+                if count is None:_COUNT_UNSUPPORTED.add(counter_key)
+                return count if isinstance(count,int) and count>=0 else None
+        except (requests.RequestException,ValueError):return None
 
     def complete(self, system, messages, tools=None, on_text=lambda x: None, max_tokens=None):
         if self.cancel.is_set():

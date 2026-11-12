@@ -142,8 +142,18 @@ async def bridge():
 @app.get('/status')
 async def status():
     from sunday_blue.living_memory import pending_count
+    from sunday_blue.plugin_runtime import parameters
+    from sunday_blue.storage import Config
+    options=parameters(Config(ROOT).snapshot(),ROLE,'livingmemory',ROOT)
     return {'ready': plugin.initializer.is_initialized, 'role': ROLE,
-            'pending': pending_count(ROOT, ROLE), 'error': last_error, 'upstream': '2.9.1'}
+            'pending': pending_count(ROOT, ROLE), 'error': last_error, 'upstream': '2.9.1', 'scope':scope(''),
+            'threshold':options.get('reflection_turns',4)}
+
+
+def scope(sid):
+    from livingmemory.core.memory_scope import resolve_memory_scope
+    event=SimpleNamespace(unified_msg_origin='sunday:FriendMessage:'+ROLE+':'+str(sid),sender_id='owner',sender_name='主人',platform='sunday')
+    return resolve_memory_scope(plugin.config_manager,event)
 
 
 @app.post('/recall')
@@ -151,7 +161,7 @@ async def recall():
     body = await request.get_json()
     async with guard:
         found = await plugin.initializer.memory_engine.search_memories(
-            str(body.get('query', ''))[:12000], k=max(1, min(15, int(body.get('count', 5)))), persona_id=ROLE)
+            str(body.get('query', ''))[:12000], k=max(1, min(15, int(body.get('count', 5)))), persona_id=ROLE, session_id=scope(body.get('session','')))
         text = format_memories_for_injection(found, max_chars=max(500, min(20000, int(body.get('chars', 6000)))))
         return {'text': text, 'count': len(found)}
 
@@ -167,6 +177,9 @@ async def reflect(force=False):
         rows = db.execute('SELECT * FROM turns WHERE done=0 ORDER BY id LIMIT 50').fetchall()
     if not rows or (not force and len(rows) < threshold):
         return {'processed': 0}
+    target_scope=scope(rows[0]['session'])
+    rows=[row for row in rows if scope(row['session'])==target_scope]
+    if not force and len(rows)<threshold:return {'processed':0,'waiting':len(rows),'threshold':threshold}
     rows = rows[:threshold]
     messages = []
     for row in rows:
@@ -192,7 +205,7 @@ async def reflect(force=False):
             metadata.update(sunday_job=job, adapter_id=ROLE, source='Sunday Blue automatic reflection',
                             verified_by_user=False)
             atoms = processor.classify_atoms_from_metadata(metadata, importance, persona_id=ROLE)
-            memory_id = await engine.add_memory(content, persona_id=ROLE, importance=importance,
+            memory_id = await engine.add_memory(content, session_id=target_scope, persona_id=ROLE, importance=importance,
                                                 metadata=metadata, atoms=atoms,
                                                 source_messages=[m.to_dict() for m in messages])
             async with engine._db_write_lock:

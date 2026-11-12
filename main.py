@@ -29,25 +29,34 @@ def main():
     from sunday_blue.living_memory import close_all
     app.aboutToQuit.connect(close_all)
     root=root_path()
+    from sunday_blue.instance import Instance
+    instance=Instance(root,app)
     (root/'data').mkdir(parents=True,exist_ok=True)
     lock=QLockFile(str(root/'data'/'app.lock'))
     if not lock.tryLock(100):
-        QMessageBox.information(None,'Sunday Blue','软件已在运行，请切换到现有 Sunday Blue 窗口。')
+        if not instance.wake():
+            QMessageBox.information(None,'Sunday Blue','已有实例正在启动或尚未支持窗口唤醒。请从系统托盘打开；旧版程序需退出一次后更新。')
         return 0
     try:
+        instance.listen()
         window=MainWindow(Config(root))
+        instance.activated.connect(window.tray.show)
         from sunday_blue.modules.workspace import install_workspace
         install_workspace(window)
     except Exception as exc:
+        instance.close();lock.unlock()
         QMessageBox.critical(None,'启动失败',str(exc))
         return 1
     window.show()
+    from sunday_blue.living_memory import startup
+    QTimer.singleShot(0,lambda:startup(root))
     if '--smoke' in sys.argv:
         def snapshot():
             window.grab().save(str(root/'docs'/'ui-preview.png'))
             window.close()
         QTimer.singleShot(1200,snapshot)
-    return app.exec()
+    try:return app.exec()
+    finally:instance.close();lock.unlock()
 
 if __name__=='__main__':
     raise SystemExit(main())

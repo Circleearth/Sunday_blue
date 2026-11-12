@@ -118,3 +118,14 @@ plugin_runtime 扫描 extensions/plugins/*/plugin.json，读取 _conf_schema.jso
 
 ### 可重复构建（2026-11-12）
 Build Sunday Blue.bat → build.ps1 → SundayBlue.spec，SPECPATH 为 spec 所在目录，collect_submodules(sunday_blue) 覆盖模块化的动态导入。one-directory + console=False，保持外部用户数据与插件。main.py --verify-package 进入 package_check.py 隔离离线验证，不走真实 root 初始化；普通启动流程不变。构建验证通过后才替换根目录 EXE/_internal，旧版本保留在 build/previous。源码与 EXE 都复用 tray.py，无新增后台服务。用户决定打包时机；日常任务不默认构建。迁移限制与目录布局见 PACKAGING.md。
+
+
+### 桌面恢复与生活状态增量（2026-11-12）
+- `instance.py`：QLocalServer 当前用户访问权限，以安装目录+用户生成名称。QLockFile仍负责唯一实例；持锁方才清理旧 socket，再次启动只发激活请求。`tray.py` 常驻有效图标、不可用时恢复窗口；主窗口仍负责草稿审阅，真正退出等待已取消的任务结束，main finally释放 socket/lock。
+- `life_state.py`：新增 vitality_state/vitality_days、exercise_growth、daily_life_details、exercise_details，未更改旧表字段。运动每新增奖励币的成长为 `0.12/(1+(cap-30)/30)^1.5`；更正扣回对应已给成长，老记录不回溯发成长。三天无记录后每天回落 `(cap-30)*0.008`，9:30日键防重复，30为硬下限。新的绝对体力值=旧参考百分比×上限，兼容依赖旧 physical/focus 字段的恢复逻辑。
+- `life_timer.py`：独立 life_timers 和 life_timer_days，单活跃会话索引，monotonic差分计时，停机/长间隔暂停，跨午夜拆分；结算后按有效/原始比例分配日期。与Focus活动互斥，不能将同一时间同时写入两套负荷。没有新金币来源。
+- 每日上报复用 reminder_occurrences 与 ReminderDelivery。固定 `life-report:YYYY-MM-DD` 周期，9:30至下一9:30可补发；旧pending/failed转missed。明确发送前失败可重试，发送后结果不明标unknown，不自动重发。QQ无法提供端到端严格单次承诺；网络未知结果必须人工核对。UI网络发送仍由后台线程承担。
+- `dida_tools.py` 将自然语言模型与执行分离：字段白名单、ISO时间转Asia/Shanghai、结构化RRULE/提醒，目标快照审阅后再次校验etag；dida_write_ops以用户轮次+动作+载荷生成幂等键。不确定写入永久保留凭据，禁止自动重新提交。单任务工具统一供角色按需使用，绑定通过capabilities；旧只读Cookie路径未扩权。
+- `context_budget.py` 无字符估算；Provider count_tokens使用[官方计数接口](https://platform.claude.com/docs/en/api/messages/count_tokens)。不支持时仅API实际usage回退，未知保持未知。阈值受用户配置真实上下文限制；自定义服务没有可靠通用模型容量探测。压缩使用独立摘要请求、批次计数和安全用户轮次切点，所有批次成功才提交summary/summarized_through，原消息不删除；工具调用链不被半截截断。
+- LivingMemory适配器使用上游resolve_memory_scope生成写入及召回session_id，角色独立库不变，user模式固定当前owner；没有直接改vendor或迁移真实记忆。新增startup设置存在module_settings，默认false，网络与预热线程异步；只管理本APP启动的进程树，共用设置/检测其他模型时保留Ollama。需共用同一向量模型时由用户显式启用shared，因为服务未提供全部客户端租约信息。
+- 工作仍由work/focus_task_links/activity_records汇总，界面不另建统计口径；商城仍调用原Rewards/Allowance事务，卡片只负责呈现。素材在assets/shop，缺图白色占位。

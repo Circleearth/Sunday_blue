@@ -18,7 +18,7 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from sunday_blue.storage import Config, Store
-from sunday_blue.living_memory import start_ollama, stop_ollama, enqueue, Brain, _brains, get_brain
+from sunday_blue.living_memory import start_ollama, stop_ollama, ollama_status, enqueue, Brain, _brains, get_brain
 
 
 class Fixture(BaseHTTPRequestHandler):
@@ -68,12 +68,17 @@ def main():
     args = parser.parse_args()
     server = ThreadingHTTPServer(('127.0.0.1', 0), Fixture)
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    start_ollama(ROOT)  # Explicit manual test action, never application startup.
+    # Reuse an existing endpoint for embeddings without adopting or stopping it.
+    owned=not ollama_status()['online']
+    if owned:start_ollama(ROOT)
     try:
         with tempfile.TemporaryDirectory(prefix='sunday-test-lmem-', dir=ROOT/'tests') as temp:
             root = Path(temp)
             shutil.copytree(ROOT/'sunday_blue', root/'sunday_blue', ignore=shutil.ignore_patterns('__pycache__'))
+            plugin_dir=root/'extensions/plugins/livingmemory';plugin_dir.mkdir(parents=True)
+            for name in ('plugin.json','main.py','_conf_schema.json'):shutil.copyfile(ROOT/'extensions/plugins/livingmemory'/name,plugin_dir/name)
             config = Config(root)
+            config.value['roles']['rui'].setdefault('native_plugins',{})['livingmemory']=True
             if args.live_chat:
                 config.value['api'] = Config(ROOT).value['api'].copy()
             else:
@@ -86,12 +91,23 @@ def main():
             store.add(sid, 'assistant', [{'type': 'text', 'text': '好，我记住这个饮茶偏好了。'}])
             enqueue(root, 'rui', sid, uid, store.messages(sid))
             enqueue(root, 'rui', sid, uid, store.messages(sid))
+            target=root/'data/plugins/livingmemory/rui/engine-config.json'
+            target.parent.mkdir(parents=True,exist_ok=True)
+            if not target.exists():target.write_text(json.dumps({'filtering_settings':{'memory_scope_mode':'user'}}),encoding='utf-8')
             rui = launch(root, 'rui')
             red = launch(root, 'red')
             try:
-                assert rui.call('/status')['pending'] == 1, 'duplicate inbox'
-                processed = rui.call('/reflect', {}, timeout=300)
-                assert processed['processed'] == 1, processed
+                state=rui.call('/status');assert state['pending'] == 1, 'duplicate inbox'
+                assert state['scope']=='livingmemory:user:sunday:owner',state
+                assert rui.call('/page/stats')['data']['total_memories']==0,'below-threshold data was written early'
+                for n in range(3):
+                    new_id=store.add(sid,'user','补充确认：喝茶不加糖，喜欢桂花乌龙。'+str(n))
+                    store.add(sid,'assistant','记下了，保留这一真实偏好。')
+                    enqueue(root,'rui',sid,new_id,store.messages(sid)[-2:])
+                deadline=time.monotonic()+120
+                while rui.call('/status')['pending'] and time.monotonic()<deadline:time.sleep(1)
+                assert rui.call('/status')['pending']==0,rui.call('/status')
+                assert rui.call('/reflect',{},timeout=30)['processed']==0,'automatic batch was not consumed'
                 recalled = rui.call('/recall', {'query': '我喜欢喝什么茶？加糖吗？'})
                 assert '乌龙' in recalled['text'] and '糖' in recalled['text'], recalled
                 assert red.call('/recall', {'query':'桂花乌龙茶'})['count'] == 0, 'cross-role leakage'
@@ -113,14 +129,14 @@ def main():
                 print(json.dumps({'ok':True,'chat':'real API' if args.live_chat else 'local fixture',
                       'embedding':'real Ollama bge-m3', 'memory_count':stats['total_memories'],
                       'atoms':stats['atom_count'],'graph_nodes':stats['graph_nodes'],
-                      'checks':['reflection','recall','role isolation','idempotency','restart persistence',
+                      'checks':['automatic threshold=4','user scope','reflection','recall','role isolation','idempotency','restart persistence',
                                 'dashboard APIs','unauthenticated rejection','cross-origin rejection']}, ensure_ascii=True))
             finally:
                 rui.close()
                 red.close()
                 _brains.clear()
     finally:
-        stop_ollama()
+        if owned:stop_ollama()
         server.shutdown()
 
 

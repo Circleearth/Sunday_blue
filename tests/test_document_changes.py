@@ -12,7 +12,7 @@ from sunday_blue.modules.duty_tools import dispatch
 from sunday_blue.files import FileTools
 from sunday_blue.module_views.markdown_reader import MarkdownPage
 ROOT=Path(__file__).resolve().parents[1];APP=QApplication.instance() or QApplication([])
-class Hub(QObject):changed=Signal(str);closed=Signal()
+class Hub(QObject):changed=Signal(str);closed=Signal();navigate=Signal(str)
 class RevisionTests(unittest.TestCase):
  def setUp(self):
   self.tmp=tempfile.TemporaryDirectory(dir=ROOT/'tests',prefix='sunday-test-');self.root=Path(self.tmp.name)/'app';self.root.mkdir();self.cfg=Config(self.root);self.db=ModuleDB(self.root)

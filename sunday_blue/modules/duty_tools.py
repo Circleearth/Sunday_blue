@@ -1,6 +1,6 @@
 """Narrow per-duty tools; current assignments are rechecked at execution time."""
 import json
-from datetime import date
+from datetime import date,timedelta
 from .database import ModuleDB,day
 from .duties import Duties,assigned
 from ..roles import require_role
@@ -14,7 +14,7 @@ def permitted(root,role):return set().union(*(ACTIONS.get(s,set()) for s in assi
 def schema(root,role):
     actions=sorted(permitted(root,role))
     if not actions:return []
-    description=('按当前职责操作共享真实数据。'+GUIDE+' action参数：summary 可给 day；work_create: title,parent_id?,estimate_minutes?,due?,priority?,dida_id?；work_update: id,fields对象；exercise_record: kind,minutes,intensity(light/moderate/high),day?,record_id?；daily_record: day及饮食meal/睡眠sleep_hours/手机分钟phone_total,phone_fun/屏幕小时screen_hours/主观energy(0–100)/note；capture: title,body(用户本次原文),request?,files?；organize: id,category,title?,note?；fail: id,error；file_revision: id（交接中的修订 ID，读取改前改后与差异）。未提供的值不要编造。')
+    description=('按当前职责操作共享真实数据。'+GUIDE+' action参数：summary 可给 day；work_create: title,parent_id?,estimate_minutes?,due?,priority?,dida_id?；work_update: id,fields对象；exercise_record: kind,minutes,intensity(light/moderate/high),day?,record_id?,muscles?（胸/背/肩/手臂/核心/臀腿）; daily_record: day默认昨天，饮食meal/睡眠sleep_start,sleep_end(HH:mm，起床早于入睡视为次日)/手机分钟phone_total,phone_fun/note。旧sleep_hours,screen_hours,energy仅兼容旧数据；capture: title,body(用户本次原文),request?,files?；organize: id,category,title?,note?；fail: id,error；file_revision: id（交接中的修订 ID，读取改前改后与差异）。未提供的值不要编造。')
     return [{'name':'duty_action','description':description,'input_schema':{'type':'object','properties':{'action':{'type':'string','enum':actions},'args':{'type':'object'}},'required':['action','args'],'additionalProperties':False}}]
 
 def summary(db,slots,target):
@@ -48,7 +48,7 @@ def dispatch(root,role,action,args,approve=None,actual_text=''):
         if action=='daily_record':
             allowed={'day'}
             if 'diet' in slots:allowed.add('meal')
-            if 'recovery' in slots:allowed.update(('sleep_hours','phone_total','phone_fun','screen_hours','energy','note'))
+            if 'recovery' in slots:allowed.update(('sleep_hours','sleep_start','sleep_end','phone_total','phone_fun','screen_hours','energy','note'))
             if set(args)-allowed:raise PermissionError('本职责无权修改这些生活字段')
         if approve is None or not approve('确认职责数据写入',action,json.dumps(args,ensure_ascii=False,indent=2)):
             return {'status':'denied'}
@@ -67,12 +67,12 @@ def dispatch(root,role,action,args,approve=None,actual_text=''):
         return Life(db).exercise(**args)
     if action=='daily_record':
         from .life import Life
-        life=Life(db);target=args.pop('day',day());current=life.daily(target)
+        life=Life(db);target=args.pop('day',(date.fromisoformat(day())-timedelta(days=1)).isoformat());current=life.daily(target)
         base={k:current.get(k) for k in ('meal','sleep_hours','phone_total','phone_fun','screen_hours','energy','note')};base['meal']=base['meal'] or '';base['note']=base['note'] or '';base.update(args)
         saved=life.save_daily(target,**base)
         visible={'day','revision','updated'}
         if 'diet' in slots:visible.add('meal')
-        if 'recovery' in slots:visible.update(('sleep_hours','phone_total','phone_fun','screen_hours','energy','note'))
+        if 'recovery' in slots:visible.update(('sleep_hours','sleep_start','sleep_end','phone_total','phone_fun','screen_hours','energy','note'))
         return {k:v for k,v in saved.items() if k in visible}
     if action=='capture':
         body=str(args.get('body','')).strip()

@@ -61,7 +61,7 @@ class RemindersPage(BasePage):
         editable=bool(r) and not r.get('legacy');self.toggle_button.setEnabled(editable);self.edit_button.setEnabled(editable)
         self.toggle_button.setText('暂停提醒' if r.get('enabled') else '启用提醒')
         item=self.history.currentItem();r=item.data(Qt.ItemDataRole.UserRole) if item else {}
-        self.retry_button.setEnabled(r.get('qq_status') in ('failed','sending') and r.get('id') not in self.hub.reminder_delivery.active)
+        self.retry_button.setEnabled(r.get('qq_status') in ('failed','sending','unknown') and r.get('id') not in self.hub.reminder_delivery.active)
     @staticmethod
     def display_time(value):
         from datetime import datetime
@@ -90,7 +90,7 @@ class RemindersPage(BasePage):
             if r['id']==rid:self.items.setCurrentItem(item)
         self.empty.setVisible(self.items.count()==0);self.items.verticalScrollBar().setValue(pos)
         self.history.clear();details=self.hub.reminder_delivery.details()
-        labels={'sent':'已接受','pending':'待发送','sending':'发送中 / 回执未确认','failed':'失败 / 未确认','off':'未启用','missed':'已过期，未补发'}
+        labels={'unknown':'发送结果不明，请核对后手动重试','sent':'已接受','pending':'待发送','sending':'发送中 / 回执未确认','failed':'失败 / 未确认','off':'未启用','missed':'已过期，未补发'}
         for r in self.hub.planner.history():
             detail=details.get(r['id'],{});error=detail.get('error','')
             local='已提醒' if r['local_status']=='sent' else labels.get(r['local_status'],r['local_status'])
@@ -143,7 +143,7 @@ class RemindersPage(BasePage):
         item=self.history.currentItem()
         if not item:return
         r=item.data(Qt.ItemDataRole.UserRole)
-        if r['qq_status'] in ('failed','sending') and r['id'] not in self.hub.reminder_delivery.active:
+        if r['qq_status'] in ('failed','sending','unknown') and r['id'] not in self.hub.reminder_delivery.active:
             if QMessageBox.question(self,'重试 QQ','上次可能已送达但未确认，重试可能重复。继续？')==QMessageBox.StandardButton.Yes:
                 self.invoke(lambda:self.hub.planner.mark(r['id'],'qq','pending'))
 

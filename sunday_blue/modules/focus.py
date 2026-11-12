@@ -86,7 +86,12 @@ class Focus:
             elif auto_finish and row['duration'] and row['elapsed']+delta>=row['duration']:
                 self.finish()
 
+    def _no_life_timer(self):
+        with self.db.connect() as c:
+            if c.execute("SELECT 1 FROM sqlite_master WHERE name='life_timers'").fetchone() and c.execute("SELECT 1 FROM life_timers WHERE state='running'").fetchone():raise ValueError('请先暂停生活活动计时，避免重复统计')
+
     def start(self,category,label='',role_id='rui',phase='focus',duration=0,task_id=None):
+        self._no_life_timer()
         category=str(category).strip();label=str(label).strip()
         if not category or len(category)>40 or len(label)>200:raise ValueError('类别需为 1–40 字，说明不超过 200 字。')
         if category=='运动':raise ValueError('运动请使用生活页的运动上报，不再使用番茄钟发币')
@@ -124,6 +129,7 @@ class Focus:
         return self.status()
 
     def resume(self):
+        self._no_life_timer()
         with self.lock:
             row=self._active()
             if not row or row['state']!='paused':raise ValueError('没有暂停中的专注。')

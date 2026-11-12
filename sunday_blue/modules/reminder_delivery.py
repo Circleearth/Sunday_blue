@@ -3,6 +3,8 @@ import importlib.util
 import re
 import threading
 import uuid
+import socket
+from datetime import datetime,timedelta
 from pathlib import Path
 from urllib.error import HTTPError,URLError
 from urllib.parse import urlsplit
@@ -99,13 +101,22 @@ class ReminderDelivery(QObject):
                 threading.Thread(target=self.send,args=(item,cfg),daemon=True,name='shared-qq-reminder').start()
         if changed:self.hub.changed.emit('planner')
     def send(self,item,cfg):
-        success=False;error=''
-        try:success=self.test_send(item['title'],cfg)
-        except Exception as exc:error=self.error_text(exc)
+        success=False;error='';attempted=False
+        try:
+            if item.get('schedule_id')=='life-report':
+                module,creds,token,transport,cfg=self._connect(cfg)
+                if datetime.now().astimezone()>=datetime.fromisoformat(item['due'])+timedelta(days=1):raise ValueError('上报周期已过期，不再发送')
+                attempted=True
+                success=bool(module._qq_send(creds,token,cfg['openid'],item['title'],transport))
+            else:success=self.test_send(item['title'],cfg)
+        except Exception as exc:
+            error=self.error_text(exc)
+            if isinstance(exc,HTTPError) and exc.code in (401,403,429):attempted=False
+            elif isinstance(exc,URLError) and (isinstance(exc.reason,(socket.gaierror,ConnectionRefusedError)) or getattr(exc.reason,'errno',None) in (10051,10065,10061,11001)):attempted=False
         # Persist before emitting: closing a dialog/app must not discard an arrived receipt.
         try:
             with self.hub.db.connect() as db:
-                db.execute('UPDATE reminder_occurrences SET qq_status=? WHERE id=?',('sent' if success else 'failed',item['id']))
+                db.execute('UPDATE reminder_occurrences SET qq_status=? WHERE id=?',('sent' if success else 'unknown' if attempted else 'failed',item['id']))
                 db.execute('INSERT INTO reminder_delivery_details VALUES(?,1,?,?) ON CONFLICT(occurrence_id) DO UPDATE SET attempts=attempts+1,updated=excluded.updated,error=excluded.error',(item['id'],stamp(),error))
         except Exception:success=False
         if not self.closed:

@@ -130,3 +130,16 @@
 文档修订验证：全量 **189 tests / 75.204s / OK**，日志 `.cache/role-refactor-checkpoint/document-edit-final.log`。使用隔离测试资料验证内置文件工具与 Qt 交互，未调用真实 LLM、未读取或修改 MasterData 正文。
 
 2026-11-12 自助打包：`Build Sunday Blue.bat` → `build.ps1` → `SundayBlue.spec`；普通修改不自动打包，由用户决定。`main.py --verify-package` / `package_check.py` 隔离启动完整页面、托盘隐藏/恢复及后台事件循环，不访问真实数据。`Start Sunday Blue Source.cmd` 明确启动最新源码，避免旧 EXE 优先导致误判修改失效。目录/跨机限制详见 `docs/PACKAGING.md`。全量回归 **189 tests / 77.819s / OK**；本机关闭到托盘已开启，修改前配置已备份（不提交 Git）。
+
+
+### 2026-11-12 桌面优化收尾入口
+- 后台/唤醒：`instance.py`、`tray.py`、`main.py`、`ui.py::closeEvent`。
+- 工作/生活：`module_views/life_work.py`；计时/状态新职责分别在 `modules/life_timer.py` / `life_state.py`，原始事实与奖励仍由 `life.py`。`hub.navigate` 接入工作→专注导航。不得删除旧daily_life字段或改变已有activity_records账目。
+- QQ周期：`life_state.report_cycle` + `reminder_delivery.send`，投递状态包含unknown，禁止把unknown批量重置pending。每日提醒依赖共享QQ配置及APP正在运行；休眠期间不发送，恢复后本周期可补发。
+- 滴答Agent：`modules/dida_tools.py`、`dida_mcp.py`、`capabilities.py`、`agent.py`；官方工具契约已在真实端点只读校验，create/update为task对象，delete回执为deleted ID。旧handoff中Cookie格式仅历史参考，不可套到官方MCP上。
+- 压缩：`context_budget.py` / `provider.py::count_tokens` / `agent.py::_compact_session` / `ui.py::request_compact`。上次usage不等于当前精确token量；禁止恢复字符除2作为真实统计。
+- 记忆：`living_memory.py::startup/stop_ollama`、MemoryPanel、插件worker scope/reflect/status。当前Mia空图谱诊断为3轮待整理、阈值4，非已确认存储失败；不读私聊正文。隔离真实本地向量联调通过自动阈值4、user作用域、1条文档/2个原子/5个图节点、召回、跨角色隔离、重启与图谱API；模型摘要由本地fixture提供，不消耗真实LLM。
+- 商店：`module_views/rewards.py`，图片约定 `assets/shop/README.md`。不改变金币/预算账本。
+- 测试：`test_desktop_upgrade.py`、`test_core.py`、`test_life_work_views.py` 及原全量回归；记忆完整链路运行 `scripts/test_livingmemory_live.py`（默认不调用付费聊天API，复用已有Ollama且不接管）。禁止为验收删除/完成真实滴答任务或修改真实记忆。
+
+最终验证：全量 **203 tests / 131.050s / OK**，日志 `.cache/role-refactor-checkpoint/desktop-upgrade-final.log`；真实 Ollama + 隔离记忆自动提取联调日志 `memory-auto-scope-final.log`。源码 `--verify-package` 验证11个页面、托盘与后台循环通过，未重新构建EXE。滴答真实验证仅限工具契约读取，QQ外发及滴答真实写操作未执行；对应代码使用本地隔离测试验证。测试产生的预览图片不作为本轮修改提交。未删除用户数据、人格或历史记录。

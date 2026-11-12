@@ -2,7 +2,7 @@
 from pathlib import Path
 import tempfile,unittest
 from unittest.mock import patch
-from PySide6.QtCore import Qt,QCoreApplication,QEvent
+from PySide6.QtCore import Qt,QCoreApplication,QEvent,QTime
 from PySide6.QtWidgets import QApplication
 from sunday_blue.storage import Config,Store
 from sunday_blue.modules.hub import ModuleHub
@@ -31,9 +31,9 @@ class LifeWorkViewTests(unittest.TestCase):
         self.assertEqual(focus.task.currentData(),child);self.assertFalse(focus.task.isEnabled())
         self.hub.focus.pause();self.assertEqual(self.hub.focus.status()['task_id'],child)
     def test_life_form_saves_and_reloads_without_duplicate_reward(self):
-        page=self.page(LifePage);page.meal.setPlainText('米饭、蔬菜');page.sleep.setValue(7.5);page.phone_total.setValue(80);page.phone_fun.setValue(30);page.save_daily()
+        page=self.page(LifePage);page.meal.setPlainText('米饭、蔬菜');page.has_sleep.setChecked(True);page.bed.setTime(QTime(23,0));page.wake.setTime(QTime(6,30));page.phone_total.setValue(80);page.phone_fun.setValue(30);page.save_daily()
         saved=self.hub.life.daily(page.selected_day());self.assertEqual(saved['phone_fun'],30)
-        page.load_daily();self.assertEqual(page.meal.toPlainText(),'米饭、蔬菜');self.assertEqual(page.sleep.value(),7.5)
+        page.load_daily();self.assertEqual(page.meal.toPlainText(),'米饭、蔬菜');self.assertEqual(saved['sleep_hours'],7.5)
         self.hub.life.exercise('快走',20,'moderate');self.hub.changed.emit('life');self.assertEqual(page.exercises.count(),1)
         self.assertEqual(page.trend.count(),7)
         with patch('sunday_blue.module_views.life_work.QMessageBox.warning') as warning:

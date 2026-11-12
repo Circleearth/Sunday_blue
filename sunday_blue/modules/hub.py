@@ -21,6 +21,7 @@ class SocialJob(QThread):
 
 
 class ModuleHub(QObject):
+    navigate=Signal(str)
     changed=Signal(str)
     feedback=Signal(str,str)
     failed=Signal(str)
@@ -38,6 +39,8 @@ class ModuleHub(QObject):
         from .life import Life
         from .duties import Duties
         self.work=Work(self.db);self.life=Life(self.db);self.duties=Duties(self.db)
+        from .life_timer import LifeTimer
+        self.life_timer=LifeTimer(self.db)
         from .recovery import Recovery
         self.recovery=Recovery(self.db)
         from .dida import Dida
@@ -162,6 +165,8 @@ class ModuleHub(QObject):
 
     def tick(self):
         try:
+            self.life.state.settle();self.life.state.report_cycle()
+            self.life_timer.checkpoint()
             self.reminder_delivery.tick()
             self.focus.checkpoint();self.relations.project();self.social.sync_memories();self._deliver_private();self._plugin_events()
             with self.db.connect() as db:seq=db.execute('SELECT COALESCE(max(seq),0) FROM module_events').fetchone()[0]
@@ -232,5 +237,5 @@ class ModuleHub(QObject):
             return [dict(r) for r in db.execute('SELECT * FROM request_diagnostics ORDER BY created DESC,rowid DESC LIMIT 30')]
 
     def close(self):
-        self.timer.stop();self.focus_timer.stop();self.closed.emit();self.focus.pause();self.focus_alarm.stop();self.focus_dialogue.close();self.reminder_alarm.stop()
+        self.timer.stop();self.focus_timer.stop();self.life_timer.pause();self.closed.emit();self.focus.pause();self.focus_alarm.stop();self.focus_dialogue.close();self.reminder_alarm.stop()
         for job in self.jobs.values():job.cancel.set()

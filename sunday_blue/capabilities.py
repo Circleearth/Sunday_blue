@@ -8,7 +8,7 @@ import re
 from .native_plugins import enabled
 from .plugin_runtime import discover
 
-BUILTINS = {'files': '授权目录的文件读写', 'memory': '本角色已确认记忆（写入需审阅）',
+BUILTINS = {'dida':'滴答清单任务读写（需要确认）', 'files': '授权目录的文件读写', 'memory': '本角色已确认记忆（写入需审阅）',
             'mcp': '该角色已绑定的 MCP 服务（启动和调用需审阅）',
             'collaboration': '受控协作记录（决定、待办与完成状态需确认）',
             'activity': '现实记录与专注统计（只读）', 'duties': '当前固定职责的数据管理与交接'}
@@ -31,6 +31,9 @@ def allowed_catalog(root, config, role):
     from .modules.duties import assigned
     if assigned(root,role) and config['features'].get('duties',True) and cfg.get('capabilities',{}).get('duties',True):result['duties']=BUILTINS['duties']
     else:result.pop('duties',None)
+    from .modules.database import ModuleDB
+    if config['features'].get('dida',True) and ModuleDB(root).get('dida_mcp_auth',{}).get('token_encrypted') and cfg.get('capabilities',{}).get('dida',True):result['dida']=BUILTINS['dida']
+    else:result.pop('dida',None)
     if 'mcp' in result and not any(s.get('enabled') and role in s.get('roles', []) for s in config.get('mcp_servers', [])):
         result.pop('mcp')
     from .modules.duties import effective_extensions
@@ -58,6 +61,7 @@ class TurnCapabilities:
         deferred={'skill:'+name for name in bound['skills'] if name not in config['roles'][role].get('skills',[])}|{'plugin:'+name for name in bound['plugins']}
         for key in self.catalog:
             default={'mode':'on_demand','keywords':'工作,任务,运动,饮食,睡眠,精力,记录,整理,复盘,学习,汇总,手机,屏幕'} if key=='duties' else {'mode':'on_demand'} if key in deferred else {}
+            if key=='dida':default={'mode':'on_demand','keywords':'滴答,dida,ticktick'}
             if key=='skill:markdown-writing':default={'mode':'on_demand','keywords':'md,markdown,文档,笔记,整理,记录,归档,文件,写入'}
             spec = policies.get(key,default)
             keywords = [s.strip() for s in spec.get('keywords', '').split(',') if s.strip()]

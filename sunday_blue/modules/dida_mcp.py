@@ -4,7 +4,7 @@ import requests
 
 class DidaMCP:
     URL='https://mcp.dida365.com'
-    ALLOWED={'list_projects','filter_tasks','get_task_by_id','complete_task','get_tool_details'}
+    ALLOWED={'list_projects','filter_tasks','get_task_by_id','complete_task','get_tool_details','create_task','update_task','delete_task'}
     def __init__(self,token,post=None):
         self.post=post or requests.post;self.counter=0
         self.headers={'Authorization':'Bearer '+token,'Content-Type':'application/json','Accept':'application/json, text/event-stream'}

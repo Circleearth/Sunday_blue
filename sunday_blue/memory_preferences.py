@@ -32,10 +32,20 @@ class MemoryPanel(QWidget):
         self.config = config
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
-        info = QLabel('独立 Ollama · 端口 11435 · bge-m3\n启动软件不会启动 Ollama。启用插件后，完整对话会进入本地待整理队列；\n记忆整理使用当前聊天 API，产生少量用量。退出软件时停止本次启动的服务。')
+        info = QLabel('独立 Ollama · 端口 11435 · bge-m3\n默认手动启动 Ollama；可在下方开启异步自动启动与模型预加载。启用插件后，完整对话会进入本地待整理队列；\n记忆整理使用当前聊天 API，产生少量用量。退出软件时停止本次启动的服务。')
         info.setWordWrap(True)
         info.setObjectName('muted')
         layout.addWidget(info)
+        from .modules.database import ModuleDB
+        settings=ModuleDB(self.root)
+        auto=QCheckBox('启动 Sunday Blue 时自动启动 Ollama 并预加载模型（下次启动生效）')
+        auto.setChecked(settings.get('livingmemory_startup',{}).get('enabled',False))
+        auto.toggled.connect(lambda value:settings.set('livingmemory_startup',settings.get('livingmemory_startup',{})|{'enabled':value}))
+        layout.addWidget(auto)
+        shared=QCheckBox('此独立 Ollama 也供其他程序使用：退出时保留服务')
+        shared.setChecked(settings.get('livingmemory_startup',{}).get('shared',False))
+        shared.toggled.connect(lambda value:settings.set('livingmemory_startup',settings.get('livingmemory_startup',{})|{'shared':value}))
+        layout.addWidget(shared)
         self.state = QLabel('正在检测…')
         self.state.setWordWrap(True)
         self.state.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -105,7 +115,7 @@ class MemoryPanel(QWidget):
         elif self._callback:
             self._callback(result['value'])
         else:
-            self.state.setText('操作完成。点击检测状态查看结果。')
+            self.state.setText(result.get('value',{}).get('note','操作完成。点击检测状态查看结果。'))
 
     def refresh(self):
         if self.busy or not self.isVisible():
@@ -123,7 +133,11 @@ class MemoryPanel(QWidget):
         def show(state):
             model = '模型已就绪' if state['model_ready'] else '缺少 bge-m3'
             label = ('Ollama 运行中 · ' + model) if state['online'] else 'Ollama 已停止（聊天可正常使用）'
-            label += '\n当前角色待整理：%s 轮' % state['pending']
+            from .plugin_runtime import parameters
+            from .storage import Config
+            threshold=parameters(Config(self.root).snapshot(),role,'livingmemory',self.root).get('reflection_turns',4)
+            label += '\n当前角色待整理：%s / %s 轮；低于阈值时图谱为空属正常，完整轮次达到阈值才整理。' % (state['pending'],threshold)
+            if state.get('brain',{}).get('scope'):label+='\n当前读写作用域：'+state['brain']['scope']
             if state.get('brain', {}).get('error'):
                 label += '\n最近整理失败：' + state['brain']['error']
             self.state.setText(label)

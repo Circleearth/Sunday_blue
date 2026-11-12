@@ -19,6 +19,7 @@ EMBEDDING_MODEL = 'bge-m3:latest'
 _lock = threading.RLock()
 _brains = {}
 _ollama = None
+_ollama_root = None
 _readers = ThreadPoolExecutor(max_workers=9, thread_name_prefix='memory-start')
 
 
@@ -75,7 +76,7 @@ def ollama_status():
 
 def start_ollama(root):
     """Called only by the explicit start button (or explicit integration tests)."""
-    global _ollama
+    global _ollama,_ollama_root
     with _lock:
         state = ollama_status()
         if state['online']:
@@ -86,6 +87,7 @@ def start_ollama(root):
         executable = directory / 'ollama.exe'
         if not executable.is_file():
             raise RuntimeError('缺少 runtime/ollama/ollama.exe，请按安装说明放入独立 Ollama。')
+        _ollama_root=Path(root)
         env = os.environ.copy()
         env.update(OLLAMA_HOST='127.0.0.1:11435', OLLAMA_MODELS=str(directory / 'models'))
         logfile = Path(root) / 'data/plugins/livingmemory/ollama.log'
@@ -111,6 +113,13 @@ def stop_ollama():
         _brains.clear()
         if _ollama is not None:
             if _ollama.poll() is None:
+                from .modules.database import ModuleDB
+                shared=bool(_ollama_root and ModuleDB(_ollama_root).get('livingmemory_startup',{}).get('shared',False))
+                try:
+                    response=requests.get(OLLAMA_URL+'/api/ps',timeout=(1,2))
+                    if response.ok:shared=shared or any(m.get('name','').split(':')[0]!=EMBEDDING_MODEL.split(':')[0] for m in response.json().get('models',[]))
+                except (requests.RequestException,ValueError):pass
+                if shared:return ollama_status()|{'note':'检测到共用设置或其他模型，保留 Ollama 服务，仅停止本软件记忆进程。'}
                 # Terminate only the process tree started by this application.
                 subprocess.run(['taskkill', '/PID', str(_ollama.pid), '/T', '/F'],
                                capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
@@ -181,6 +190,7 @@ def get_brain(root, role):
 
 
 def close_all():
+    _startup_stop.set()
     try:
         stop_ollama()
     except Exception:
@@ -195,3 +205,24 @@ def close_role(root, role):
 
 
 atexit.register(close_all)
+
+
+_startup_stop = threading.Event()
+
+def startup(root):
+    """Optional global setting, executed in a daemon thread without blocking Qt."""
+    from .modules.database import ModuleDB
+    if not ModuleDB(root).get('livingmemory_startup',{}).get('enabled',False):return
+    def run():
+        try:
+            if _startup_stop.is_set():return
+            state=ollama_status()
+            if not state['online']:start_ollama(root)
+            if _startup_stop.is_set():stop_ollama();return
+            # No pull/download: preload only the configured embedding model.
+            response=requests.post(OLLAMA_URL+'/api/embed',json={'model':EMBEDDING_MODEL,'input':'初始化向量模型','keep_alive':'10m'},timeout=(3,120))
+            response.raise_for_status()
+            ModuleDB(root).set('livingmemory_startup_result',{'ok':True})
+        except Exception as exc:
+            ModuleDB(root).set('livingmemory_startup_result',{'ok':False,'error':type(exc).__name__+'；可在记忆面板检测或手动启动'})
+    thread=threading.Thread(target=run,daemon=True,name='ollama-preload');thread.start();return thread

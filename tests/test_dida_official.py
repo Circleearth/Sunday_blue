@@ -93,7 +93,7 @@ class WireTests(unittest.TestCase):
             c=DidaMCP('dp_fixture',post);self.assertEqual(c.call('list_projects',{}),[])
             self.assertEqual(c.call('complete_task',{'project_id':'p1','task_id':'t1'})['status'],2)
             with self.assertRaisesRegex(ValueError,'记录不可访问'):c.call('get_task_by_id',{'task_id':'t1'})
-            with self.assertRaises(PermissionError):c.call('delete_task',{})
+            with self.assertRaises(PermissionError):c.call('delete_project',{})
             self.assertEqual(seen[-1][1].get('Mcp-Session-Id'),'fixture')
             self.assertEqual(seen[-1][1].get('Authorization'),'Bearer dp_fixture')
         finally:server.shutdown();server.server_close();thread.join()

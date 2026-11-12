@@ -1,9 +1,9 @@
 """Work, daily life and duty-slot views. Domain services own validation and all writes."""
 from datetime import date
 import json
-from PySide6.QtCore import Qt,QDate
+from PySide6.QtCore import Qt,QDate,QTime,QTimer
 from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QFormLayout,QLabel,QPushButton,
-    QLineEdit,QPlainTextEdit,QComboBox,QCheckBox,QSpinBox,QDoubleSpinBox,QDateEdit,
+    QTimeEdit,QLineEdit,QPlainTextEdit,QComboBox,QCheckBox,QSpinBox,QDoubleSpinBox,QDateEdit,
     QTreeWidget,QTreeWidgetItem,QListWidget,QListWidgetItem,QProgressBar,QTabWidget,
     QDialog,QDialogButtonBox,QMessageBox,QInputDialog,QScrollArea)
 from ..roles import list_roles
@@ -54,7 +54,9 @@ class WorkPage(ModulePage):
         layout=self.layout_header('工作管理','时间记录投入，进度记录实际推进。子任务最多一层；归档保留历史。')
         row=QHBoxLayout();button('新建任务',lambda:self.edit_task(),row,True);button('添加子任务',self.add_child,row)
         self.archived=QCheckBox('显示已归档');self.archived.toggled.connect(self.refresh);row.addStretch();row.addWidget(self.archived);layout.addLayout(row)
-        self.tree=QTreeWidget();self.tree.setHeaderLabels(['任务','状态','实际进度','预计 / 已专注','截止','优先级']);self.tree.setRootIsDecorated(True);self.tree.setAlternatingRowColors(True);layout.addWidget(self.tree,1)
+        self.tree=QTreeWidget();self.tree.setHeaderLabels(['任务','状态','完成进度','投入 / 预计（时间比例）','截止','优先级']);self.tree.setRootIsDecorated(True);self.tree.setAlternatingRowColors(True);layout.addWidget(self.tree,1)
+        self.tree.setStyleSheet('QTreeWidget {border: none;} QTreeWidget::item {padding: 12px 6px; border-bottom: 1px solid rgba(128,128,128,45);} QTreeWidget::item:selected {background: rgba(100,120,150,45); color: palette(text); border-left: 3px solid #7189d9;}')
+        self.tree.setIndentation(26)
         self.tree.itemDoubleClicked.connect(lambda *_:self.edit_selected())
         actions=QHBoxLayout();button('编辑 / 更新进度',self.edit_selected,actions);button('暂缓 / 继续',self.pause_task,actions);button('归档 / 恢复',self.archive_task,actions);button('查看历史',self.show_history,actions);layout.addLayout(actions)
         focus=QHBoxLayout();focus.addWidget(QLabel('陪伴人格'));self.roles=QComboBox();focus.addWidget(self.roles)
@@ -87,15 +89,15 @@ class WorkPage(ModulePage):
         selected=self.selected();selected_id=selected['id'] if selected else None
         rows=self.hub.work.tasks(self.archived.isChecked());self.tree.clear();items={}
         for row in rows:
-            item=QTreeWidgetItem([row['title']+('（归档）' if row['archived'] else ''),STATUS.get(row['status'],row['status']),'',f"{row['estimate_minutes']} / {int(row['actual_seconds']//60)} 分钟",row['due'] or '未设置',str(row['priority'])])
+            item=QTreeWidgetItem([row['title']+('（归档）' if row['archived'] else ''),STATUS.get(row['status'],row['status']),'',f"{row['actual_seconds']/60:.1f} / {row['estimate_minutes'] or '未设'} 分钟"+(f" · {row['actual_seconds']/60/row['estimate_minutes']:.0%}" if row['estimate_minutes'] else ''),row['due'] or '未设置',str(row['priority'])])
             item.setData(0,Qt.ItemDataRole.UserRole,row);items[row['id']]=item
         for row in rows:
             item=items[row['id']];parent_item=items.get(row['parent_id'])
             if parent_item:parent_item.addChild(item)
             else:self.tree.addTopLevelItem(item)
-            progress=QProgressBar();progress.setRange(0,100);progress.setValue(round(row['progress']));progress.setMaximumHeight(22);self.tree.setItemWidget(item,2,progress)
+            progress=QProgressBar();progress.setRange(0,100);progress.setValue(round(row['progress']));progress.setFormat('完成 %p%');progress.setMaximumHeight(20);self.tree.setItemWidget(item,2,progress)
             if row['id']==selected_id:self.tree.setCurrentItem(item)
-        self.tree.expandAll();self.tree.setColumnWidth(0,240);self.tree.setColumnWidth(3,160)
+        self.tree.expandAll();self.tree.setColumnWidth(0,280);self.tree.setColumnWidth(2,150);self.tree.setColumnWidth(3,255)
         selected_role=self.roles.currentData();self.roles.blockSignals(True);self.roles.clear()
         for rid,name,*_ in list_roles(self.hub.root):self.roles.addItem(name,rid)
         self.roles.setCurrentIndex(max(0,self.roles.findData(selected_role or 'rui')));self.roles.blockSignals(False)
@@ -110,7 +112,7 @@ class WorkPage(ModulePage):
         if row:self.edit_task(row)
     def edit_task(self,row=None,parent_id=None):
         row=row or {};dlg,form,error,buttons=form_dialog(self,'编辑工作任务' if row else '新建工作任务')
-        title=QLineEdit(row.get('title',''));estimate=spin(row.get('estimate_minutes'),24000,' 分钟')
+        title=QLineEdit(row.get('title',''));estimate=spin(row.get('estimate_minutes'),24000,' 分钟');estimate.setSpecialValueText('未设置')
         due=QLineEdit(row.get('due',''));due.setPlaceholderText('YYYY-MM-DD；留空不设截止')
         priority=QSpinBox();priority.setRange(0,3);priority.setValue(row.get('priority',1))
         dida=QLineEdit(row.get('dida_id',''));dida.setPlaceholderText('可选：已有滴答任务 ID，仅关联标识')
@@ -137,7 +139,11 @@ class WorkPage(ModulePage):
         if row:self.invoke(lambda:self.hub.work.archive(row['id'],not row['archived']))
     def start_selected(self):
         row=self.selected()
-        if row:self.invoke(lambda:self.hub.start_focus('工作',row['title'],self.roles.currentData(),duration=self.hub.focus.options()['focus_minutes']*60,task_id=row['id']))
+        if row:
+            def start():
+                self.hub.start_focus('工作',row['title'],self.roles.currentData(),duration=self.hub.focus.options()['focus_minutes']*60,task_id=row['id'])
+                self.hub.navigate.emit('focus')
+            self.invoke(start)
     def show_history(self):
         row=self.selected()
         if not row:return
@@ -151,64 +157,99 @@ class WorkPage(ModulePage):
 class LifePage(ModulePage):
     def __init__(self,hub,parent=None):
         super().__init__(parent);self.hub=hub
-        layout=self.layout_header('生活与恢复','保留真实记录，允许补记和修正。状态是规则估计，不是医学测量。')
+        layout=self.layout_header('生活 · 恢复站','记录昨天的生活，了解今天的状态。规则估计仅供安排活动，不代表医学测量。')
         tabs=QTabWidget();layout.addWidget(tabs,1)
-        exercise=QWidget();ex=QVBoxLayout(exercise);tabs.addTab(exercise,'运动上报')
-        row=QHBoxLayout();button('记录一次运动',lambda:self.exercise_dialog(),row,True);button('修改所选记录',self.edit_exercise,row);ex.addLayout(row)
-        note=QLabel('轻/中强度：前 30 分钟每 5 分钟 1 币，30–60 分钟每 10 分钟 1 币，60–120 分钟每 30 分钟 1 币。高强度不加倍，单次最多 8 币；每天运动合计最多 20 币。修改按差额调整，减少记录可能扣回先前奖励。');note.setWordWrap(True);ex.addWidget(note)
-        self.exercises=QListWidget();ex.addWidget(self.exercises,1)
-        daily=QWidget();dl=QVBoxLayout(daily);daily_scroll=QScrollArea();daily_scroll.setWidgetResizable(True);daily_scroll.setWidget(daily);tabs.addTab(daily_scroll,'每日记录');form=QFormLayout();dl.addLayout(form)
-        self.day=QDateEdit(QDate.currentDate());self.day.setCalendarPopup(True);self.day.setMaximumDate(QDate.currentDate());date_row=QHBoxLayout();date_row.addWidget(self.day);button('补记昨天',lambda:self.day.setDate(QDate.currentDate().addDays(-1)),date_row);form.addRow('记录日期',date_row)
-        self.meal=QPlainTextEdit();self.meal.setMaximumHeight(95);self.meal.setPlaceholderText('简要记录吃了什么，不必追求精确热量');form.addRow('饮食',self.meal)
-        self.sleep=nullable_number(None,24,' 小时');self.phone_total=nullable_number(None,1440,' 分钟');self.phone_fun=nullable_number(None,1440,' 分钟');self.screen=nullable_number(None,24,' 小时');self.energy=nullable_number(None,100,' / 100');self.note=QLineEdit()
-        for label,w in [('睡眠时长（当日醒来）',self.sleep),('手机总使用时长',self.phone_total),('手机娱乐时长',self.phone_fun),('屏幕使用时长',self.screen),('主观精力（高值较好）',self.energy),('备注',self.note)]:form.addRow(label,w)
-        hint=QLabel('睡眠填写当日醒来前的一夜；手机数据属于所选日期，补记昨天先切换日期。每日如实上传奖励 1 币，不是达标奖励，修改不重复领取。未记录保留“未记录”，不要用 0 代替未知。');hint.setWordWrap(True);hint.setObjectName('muted');dl.addWidget(hint)
-        button('保存当天记录',self.save_daily,dl,True);self.daily_status=QLabel();dl.addWidget(self.daily_status)
-        house=QHBoxLayout();self.house_title=QLineEdit();self.house_title.setPlaceholderText('例如：整理桌面（同日同项只结算一次）');house.addWidget(self.house_title);button('完成家务打卡',self.housework,house);dl.addLayout(house);dl.addStretch()
-        recovery=QWidget();rec=QVBoxLayout(recovery);tabs.addTab(recovery,'精力总览')
-        self.state_note=QLabel();self.state_note.setWordWrap(True);rec.addWidget(self.state_note);self.bars={}
-        for key,label in [('physical','体力'),('focus','专注力'),('eye_strain','视疲劳（越低越轻松）')]:
-            rec.addWidget(QLabel(label));bar=QProgressBar();bar.setRange(0,100);self.bars[key]=bar;rec.addWidget(bar)
-        self.advice=QLabel();self.advice.setWordWrap(True);rec.addWidget(self.advice);self.trend=QListWidget();rec.addWidget(self.trend,1)
-        self.day.dateChanged.connect(self.load_daily);hub.changed.connect(lambda *_:self.refresh());self.load_daily();self.refresh()
+        recovery=QWidget();rec=QVBoxLayout(recovery);tabs.addTab(recovery,'今日状态')
+        self.state_note=QLabel();self.state_note.setWordWrap(True);self.state_note.setObjectName('cardTitle');rec.addWidget(self.state_note);self.bars={}
+        for key,label in [('physical','体力'),('focus','专注力'),('eye_strain','视疲劳 · 越低越轻松')]:
+            rec.addWidget(QLabel(label));bar=QProgressBar();bar.setRange(0,1000);bar.setMinimumHeight(28);self.bars[key]=bar;rec.addWidget(bar)
+        self.advice=QLabel();self.advice.setWordWrap(True);rec.addWidget(self.advice)
+        self.muscles=QLabel();self.muscles.setWordWrap(True);rec.addWidget(self.muscles)
+        rec.addWidget(QLabel('恢复颜色：红＝建议休息，橙＝减少负荷，黄＝轻量活动，绿＝低记录负荷；灰＝数据不足。'))
+        self.trend=QListWidget();rec.addWidget(self.trend,1)
+        daily=QWidget();dl=QVBoxLayout(daily);scroll=QScrollArea();scroll.setWidgetResizable(True);scroll.setWidget(daily);tabs.addTab(scroll,'生活上报');form=QFormLayout();dl.addLayout(form)
+        self.day=QDateEdit(QDate.currentDate().addDays(-1));self.day.setCalendarPopup(True);self.day.setMaximumDate(QDate.currentDate());form.addRow('生活事实所属日期（默认昨天）',self.day)
+        self.meal=QPlainTextEdit();self.meal.setMaximumHeight(90);form.addRow('当天饮食',self.meal)
+        self.has_sleep=QCheckBox('填写这一天入睡的一夜');form.addRow('睡眠',self.has_sleep)
+        self.bed=QTimeEdit(QTime(23,0));self.wake=QTimeEdit(QTime(7,0))
+        for w in (self.bed,self.wake):w.setDisplayFormat('HH:mm')
+        form.addRow('入睡时间',self.bed);form.addRow('起床时间（早于入睡视为次日）',self.wake)
+        self.phone_total=nullable_number(None,1440,' 分钟');self.phone_fun=nullable_number(None,1440,' 分钟');self.note=QLineEdit()
+        form.addRow('当天手机总时长',self.phone_total);form.addRow('其中娱乐时长',self.phone_fun);form.addRow('备注',self.note)
+        hint=QLabel('例如今天 11/12：今日状态属于 11/12；默认上报 11/11 的饮食、手机使用及从 11/11 入睡到 11/12 起床的睡眠。未知留空，不填 0。旧精力/屏幕字段保留，不在本页重复填写。');hint.setWordWrap(True);dl.addWidget(hint)
+        button('保存生活上报',self.save_daily,dl,True);self.daily_status=QLabel();self.daily_status.setWordWrap(True);dl.addWidget(self.daily_status)
+        house=QHBoxLayout();self.house_title=QLineEdit();self.house_title.setPlaceholderText('完成的家务，如整理桌面');house.addWidget(self.house_title);button('今日家务打卡',self.housework,house);dl.addLayout(house);dl.addStretch()
+        exercise=QWidget();ex=QVBoxLayout(exercise);tabs.addTab(exercise,'运动记录')
+        row=QHBoxLayout();button('记录运动',lambda:self.exercise_dialog(),row,True);button('修改所选',self.edit_exercise,row);ex.addLayout(row)
+        hint=QLabel('运动金币按有效时长递减结算，高强度不加倍；同一记录修改按差额核算。正向结算同步增加体力上限，越高成长越慢。');hint.setWordWrap(True);ex.addWidget(hint);self.exercises=QListWidget();ex.addWidget(self.exercises,1)
+        activity=QWidget();al=QVBoxLayout(activity);tabs.addTab(activity,'生活正计时')
+        self.activity_title=QLineEdit();self.activity_title.setPlaceholderText('例如：玩游戏、散步休息、看书放松');al.addWidget(self.activity_title);self.clock_label=QLabel();self.clock_label.setObjectName('title');al.addWidget(self.clock_label)
+        row=QHBoxLayout();button('开始',lambda:self.invoke(lambda:self.hub.life_timer.start(self.activity_title.text())),row,True);button('暂停',lambda:self.invoke(self.hub.life_timer.pause),row);button('继续',lambda:self.invoke(self.hub.life_timer.resume),row);button('结束并核对时长',self.finish_activity,row);al.addLayout(row)
+        al.addWidget(QLabel('与运行中的番茄钟互斥，避免重复统计。可在结算时扣除忘记暂停的时间；休息可选择恢复模式，不发放金币。'))
+        self.activity_history=QListWidget();al.addWidget(self.activity_history,1)
+        self.day.dateChanged.connect(self.load_daily);hub.changed.connect(lambda *_:self.refresh())
+        self.clock=QTimer(self);self.clock.setInterval(1000);self.clock.timeout.connect(self.clock_refresh);self.clock.start();hub.closed.connect(self.clock.stop)
+        self.load_daily();self.refresh()
     def selected_day(self):return self.day.date().toString('yyyy-MM-dd')
     def load_daily(self,*args):
         row=self.hub.life.daily(self.selected_day()) or {};self.meal.setPlainText(row.get('meal') or '');self.note.setText(row.get('note') or '')
-        for widget,key in [(self.sleep,'sleep_hours'),(self.phone_total,'phone_total'),(self.phone_fun,'phone_fun'),(self.screen,'screen_hours'),(self.energy,'energy')]:widget.setValue(-1 if row.get(key) is None else row[key])
-        self.daily_status.setText('已载入该日记录。修改后点击保存。' if row else '这一天尚未记录。');self.refresh_energy()
+        self.has_sleep.setChecked(bool(row.get('sleep_start')))
+        for widget,key in [(self.bed,'sleep_start'),(self.wake,'sleep_end')]:
+            if row.get(key):widget.setTime(QTime.fromString(row[key],'HH:mm'))
+        for widget,key in [(self.phone_total,'phone_total'),(self.phone_fun,'phone_fun')]:widget.setValue(-1 if row.get(key) is None else row[key])
+        self.daily_status.setText(('旧睡眠时长 '+str(row['sleep_hours'])+' 小时；填写新起止时间前保留。') if row.get('sleep_hours') is not None and not row.get('sleep_start') else '上报资料属于 '+self.selected_day())
     def save_daily(self):
-        result=self.invoke(lambda:self.hub.life.save_daily(self.selected_day(),meal=self.meal.toPlainText(),sleep_hours=nullable_value(self.sleep),phone_total=nullable_value(self.phone_total),phone_fun=nullable_value(self.phone_fun),screen_hours=nullable_value(self.screen),energy=nullable_value(self.energy),note=self.note.text()))
-        if result is not None:self.daily_status.setText('记录已保存；修改不会重复领取上传奖励。')
+        old=self.hub.life.daily(self.selected_day());values=dict(meal=self.meal.toPlainText(),phone_total=nullable_value(self.phone_total),phone_fun=nullable_value(self.phone_fun),note=self.note.text(),screen_hours=old.get('screen_hours'),energy=old.get('energy'),sleep_hours=old.get('sleep_hours'))
+        if self.has_sleep.isChecked():values.update(sleep_start=self.bed.time().toString('HH:mm'),sleep_end=self.wake.time().toString('HH:mm'))
+        result=self.invoke(lambda:self.hub.life.save_daily(self.selected_day(),**values))
+        if result is not None:self.daily_status.setText(f"已保存 {self.selected_day()} · 睡眠 {result.get('sleep_hours','未知')} 小时；上传奖励不重复。")
     def housework(self):
-        result=self.invoke(lambda:self.hub.life.housework(self.house_title.text()))
-        if result is not None:self.daily_status.setText(f"家务已记录，本次奖励 {result.get('coins',0)} 金币。")
+        self.invoke(lambda:self.hub.life.housework(self.house_title.text()))
     def edit_exercise(self):
         item=self.exercises.currentItem()
         if item:self.exercise_dialog(item.data(Qt.ItemDataRole.UserRole))
     def exercise_dialog(self,row=None):
-        row=row or {};dlg,form,error,buttons=form_dialog(self,'修改运动记录' if row else '记录一次运动')
+        row=row or {};dlg,form,error,buttons=form_dialog(self,'运动记录')
         day=QDateEdit(QDate.fromString(row['day'],'yyyy-MM-dd') if row else QDate.currentDate());day.setCalendarPopup(True);day.setMaximumDate(QDate.currentDate())
-        kind=QComboBox();kind.setEditable(True);kind.addItems(['快走','慢跑','羽毛球','骑行','力量训练','其他']);kind.setCurrentText(row.get('kind','快走'))
+        kind=QComboBox();kind.setEditable(True);kind.addItems(['快走','慢跑','羽毛球','足球','骑行','力量训练','其他']);kind.setCurrentText(row.get('kind','快走'))
         minutes=spin(row.get('minutes',20),180,' 分钟');intensity=QComboBox()
         for key,label in INTENSITY.items():intensity.addItem(label,key)
         intensity.setCurrentIndex(max(0,intensity.findData(row.get('intensity','moderate'))))
         for label,w in [('日期',day),('运动类型',kind),('有效时长',minutes),('强度',intensity)]:form.addRow(label,w)
-        buttons.accepted.connect(lambda:self.save_dialog(dlg,error,lambda:self.hub.life.exercise(kind.currentText(),minutes.value(),intensity.currentData(),day=day.date().toString('yyyy-MM-dd'),record_id=row.get('id'))));dlg.exec()
+        parts=QWidget();pl=QHBoxLayout(parts);boxes={};existing=json.loads(row.get('muscles') or '[]')
+        for name in ['胸','背','肩','手臂','核心','臀腿']:
+            box=QCheckBox(name);box.setChecked(name in existing);boxes[name]=box;pl.addWidget(box)
+        form.addRow('训练部位（可多选）',parts)
+        buttons.accepted.connect(lambda:self.save_dialog(dlg,error,lambda:self.hub.life.exercise(kind.currentText(),minutes.value(),intensity.currentData(),day=day.date().toString('yyyy-MM-dd'),record_id=row.get('id'),muscles=[k for k,v in boxes.items() if v.isChecked()])));dlg.exec()
+    def clock_refresh(self):
+        self.hub.life_timer.checkpoint();state=self.hub.life_timer.status();seconds=int(state['elapsed']);self.clock_label.setText(f"{state.get('title','等待开始')} · {seconds//3600:02}:{seconds//60%60:02}:{seconds%60:02} · {state['state']}")
+    def finish_activity(self):
+        self.hub.life_timer.pause();state=self.hub.life_timer.status()
+        if state['state']=='idle':return
+        dlg,form,error,buttons=form_dialog(self,'结算活动 · 保留原始计时')
+        minutes=QDoubleSpinBox();minutes.setRange(0,state['elapsed']/60);minutes.setDecimals(2);minutes.setValue(state['elapsed']/60);form.addRow('调整后有效分钟',minutes)
+        physical=QComboBox();focus=QComboBox()
+        for w in (physical,focus):
+            for label,key in [('低','low'),('中','medium'),('高','high')]:w.addItem(label,key)
+        form.addRow('体力影响强度',physical);form.addRow('专注力影响强度',focus);rest=QCheckBox('这次是恢复性休息（增加恢复估计，而非扣减）');form.addRow(rest)
+        buttons.accepted.connect(lambda:self.save_dialog(dlg,error,lambda:self.hub.life_timer.finish(minutes.value()*60,physical.currentData(),focus.currentData(),rest.isChecked())));dlg.exec()
     def refresh_energy(self):
-        result=self.hub.life.energy(self.selected_day())
+        today=QDate.currentDate().toString('yyyy-MM-dd');result=self.hub.life.energy(today)
         for key,bar in self.bars.items():
-            value=result.get(key);bar.setValue(round(value or 0));bar.setFormat('资料不足' if value is None else '%p%')
-        self.state_note.setText(f"{self.selected_day()} · 工作 {result.get('work_minutes',0):g} 分钟 / 学习 {result.get('study_minutes',0):g} 分钟 / 运动 {result.get('exercise_minutes',0):g} 分钟\n参考可信度：{result.get('confidence','资料不足')}")
-        self.advice.setText('\n'.join(result.get('suggestions',[])));self.trend.clear()
-        for row in result.get('trend',[]):
-            self.trend.addItem(f"{row.get('day','')} · 体力 {row.get('physical','未知')} / 专注力 {row.get('focus','未知')} / 视疲劳 {row.get('eye_strain','未知')} · {row.get('confidence','')}" if isinstance(row,dict) else str(row))
+            bar.setValue(round(result[key]*10));bar.setFormat(f"{result['physical_value']:.1f} / {result['physical_cap']:.1f}" if key=='physical' else f"{result['focus_value']:.1f} / {result['focus_cap']:.1f}" if key=='focus' else f"{result[key]} / 100")
+        self.state_note.setText(f"今日 {today} · 工作 {result['work_minutes']:g} 分钟 · 学习 {result['study_minutes']:g} 分钟 · 运动 {result['exercise_minutes']:g} 分钟")
+        self.advice.setText('\n'.join(result['suggestions']))
+        colors={'red':'#da6174','orange':'#d99249','yellow':'#bca142','green':'#5d9b74','unknown':'#8a8f9b'};labels={'red':'建议恢复','orange':'减少负荷','yellow':'轻量活动','green':'低负荷','unknown':'资料不足'}
+        self.muscles.setText('前一日训练参考：<br>'+'　'.join(f"<span style='color:{colors[r['level']]}'>{r['part']} · {labels[r['level']]}</span>" for r in result['muscles']))
+        self.trend.clear()
+        for row in result['trend']:self.trend.addItem(f"{row['day']} · 体力参考 {row['physical']}% / 专注参考 {row['focus']}%")
     def refresh(self,*args):
-        item=self.exercises.currentItem();rid=item.data(Qt.ItemDataRole.UserRole)['id'] if item else None;self.exercises.clear()
+        self.exercises.clear()
         for row in self.hub.life.exercises():
-            item=QListWidgetItem(f"{row['day']} · {row['kind']} · {row['minutes']} 分钟 · {INTENSITY.get(row['intensity'],row['intensity'])}强度 · {row.get('coins',0)} 金币")
-            item.setData(Qt.ItemDataRole.UserRole,row);self.exercises.addItem(item)
-            if row['id']==rid:self.exercises.setCurrentItem(item)
-        self.refresh_energy()
+            item=QListWidgetItem(f"{row['day']} · {row['kind']} · {row['minutes']:g} 分钟 · {INTENSITY.get(row['intensity'])}强度 · {row['coins']} 币");item.setData(Qt.ItemDataRole.UserRole,row);self.exercises.addItem(item)
+        self.activity_history.clear()
+        for row in self.hub.life_timer.history():self.activity_history.addItem(f"{row['day']} · {row['title']} · 原始 {row['elapsed']/60:.1f} / 有效 {row['effective']/60:.1f} 分钟 · {'恢复' if row['rest'] else '活动'}")
+        self.refresh_energy();self.clock_refresh()
 
 class DutiesPage(ModulePage):
     module='duties'

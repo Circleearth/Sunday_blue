@@ -151,6 +151,8 @@ class MockHandler(BaseHTTPRequestHandler):
     def log_message(self,*args):pass
     def do_POST(self):
         payload=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+        if self.path.endswith('/count_tokens'):
+            self.send_response(200);self.send_header('Content-Type','application/json');self.end_headers();self.wfile.write(json.dumps({'input_tokens':160000 if getattr(self.server,'large_context',False) and '整理器' not in payload.get('system','') else 100}).encode());return
         self.server.seen.append((self.path,payload))
         self.send_response(200)
         self.send_header('Content-Type','text/event-stream' if payload.get('stream') else 'application/json')
@@ -253,6 +255,17 @@ class ProviderTests(Fixture):
         self.assertEqual(s['summarized_through'],last)  # "/compact" itself is excluded from future context
         self.assertEqual(len(self.store.messages(sid)),3)
         self.assertEqual(self.store.messages(sid,True),[])
+    def test_automatic_compaction_preserves_recent_turns_and_originals(self):
+        sid=self.store.create('rui');self.server.large_context=True
+        for n in range(8):self.store.add(sid,'user','task '+str(n));self.store.add(sid,'assistant','response '+str(n))
+        self.store.add(sid,'user','continue')
+        Agent(self.root,self.config.snapshot(),self.store,sid)._run()
+        session=self.store.session(sid)
+        self.assertTrue(session['summary']);self.assertGreater(session['summarized_through'],0)
+        self.assertEqual(len(self.store.messages(sid)),18)
+        recent=self.store.messages(sid,context=True)
+        self.assertEqual(recent[0]['content'],'task 7');self.assertIn('continue',[m['content'] for m in recent if isinstance(m['content'],str)])
+
     def test_slash_compact_ignores_non_bare_command(self):
         self.assertTrue(is_compact_command('/compact'))
         self.assertTrue(is_compact_command('/ compact'))
