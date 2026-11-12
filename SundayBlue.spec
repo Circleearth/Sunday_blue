@@ -1,16 +1,17 @@
 # -*- mode: python ; coding: utf-8 -*-
 import os
+from PyInstaller.utils.hooks import collect_submodules
 
 # Spec lives at project root; resolve paths from the spec location, not the
 # current working directory, so the build works from any cwd.
-BASE = os.path.dirname(SPECPATH)
+BASE = SPECPATH
 
 a = Analysis(
     [os.path.join(BASE, 'main.py')],
     pathex=[BASE],
     binaries=[],
     datas=[],
-    hiddenimports=[],
+    hiddenimports=collect_submodules('sunday_blue'),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

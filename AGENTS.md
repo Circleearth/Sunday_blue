@@ -26,3 +26,7 @@ that mock tests establish compatibility with a real paid account or relay servic
 Keep README and docs/ARCHITECTURE.md current. Build changes with build.ps1 when delivering
 a new executable. assets/personas/extensions/data remain external to the bundle so the
 user can edit them without recompiling. No embedded arbitrary shell tool.
+
+Packaging cadence: the user decides when to rebuild. Ordinary development changes only
+source; do not run a build after every task. Keep Build Sunday Blue.bat as the stable
+manual entry point; adjust build.ps1/Spec only when dependencies or packaging need it.

@@ -4,6 +4,15 @@ import sys
 from pathlib import Path
 
 def main():
+    if '--verify-package' in sys.argv:
+        try:
+            from sunday_blue.package_check import verify
+            return verify()
+        except Exception:
+            import json, traceback
+            base = Path(sys.executable).parent if getattr(sys, 'frozen', False) else Path(__file__).resolve().parent
+            (base/'package-check.json').write_text(json.dumps({'ok': False, 'error': traceback.format_exc()}, ensure_ascii=False), encoding='utf-8')
+            return 1
     from PySide6.QtWidgets import QApplication, QMessageBox
     from PySide6.QtCore import QTimer, QLockFile
     from PySide6.QtGui import QFont

@@ -128,3 +128,5 @@
 2026-11-12 文档编辑增量：`modules/document_changes.py`（修订日志、幂等交接、断点恢复），`modules/markdown_library.py::save`（用户保存），`files.py::write`（职责角色写入桥接），`module_views/document_revisions.py`（快照与差异），`markdown_reader.py::can_leave/save_document` + `modules/workspace.py`/`ui.py::closeEvent`（未保存保护）。职责动态提示在 duties.context，查询接口在 duty_tools。测试入口 `test_document_changes.py`：保存/无变化、Kia写入/拒绝、冲突/恢复、Qt后台保存响应、导航保存/放弃/取消。没有改动真实 MasterData、私聊或人格文件。
 
 文档修订验证：全量 **189 tests / 75.204s / OK**，日志 `.cache/role-refactor-checkpoint/document-edit-final.log`。使用隔离测试资料验证内置文件工具与 Qt 交互，未调用真实 LLM、未读取或修改 MasterData 正文。
+
+2026-11-12 自助打包：`Build Sunday Blue.bat` → `build.ps1` → `SundayBlue.spec`；普通修改不自动打包，由用户决定。`main.py --verify-package` / `package_check.py` 隔离启动完整页面、托盘隐藏/恢复及后台事件循环，不访问真实数据。`Start Sunday Blue Source.cmd` 明确启动最新源码，避免旧 EXE 优先导致误判修改失效。目录/跨机限制详见 `docs/PACKAGING.md`。全量回归 **189 tests / 77.819s / OK**；本机关闭到托盘已开启，修改前配置已备份（不提交 Git）。

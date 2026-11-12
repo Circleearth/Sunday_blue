@@ -16,3 +16,6 @@ docs/appearance-redesign-preview.png
 docs/chat-preview.png
 docs/plugins-preview.png
 docs/settings-preview.png
+
+/package-check.json
+tests/sunday-package-*/

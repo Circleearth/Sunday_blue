@@ -115,3 +115,6 @@ plugin_runtime 扫描 extensions/plugins/*/plugin.json，读取 _conf_schema.jso
 `modules/document_changes.py` 在 modules.sqlite3 的 document_changes 保存完整前后快照与哈希，prepare 在替换前落盘；finish 在单一 SQLite 事务中生成 organized_records proposal、duty_handoffs、document.changed，并以修订 ID 幂等。磁盘文件与 SQLite 并非同一事务：异常时保留 prepared；启动/保存/查看修订时在写锁内核对当前哈希，等于 after 则补交接、等于 before 标记未写入，其他冲突保留待核对，不盲目回滚。快照与 data/backups 不自动清理。
 
 页面通过后台线程保存、计算差异及生成交接，Qt 信号回到主线程；编辑时只维护脏标记。workspace 导航及主窗口关闭调用 can_leave，异步保存成功才继续原动作；失败保留草稿。修订弹窗 document_revisions.py 展示完整前后和有界差异（大文档只显示快照，避免昂贵 diff）。双方 duty_action 支持 handoffs/file_revision；人格动态上下文只补最近三条待处理标题，不灌入全文，不自动认定用户文档中的推断为事实。新增记录属于共享资料审计，不是私聊或长期记忆。
+
+### 可重复构建（2026-11-12）
+Build Sunday Blue.bat → build.ps1 → SundayBlue.spec，SPECPATH 为 spec 所在目录，collect_submodules(sunday_blue) 覆盖模块化的动态导入。one-directory + console=False，保持外部用户数据与插件。main.py --verify-package 进入 package_check.py 隔离离线验证，不走真实 root 初始化；普通启动流程不变。构建验证通过后才替换根目录 EXE/_internal，旧版本保留在 build/previous。源码与 EXE 都复用 tray.py，无新增后台服务。用户决定打包时机；日常任务不默认构建。迁移限制与目录布局见 PACKAGING.md。
