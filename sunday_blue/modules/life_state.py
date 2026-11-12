@@ -3,7 +3,10 @@ from datetime import datetime,date,timedelta,timezone
 import json
 
 ZONE=timezone(timedelta(hours=8))
-MUSCLES={'胸':'胸','背':'背','肩':'肩','手臂':'手臂','核心':'核心','臀腿':'臀腿'}
+MUSCLES={'胸':'胸','背':'背','肩':'肩','二头肌':'二头肌','三头肌':'三头肌','核心':'核心'}
+# Legacy kind defaults mapped onto the current part list (records stored as
+# 手臂/臀腿 are kept in the database but no longer selectable or displayed).
+DEFAULT_PARTS={'足球':['肩','二头肌','三头肌','核心'],'快走':['核心'],'慢跑':['核心'],'羽毛球':['肩','二头肌','三头肌','核心'],'骑行':['核心']}
 class LifeState:
  def __init__(self,db):
   self.db=db
@@ -52,12 +55,14 @@ class LifeState:
    # Only confirmed pre-send failures can be retried. Uncertain sends stay visible for review.
    c.execute("UPDATE reminder_occurrences SET qq_status='pending' WHERE id=? AND qq_status='failed' AND NOT EXISTS(SELECT 1 FROM reminder_delivery_details d WHERE d.occurrence_id=? AND d.updated>?)",(key,key,(now-timedelta(minutes=5)).astimezone(timezone.utc).isoformat(timespec='seconds')))
  def muscles(self,day):
-  previous=(date.fromisoformat(day)-timedelta(days=1)).isoformat();scores={k:0 for k in MUSCLES};known=set()
+  """Last-4-days decay: trained today=red, day+1=orange, day+2=yellow, day 3-4=green."""
+  target=date.fromisoformat(day)
   with self.db.connect() as c:
-   rows=c.execute('SELECT e.*,d.muscles FROM exercise_records e LEFT JOIN exercise_details d ON d.record_id=e.id WHERE e.day=?',(previous,)).fetchall()
+   rows=c.execute('SELECT e.*,d.muscles FROM exercise_records e LEFT JOIN exercise_details d ON d.record_id=e.id WHERE e.day>?',((target-timedelta(days=4)).isoformat(),)).fetchall()
+  latest={}
   for row in rows:
-   parts=json.loads(row['muscles'] or '[]')
-   if not parts:parts={'足球':['臀腿','核心'],'快走':['臀腿'],'慢跑':['臀腿'],'羽毛球':['肩','手臂','臀腿'],'骑行':['臀腿']}.get(row['kind'],[])
-   for part in parts:
-    known.add(part);scores[part]+=row['minutes']*{'light':.5,'moderate':1,'high':1.5}[row['intensity']]
-  return [{'part':p,'level':('unknown' if p not in known else 'red' if v>=75 else 'orange' if v>=45 else 'yellow' if v>=20 else 'green'),'load':v} for p,v in scores.items()]
+   age=(target-date.fromisoformat(row['day'])).days
+   if age<0:continue
+   for part in (json.loads(row['muscles']) if row['muscles'] else DEFAULT_PARTS.get(row['kind'],[])):
+    if part in MUSCLES and age<latest.get(part,5):latest[part]=age
+  return [{'part':p,'age':latest.get(p),'level':{0:'red',1:'orange',2:'yellow'}.get(latest.get(p,99),'green')} for p in MUSCLES]

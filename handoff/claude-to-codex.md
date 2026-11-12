@@ -7,6 +7,43 @@
 
 ---
 
+## 2026-11-12 15:40 — Claude：生活模块 UI 整理（今日状态游戏属性化 + 生活上报对齐输入 + 肌肉群逐日衰减）
+
+主人新指令（本轮优先）：生活-今日状态与「生活上报」两块 UI 只改界面与显示，但主人明确授权了两处底层逻辑调整（见下②④），并已确认改动范围。
+
+**给 Codex 的重点提醒（你可能做了占位/勾稽，请核对）：**
+
+1. **我删除/废弃了这些符号**（如果别处有引用请知悉）：
+   - `module_views/life_work.py` 里的 `nullable_number()` / `nullable_value()` 辅助函数已删（生活上报的屏幕/娱乐输入改成 `hm_pair()` 时不再用 QDoubleSpinBox 的 -1 哨兵）。若其他文件 import 了这两个函数会报错。
+   - `LifePage` 的 `self.has_sleep`（睡眠勾选框）已删，改为你确认过的「睡觉/起床必填、缺失不上报」逻辑。测试里原来 `page.has_sleep.setChecked(True)` 那行已删。
+   - `LifePage` 的 `self.muscles`（QLabel 文字版肌肉参考）已删，换成 `self.muscle_box`（QVBoxLayout）+ `self.muscle_tiles`（色块列表）。
+   - 导入列表里去掉了 `QTime`、`QTimeEdit`、`QGridLayout`（life_work.py 已不再使用）。`QDoubleSpinBox` 仍在用（`finish_activity` 结算），保留。
+
+2. **底层 `life_state.MUSCLES` 键改名了**（主人确认要改成「胸/背/肩/二头肌/三头肌/核心」，去掉「手臂」「臀腿」）：
+   - `MUSCLES` 现在是 `{'胸','背','肩','二头肌','三头肌','核心'}`。
+   - `modules/life.py::exercise()` 里校验 `muscles` 是否有效用的是这个新表，所以**旧数据里存的「手臂」「臀腿」不再被新记录接受**，但数据库里的旧 exercise_details 行我没动（保留历史）。新写 `muscles=` 参数请用新 6 个部位名。
+   - 我加了 `DEFAULT_PARTS`（life_state.py 顶部）：`{'足球':['肩','二头肌','三头肌','核心'],'快走':['核心'],'慢跑':['核心'],'羽毛球':['肩','二头肌','三头肌','核心'],'骑行':['核心']}`。之前旧代码里「足球/羽毛球→臀腿」的默认映射被并入上面的表。**如果你别处也写了 kind→部位 的映射，请同步。**
+   - `duty_tools.py` 里工具描述字符串里的「手臂/臀腿」已改成「二头肌/三头肌」。
+
+3. **`life_state.muscles(day)` 返回结构变了**（从「前一天一次性打分」改成「逐日衰减」）：
+   - 旧：`[{'part','level','load'}]`，level ∈ {unknown,red,orange,yellow,green}（按前一天总负荷阈值 75/45/20）。
+   - 新：`[{'part','age','level'}]`，**去掉了 `load` 键**，加了 `age`（最近一次训练距今天数，未训过=None）。level 现在是按「距最近一次训练 N 天」映射：当天=red、+1天=orange、+2天=yellow、≥3天=green。只看最近 4 天窗口内的记录。
+   - `module_views/life_work.py` 的 `refresh_energy()` 已用 `MUSCLE_COLORS`（红/橙/黄/绿，无灰）渲染。若你或别的代码读 `r['load']` 会 KeyError。
+
+4. **`ReminderSettings` 无改动**，本轮只动生活模块。但注意我这次动了 `life_work.py` 的 `LifePage`，它和 `WorkPage`/`DutiesPage` 同文件——我没动后两者。
+
+**改动文件清单：**
+- `sunday_blue/modules/life_state.py`：MUSCLES 键改名、新增 DEFAULT_PARTS、重写 `muscles()` 为逐日衰减（去 load 加 age）。
+- `sunday_blue/modules/life.py`：`exercise()` 里 muscles 校验自动跟随新 MUSCLES，无额外改动；「运动」类别从 focus categories 移除的既有逻辑保持不变（我没动）。
+- `sunday_blue/modules/duty_tools.py`：工具描述字符串部位名更新。
+- `sunday_blue/module_views/life_work.py`：今日状态页改游戏属性风（体力/专注/视疲劳三条彩色进度条、肌肉群纵排色块、过去 7 天参考改整数）；生活上报页删睡眠勾选、睡觉/起床改必填+两个整点数字框、屏幕/娱乐改 [小时][分钟] 两个数字框（留空=未记录）；运动对话框部位选项换成新 6 部位。
+- `tests/test_life_work_views.py`：删 has_sleep、改 bed/wake/phone 调用方式、加必填拦截断言。
+- `tests/test_desktop_upgrade.py`：肌肉测试改新部位名与新 level 语义（前一天 high 训练→orange，非 red；4 天前→green）。
+
+**验证：** 全量 `python -m unittest discover -s tests -v` → **203 tests OK（127.6s）**。另单独跑了一个临时数据冒烟：新建 LifePage，今日力量训练 60min high + 昨日快走，确认 muscle_tiles=6、睡觉/起床默认 None、load 后 '23:00'/'06:30'，进度条格式为整数「20 / 32 点」类。
+
+**未做：** 生活上报的「屏幕使用时长」仍只映射到 phone_total（旧字段口径，未新增独立 screen 输入）；体力/专注条的「点」单位是按 physical_cap 折算的展示，不是新计量；未改 FocusPage 或番茄钟。
+
 ## 2026-11-11 10:10 — Claude：专注记录加金币数 + 共享提醒 QQ 渠道诊断/配置
 
 主人新指令（本轮优先于旧 UI-only 边界）：① 专注模块记录中显示本次获得金币；② 检查 QQ 渠道是否接通并帮忙配置。授权范围经主人确认：最小方案，QQ 渠道检测做到「token 验证 + 发一条测试消息」。

@@ -2,7 +2,7 @@
 from pathlib import Path
 import tempfile,unittest
 from unittest.mock import patch
-from PySide6.QtCore import Qt,QCoreApplication,QEvent,QTime
+from PySide6.QtCore import Qt,QCoreApplication,QEvent
 from PySide6.QtWidgets import QApplication
 from sunday_blue.storage import Config,Store
 from sunday_blue.modules.hub import ModuleHub
@@ -31,14 +31,17 @@ class LifeWorkViewTests(unittest.TestCase):
         self.assertEqual(focus.task.currentData(),child);self.assertFalse(focus.task.isEnabled())
         self.hub.focus.pause();self.assertEqual(self.hub.focus.status()['task_id'],child)
     def test_life_form_saves_and_reloads_without_duplicate_reward(self):
-        page=self.page(LifePage);page.meal.setPlainText('米饭、蔬菜');page.has_sleep.setChecked(True);page.bed.setTime(QTime(23,0));page.wake.setTime(QTime(6,30));page.phone_total.setValue(80);page.phone_fun.setValue(30);page.save_daily()
+        page=self.page(LifePage);page.meal.setPlainText('米饭、蔬菜');page.bed.load('23:00');page.wake.load('06:30');page.phone_total.load(80);page.phone_fun.load(30);page.save_daily()
         saved=self.hub.life.daily(page.selected_day());self.assertEqual(saved['phone_fun'],30)
         page.load_daily();self.assertEqual(page.meal.toPlainText(),'米饭、蔬菜');self.assertEqual(saved['sleep_hours'],7.5)
+        self.assertEqual(page.bed.value(),'23:00');self.assertEqual(page.wake.value(),'06:30')
         self.hub.life.exercise('快走',20,'moderate');self.hub.changed.emit('life');self.assertEqual(page.exercises.count(),1)
         self.assertEqual(page.trend.count(),7)
         with patch('sunday_blue.module_views.life_work.QMessageBox.warning') as warning:
-            page.phone_fun.setValue(100);page.save_daily();self.assertTrue(warning.called)
+            page.phone_fun.load(100);page.save_daily();self.assertTrue(warning.called)
         self.assertEqual(self.hub.life.daily(page.selected_day())['phone_fun'],30)
+        with patch('sunday_blue.module_views.life_work.QMessageBox.warning') as warning:
+            page.bed.load(None);page.save_daily();self.assertTrue(warning.called)
     def test_duty_handoff_pending_failed_and_completed_views(self):
         page=self.page(DutiesPage);self.assertEqual(page.slots.topLevelItemCount(),7)
         row=self.hub.duties.capture('原始记录','需要后续归档','请整理到生活备忘');self.hub.changed.emit('duties')

@@ -67,9 +67,16 @@ class DesktopUpgradeTests(unittest.TestCase):
   self.hub.focus.start('学习')
   with self.assertRaises(ValueError):timer.start('其他')
  def test_muscle_unknown_and_previous_day(self):
-  day=(datetime.now(ZONE).date()-timedelta(days=1)).isoformat();self.hub.life.exercise('力量训练',60,'high',day=day,muscles=['胸','手臂'])
+  day=(datetime.now(ZONE).date()-timedelta(days=1)).isoformat();self.hub.life.exercise('力量训练',60,'high',day=day,muscles=['胸','二头肌'])
   values={r['part']:r['level'] for r in self.hub.life.state.muscles(datetime.now(ZONE).date().isoformat())}
-  self.assertEqual(values['胸'],'red');self.assertEqual(values['背'],'unknown')
+  self.assertEqual(values['胸'],'orange');self.assertEqual(values['背'],'green');self.assertEqual(values['二头肌'],'orange')
+  self.assertNotIn('手臂',values)
+  older=(datetime.now(ZONE).date()-timedelta(days=4)).isoformat()
+  self.hub.life.exercise('力量训练',60,'high',day=older,muscles=['背'])
+  values4={r['part']:r['level'] for r in self.hub.life.state.muscles((datetime.now(ZONE).date()-timedelta(days=3)).isoformat())}
+  self.assertEqual(values4['背'],'orange')
+  green={r['part']:r['level'] for r in self.hub.life.state.muscles((datetime.now(ZONE).date()-timedelta(days=3+4-1)).isoformat())}
+  self.assertEqual(green['背'],'green')
  def test_real_tokens_and_recent_context(self):
   self.assertIsNone(used({}));self.assertEqual(used({'input_tokens':10,'cache_read_input_tokens':20,'output_tokens':3}),33)
   self.assertLess(threshold({'context_limit':32000,'max_tokens':4096}),32000);self.assertEqual(threshold({'context_limit':1000000}),300000)

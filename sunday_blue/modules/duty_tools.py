@@ -14,7 +14,7 @@ def permitted(root,role):return set().union(*(ACTIONS.get(s,set()) for s in assi
 def schema(root,role):
     actions=sorted(permitted(root,role))
     if not actions:return []
-    description=('按当前职责操作共享真实数据。'+GUIDE+' action参数：summary 可给 day；work_create: title,parent_id?,estimate_minutes?,due?,priority?,dida_id?；work_update: id,fields对象；exercise_record: kind,minutes,intensity(light/moderate/high),day?,record_id?,muscles?（胸/背/肩/手臂/核心/臀腿）; daily_record: day默认昨天，饮食meal/睡眠sleep_start,sleep_end(HH:mm，起床早于入睡视为次日)/手机分钟phone_total,phone_fun/note。旧sleep_hours,screen_hours,energy仅兼容旧数据；capture: title,body(用户本次原文),request?,files?；organize: id,category,title?,note?；fail: id,error；file_revision: id（交接中的修订 ID，读取改前改后与差异）。未提供的值不要编造。')
+    description=('按当前职责操作共享真实数据。'+GUIDE+' action参数：summary 可给 day；work_create: title,parent_id?,estimate_minutes?,due?,priority?,dida_id?；work_update: id,fields对象；exercise_record: kind,minutes,intensity(light/moderate/high),day?,record_id?,muscles?（胸/背/肩/二头肌/三头肌/核心）; daily_record: day默认昨天，饮食meal/睡眠sleep_start,sleep_end(HH:mm，起床早于入睡视为次日)/手机分钟phone_total,phone_fun/note。旧sleep_hours,screen_hours,energy仅兼容旧数据；capture: title,body(用户本次原文),request?,files?；organize: id,category,title?,note?；fail: id,error；file_revision: id（交接中的修订 ID，读取改前改后与差异）。未提供的值不要编造。')
     return [{'name':'duty_action','description':description,'input_schema':{'type':'object','properties':{'action':{'type':'string','enum':actions},'args':{'type':'object'}},'required':['action','args'],'additionalProperties':False}}]
 
 def summary(db,slots,target):
