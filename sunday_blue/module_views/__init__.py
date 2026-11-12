@@ -5,6 +5,6 @@ def create_pages(hub,parent=None):
     from .focus import FocusPage
     from .social import SocialPage
     from .rewards import RewardsPage
-    from .planner import RemindersPage,CalendarPage,CheckinsPage
+    from .growth import GrowthPage,SchedulePage
     return [('focus','专注',FocusPage(hub,parent)),('work','工作',WorkPage(hub,parent)),('life','生活',LifePage(hub,parent)),('documents','资料',MarkdownPage(hub,parent)),('social','会议',SocialPage(hub,parent)),
-            ('rewards','商店',RewardsPage(hub,parent)),('reminders','提醒',RemindersPage(hub,parent)),('calendar','日历',CalendarPage(hub,parent)),('checkins','打卡',CheckinsPage(hub,parent))]
+            ('rewards','商店',RewardsPage(hub,parent)),('growth','成长',GrowthPage(hub,parent)),('schedule','日程',SchedulePage(hub,parent))]

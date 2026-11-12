@@ -152,3 +152,11 @@
 - 验证：`tests/test_life_cockpit.py`覆盖状态联动/无重复结算/肌群命中/数据不足/占位直接输入/关系入口/实际Windows初始及最大化边界。`scripts/preview_life_ui.py`只使用隔离合成记录，生成目标页面浅深色和记录区预览到.cache；不读取真实生活记录。
 
 本轮最终验证：**208 tests / 85.220s / OK**，日志 `.cache/role-refactor-checkpoint/life-cockpit-final.log`。源码隔离启动验证10个页面、聊天关系入口、托盘可用与后台事件循环通过；原生Windows窗口初始及最大化工作区测试通过。目标页面浅色/深色、窄布局与上报/运动/正计时截图验证完成，图片只保存在.cache。未重新打包，未修改真实用户数据或奖励规则；保留Claude已验收的空值输入改动。
+
+### 学习成长 / 契约 / 用眼状态入口
+- 规则与数据说明：`docs/LEARNING_AND_STATE.md`；服务 `modules/learning.py` / `contracts.py` / `attention.py`，消息桥 `notices.py`。
+- UI：`module_views/growth.py`（学习、契约、日程容器）、`attention_controls.py`；生活恢复站保留原布局增补参数和休息入口。旧提醒/日历/打卡页面类不重写。
+- 编排：Hub五秒任务检查、学习自动循环绑定、rest_requested信号；workspace旧导航兼容。duty_tools只读摘要按现有职责授权。
+- 测试：`tests/test_growth.py`覆盖掌握证据、错题重做、时长绑定/循环、旧金币去重、契约增量基线/签约规则/结算上限、QQ本机outbox、夜间持续使用、休息与体力隔离、睡眠去重、旧导航兼容。QQ实发未执行；共享投递仍由已有隔离HTTP测试覆盖。
+
+本轮验证：全量 **221 tests / 89.806s / OK**（`.cache/role-refactor-checkpoint/growth-final.log`）；夜间时间格式归一化后专项 **13 tests / 3.873s / OK**（growth-recheck.log）。源码隔离启动检查9个主页、托盘与后台循环通过；成长/契约原生截图及状态参数滚动边界检查通过。未调用付费LLM、未向真实QQ试发、未改写用户事实或原金币账本。新功能核心链路可用，规则与识别局限见 LEARNING_AND_STATE；未重新构建EXE。

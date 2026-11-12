@@ -30,6 +30,17 @@ def summary(db,slots,target):
         with db.connect() as c:
             if c.execute("SELECT 1 FROM sqlite_master WHERE name='activity_records'").fetchone():
                 result['focus']=[dict(r) for r in c.execute("SELECT category,label,seconds,day FROM activity_records WHERE day=? AND (? OR category='学习') ORDER BY finished DESC LIMIT 100",(target,'director' in slots))]
+    if slots & {'director','study'}:
+        with db.connect() as c:has_learning=bool(c.execute("SELECT 1 FROM sqlite_master WHERE name='learning_nodes'").fetchone())
+        if has_learning:
+            from .learning import Learning
+            learning=Learning(db);result['learning']=learning.summary()
+            units=[r for r in learning.rows() if r['kind']=='unit']
+            result['knowledge']=[{'title':r['title'],**learning.evidence(r['id'])} for r in units[-30:]]
+            result['knowledge_truncated']=len(units)>30
+    if slots & {'director','recovery'}:
+        with db.connect() as c:
+            if c.execute("SELECT 1 FROM sqlite_master WHERE name='attention_state'").fetchone():result['attention_estimate']=dict(c.execute('SELECT eye,focus,updated FROM attention_state WHERE id=1').fetchone())
     if 'director' in slots:
         from .recovery import Recovery
         result['recovery']=Recovery(db).status()

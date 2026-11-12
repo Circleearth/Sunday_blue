@@ -20,6 +20,11 @@ class LifePage(ModulePage):
         for key,title in [('physical','体力储备'),('focus','专注余量'),('eye_strain','视疲劳')]:
             w=StatusCard(title);self.cards[key]=w;self.bars[key]=w.bar;self.cards_row.addWidget(w,1)
         rec.addLayout(self.cards_row)
+        controls=QHBoxLayout();self.attention_status=label();controls.addWidget(self.attention_status,1)
+        button('离屏休息',lambda:self.attention_mode('rest'),controls);button('恢复自动',lambda:self.attention_mode('auto'),controls)
+        from .attention_controls import settings
+        button('状态参数',lambda:settings(self),controls);rec.addLayout(controls)
+
         self.main_row=QBoxLayout(QBoxLayout.Direction.LeftToRight);self.main_row.setSpacing(16);rec.addLayout(self.main_row)
         anatomy,an=card('肌群恢复地图');self.main_row.addWidget(anatomy,3)
         hint=label('点击部位查看最近训练 · 灰色表示资料不足');an.addWidget(hint)
@@ -75,7 +80,9 @@ class LifePage(ModulePage):
         r=next((r for r in self.muscle_rows if r['part']==part),None)
         if r:self.muscle_detail.setText(r['detail'])
     def on_changed(self,module):
-        if module in ('life','focus','work','recovery'):self.refresh()
+        if module in ('life','focus','work','recovery','attention'):self.refresh()
+    def attention_mode(self,mode):
+        self.hub.attention.configure({'mode':mode});self.refresh_energy()
     def selected_day(self):return self.day.date().toString('yyyy-MM-dd')
     def load_daily(self,*args):
         row=self.hub.life.daily(self.selected_day()) or {};self.meal.setPlainText(row.get('meal') or '');self.note.setText(row.get('note') or '')
@@ -128,6 +135,7 @@ class LifePage(ModulePage):
     def refresh_energy(self):
         today=QDate.currentDate().toString('yyyy-MM-dd');r=self.hub.life.energy(today)
         self.cards['physical'].set_state(round(r['physical_value'],1),round(r['physical_cap'],1),r['physical'],'低于 40% 时，优先恢复再安排活动。')
+        a=self.hub.attention.status();self.attention_status.setText(f"用眼估算 {a['eye']:.1f}% · {a['source']} · 休息只恢复视疲劳与专注")
         self.cards['focus'].set_state(round(r['focus_value'],1),r['focus_cap'],r['focus'],'留意连续投入后的余量，适时切换节奏。')
         self.cards['eye_strain'].set_state(r['eye_strain'],100,r['eye_strain'],'数值越低越轻松；较高时先离屏远眺。',True)
         self.state_note.setText(f"{today}  ·  工作 {r['work_minutes']:.0f} 分  /  学习 {r['study_minutes']:.0f} 分  /  运动 {r['exercise_minutes']:.0f} 分")

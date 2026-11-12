@@ -94,6 +94,8 @@ class Life:
             c.execute('INSERT INTO daily_life VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(day) DO UPDATE SET meal=excluded.meal,sleep_hours=excluded.sleep_hours,phone_total=excluded.phone_total,phone_fun=excluded.phone_fun,screen_hours=excluded.screen_hours,energy=excluded.energy,note=excluded.note,revision=excluded.revision,updated=excluded.updated',tuple(payload.values())+(rev,stamp()))
             self._award(c,'life-upload:'+day,1,'如实上传生活数据（不是达标奖励）')
             self.db.emit(c,f'life:{day}:{rev}','life.recorded',{'day':day,'revision':rev})
+            from .attention import Attention
+            Attention.apply_sleep(c,day,values['sleep_hours'])
         return self.daily(day)
     def daily(self,day=None):
         day=day or today();date.fromisoformat(day)
@@ -136,7 +138,7 @@ class Life:
             if c.execute("SELECT 1 FROM sqlite_master WHERE name='life_timers'").fetchone():
                 for activity in c.execute("SELECT t.physical,t.focus,t.rest,d.effective FROM life_timers t JOIN life_timer_days d ON t.id=d.run_id WHERE d.day=? AND t.state='finished'",(day,)):
                     minutes=activity['effective']/60;sign=1 if activity['rest'] else -1
-                    physical+=sign*min(20,minutes*{'low':.03,'medium':.08,'high':.15}[activity['physical']])
+                    if not activity['rest']:physical-=min(20,minutes*{'low':.03,'medium':.08,'high':.15}[activity['physical']])
                     focus+=sign*min(25,minutes*{'low':.04,'medium':.1,'high':.2}[activity['focus']])
         clamp=lambda x:round(max(0,min(100,x)))
         hints=['这些数值是行为估计，不是医学测量；未记录不等于未完成。']
@@ -149,4 +151,18 @@ class Life:
         day=day or today();result=self._energy(day);target=date.fromisoformat(day)
         caps=self.state.caps(day);result.update(caps);result['physical_value']=round(caps['physical_cap']*result['physical']/100,2);result['focus_value']=round(caps['focus_cap']*result['focus']/100,2);result['muscles']=self.state.muscles(day)
         result['trend']=[self._energy((target-timedelta(days=n)).isoformat()) for n in range(6,-1,-1)]
+        # Real-time eye/focus estimates are independent from physical energy and old facts.
+        if day==today():
+            with self.db.connect() as c:
+                if c.execute("SELECT 1 FROM sqlite_master WHERE name='attention_state'").fetchone():
+                    attention=c.execute('SELECT eye,focus FROM attention_state WHERE id=1').fetchone()
+                    snapshots={r['day']:r for r in c.execute('SELECT day,eye,focus FROM attention_days')}
+                    for row in result['trend']:
+                        snapshot=snapshots.get(row['day'])
+                        if snapshot and snapshot['eye'] is not None:row['eye_strain']=round(snapshot['eye'],1);row['focus']=round(snapshot['focus'],1)
+                    if attention:
+                        result['eye_strain']=round(attention['eye'],1);result['focus']=round(attention['focus'],1)
+                        result['focus_value']=round(caps['focus_cap']*attention['focus']/100,2)
+                        result['trend'][-1].update(focus=result['focus'],eye_strain=result['eye_strain'])
+
         return result

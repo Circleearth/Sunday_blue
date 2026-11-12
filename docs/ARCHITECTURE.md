@@ -134,3 +134,10 @@ Build Sunday Blue.bat → build.ps1 → SundayBlue.spec，SPECPATH 为 spec 所�
 生活页从 life_work 拆出为 `module_views/life.py`，原导出保留；共享输入/对话框在 `module_forms.py`，Work/Duties复用，保存语义不变。`life_widgets.py` 为只读展示与实际记录说明，不拥有持久化或奖励逻辑。`art_assets.py` 加载可替换图片及提示词清单；文件路径限制在本项目 assets。关系复用旧 RelationsPage，由聊天的单一弹窗入口打开；旧 main_page=relations 会转入聊天并打开弹窗，不迁移数据。独立顶部页面减少为10个，打包检查同时验证关系入口。
 
 `window_geometry.py` 仅管理几何：初始矩形居中且不超屏幕可用区；Windows无边框最大化从本显示器工作区得到物理像素尺寸，不混用Qt逻辑像素。数值输入灰色占位修复保留并补充鼠标输入测试。UI规范统一见 `docs/UI_DESIGN_SYSTEM.md`，没有新增第二套主题系统。
+
+### 学习 / 契约 / 独立注意力状态
+`learning.py` 以 focus activity_records 为投入事实源，另存层级、练习、复习、错题与首次掌握，不发第二份金币。`contracts.py` 读取学习事实增量，以独立 challenge_ledger 事务结算；不可修改已签条款，未达标进入核对而非自动扣分。`attention.py` 以本机观察间隔维护眼疲劳和专注，体力仍复用 Life；状态参数和账本独立。睡眠确认在 Life.save_daily 的同一事务写入去重恢复记录。新表增量创建，不迁移/删除用户历史。
+
+通知使用 `notices.notify` → 现有 Planner outbox → ReminderDelivery，非紧急契约受恢复保护，高疲劳提醒标记优先并通过Hub信号打开非阻塞引导。总负责人/学习负责人可读学习摘要，精力负责人可读注意力估计；未扩展AI自主签约权限。
+
+导航为9个顶级页面，GrowthPage承载学习/契约，SchedulePage承载原日历/提醒/打卡；workspace兼容旧页面键。完整数据、规则与限制单一说明见 `docs/LEARNING_AND_STATE.md`。

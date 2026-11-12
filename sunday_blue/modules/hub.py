@@ -21,6 +21,7 @@ class SocialJob(QThread):
 
 
 class ModuleHub(QObject):
+    rest_requested=Signal()
     navigate=Signal(str)
     changed=Signal(str)
     feedback=Signal(str,str)
@@ -53,6 +54,11 @@ class ModuleHub(QObject):
         self.reminder_delivery=ReminderDelivery(self)
         self.focus_alarm.problem.connect(self.failed.emit)
         self.focus=Focus(self.db,self._focus_changed,on_complete=self._focus_completed);self.relations=Relations(self.db)
+        from .learning import Learning
+        from .contracts import Contracts
+        from .attention import Attention
+        self.learning=Learning(self.db);self.contracts=Contracts(self.db);self.attention=Attention(self.db)
+        self._attention_display=None
         from .focus_dialogue import FocusDialogue
         self.focus_dialogue=FocusDialogue(self)
         self.social=Social(self.db,config,self.changed.emit);self.jobs={};self._last_event=0
@@ -93,7 +99,9 @@ class ModuleHub(QObject):
         if chain['remaining']<=0:
             chain['enabled']=False;self.db.set('focus_loop',chain);return
         phase=self.focus.cycle()['next_phase'];self.db.set('focus_loop',chain)
-        try:self.focus.start(chain['category'],chain['label'],chain['role_id'],phase,self.focus.options()[phase+'_minutes']*60,task_id=chain.get('task_id') if phase=='focus' else None)
+        try:
+            self.focus.start(chain['category'],chain['label'],chain['role_id'],phase,self.focus.options()[phase+'_minutes']*60,task_id=chain.get('task_id') if phase=='focus' else None)
+            if phase=='focus' and chain.get('learning_unit'):self.learning.bind(self.focus.status()['id'],chain['learning_unit'])
         except Exception as exc:
             chain['enabled']=False;self.db.set('focus_loop',chain);self.failed.emit(str(exc))
 
@@ -166,6 +174,10 @@ class ModuleHub(QObject):
     def tick(self):
         try:
             self.life.state.settle();self.life.state.report_cycle()
+            self.attention.tick(self.focus.status());self.contracts.tick()
+            if self.attention.new_alert==2:self.rest_requested.emit()
+            a=self.attention.status();display=(round(a['eye']),round(a['focus']),a['source'])
+            if display!=self._attention_display:self._attention_display=display;self.changed.emit('attention')
             self.life_timer.checkpoint()
             self.reminder_delivery.tick()
             self.focus.checkpoint();self.relations.project();self.social.sync_memories();self._deliver_private();self._plugin_events()
