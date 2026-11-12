@@ -53,6 +53,15 @@ QProgressBar {{ background:{t['border']}; border:none; height:4px; border-radius
 QCheckBox {{ spacing:8px; padding:4px 0; }} QCheckBox::indicator {{ width:15px; height:15px; border:1px solid {t['border_strong']}; border-radius:4px; background:{t['surface']}; }}
 QCheckBox::indicator:checked {{ background:{t['accent']}; border-color:{t['accent']}; }}
 QDialog {{ background:{t['canvas']}; }} QToolTip {{ background:{t['surface_raised']}; color:{t['text']}; border:1px solid {t['border_strong']}; padding:6px; }}
+QLabel#lifeNumber {{ font-size:32px; font-weight:650; }}
+QLabel#lifeClock {{ font-size:44px; font-weight:600; padding:24px 0; }}
+QLabel#lifeAdvice {{ font-size:16px; font-weight:600; }}
+QTabWidget#lifeTabs::pane {{ border:none; background:transparent; }}
+QTabWidget#lifeTabs QTabBar::tab {{ background:transparent; color:{t['text_muted']}; padding:10px 14px; border-bottom:2px solid transparent; }}
+QTabWidget#lifeTabs QTabBar::tab:selected {{ color:{t['accent']}; border-bottom:2px solid {t['accent']}; }}
+QWidget#lifePage QListWidget::item {{ background:{t['surface']}; border:1px solid {t['border']}; padding:14px; margin:4px 0; }}
+QWidget#lifePage QListWidget::item:selected {{ background:{t['surface_selected']}; border-color:{t['accent']}; }}
+
 '''
 
 STYLE=style_for('dark')

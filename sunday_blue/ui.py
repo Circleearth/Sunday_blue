@@ -61,7 +61,9 @@ class MainWindow(QWidget):
         self.setWindowIcon(QIcon(str(config.root/'assets'/'app.ico')))
         self.setWindowFlags(Qt.WindowType.Window|Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.resize(1440,900); self.setMinimumSize(1100,720)
+        from .window_geometry import initial_rect
+        available=self.screen().availableGeometry();self.setMinimumSize(min(1000,available.width()),min(620,available.height()))
+        self.setGeometry(initial_rect(available))
         self.ui_theme=config.value.get('ui_theme','dark'); self._apply_theme()
         outer=QVBoxLayout(self); outer.setContentsMargins(0,0,0,0)
         shell=QWidget(); shell.setObjectName('shell'); outer.addWidget(shell)
@@ -120,6 +122,24 @@ class MainWindow(QWidget):
         self.switch_role(self.role)
         if hasattr(self,'module_hub'):self.module_hub.changed.emit('roles')
 
+    def nativeEvent(self,event_type,message):
+        from .window_geometry import constrain_maximize
+        if constrain_maximize(message,self.minimumSize(),self.devicePixelRatioF()):return True,0
+        return super().nativeEvent(event_type,message)
+
+    def open_relations(self):
+        if not hasattr(self,'module_hub'):return
+        if not hasattr(self,'relations_dialog'):
+            from .module_views.relations import RelationsPage
+            self.relations_dialog=QDialog(self);self.relations_dialog.setWindowTitle('关系 · 共同经历')
+            size=self.screen().availableGeometry().size();self.relations_dialog.resize(min(700,size.width()-40),min(620,size.height()-60))
+            box=QVBoxLayout(self.relations_dialog);self.relations_panel=RelationsPage(self.module_hub,self.relations_dialog);box.addWidget(self.relations_panel)
+            close=QPushButton('关闭');close.clicked.connect(self.relations_dialog.close);box.addWidget(close)
+        self.relations_panel.refresh()
+        for i in range(self.relations_panel.items.count()):
+            if self.relations_panel.items.item(i).data(Qt.ItemDataRole.UserRole)==self.role:self.relations_panel.items.setCurrentRow(i);break
+        self.relations_dialog.show();self.relations_dialog.raise_();self.relations_dialog.activateWindow()
+
     def maximize(self):
         self.showNormal() if self.isMaximized() else self.showMaximized()
 
@@ -172,6 +192,7 @@ class MainWindow(QWidget):
         self.delete_action=self.session_menu.addAction('删除会话'); self.delete_action.triggered.connect(self._menu_delete)
         self.session_button=button('⋮',lambda:None,'ghost'); self.session_button.setFixedSize(34,32)
         self.session_button.clicked.connect(lambda:self._show_session_menu())
+        self.relationship_button=button('关系',self.open_relations,'ghost');row.addWidget(self.relationship_button)
         row.addWidget(button('历史记录',self.more_history,'ghost'));row.addWidget(self.session_button); layout.addLayout(row)
         self.chat_scroll=QScrollArea(); self.chat_scroll.setWidgetResizable(True)
         self.chat_content=QWidget(); self.chat_content.setObjectName('chatContent'); self.chat_content.setStyleSheet('QWidget#chatContent { background:transparent; }')

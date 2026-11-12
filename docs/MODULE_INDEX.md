@@ -143,3 +143,12 @@
 - 测试：`test_desktop_upgrade.py`、`test_core.py`、`test_life_work_views.py` 及原全量回归；记忆完整链路运行 `scripts/test_livingmemory_live.py`（默认不调用付费聊天API，复用已有Ollama且不接管）。禁止为验收删除/完成真实滴答任务或修改真实记忆。
 
 最终验证：全量 **203 tests / 131.050s / OK**，日志 `.cache/role-refactor-checkpoint/desktop-upgrade-final.log`；真实 Ollama + 隔离记忆自动提取联调日志 `memory-auto-scope-final.log`。源码 `--verify-package` 验证11个页面、托盘与后台循环通过，未重新构建EXE。滴答真实验证仅限工具契约读取，QQ外发及滴答真实写操作未执行；对应代码使用本地隔离测试验证。测试产生的预览图片不作为本轮修改提交。未删除用户数据、人格或历史记录。
+
+### 生活恢复站 UI 增量入口
+- 页面：`module_views/life.py`；只读状态卡/肌群命中/趋势：`life_widgets.py`；通用表单：`module_forms.py`。`life_work.py`继续提供Work/Duties与LifePage兼容导出。不要重新把三个页面逻辑堆回同一文件。
+- 美术：`art_assets.py`、`assets/ui/resources.json`；规则及ComfyUI说明在原 `docs/UI_DESIGN_SYSTEM.md`。没有正式图片，默认矢量可交互。
+- 关系：`ui.py::open_relations`，导航移除relations；旧默认页面在workspace兼容转入聊天。业务服务及数据不变。
+- 窗口：`window_geometry.py` + `ui.py::nativeEvent`，初始/最大化按屏幕工作区；不得恢复1440×900固定初始几何。
+- 验证：`tests/test_life_cockpit.py`覆盖状态联动/无重复结算/肌群命中/数据不足/占位直接输入/关系入口/实际Windows初始及最大化边界。`scripts/preview_life_ui.py`只使用隔离合成记录，生成目标页面浅深色和记录区预览到.cache；不读取真实生活记录。
+
+本轮最终验证：**208 tests / 85.220s / OK**，日志 `.cache/role-refactor-checkpoint/life-cockpit-final.log`。源码隔离启动验证10个页面、聊天关系入口、托盘可用与后台事件循环通过；原生Windows窗口初始及最大化工作区测试通过。目标页面浅色/深色、窄布局与上报/运动/正计时截图验证完成，图片只保存在.cache。未重新打包，未修改真实用户数据或奖励规则；保留Claude已验收的空值输入改动。

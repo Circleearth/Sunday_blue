@@ -1,0 +1,22 @@
+{
+  "recovery_body": {
+    "name": "恢复站 · 人体底图",
+    "path": "assets/ui/recovery_body.png",
+    "size": "880 × 660",
+    "ratio": "4:3",
+    "transparent": true,
+    "placement": "正面居左、背面居右；保持四肢自然分开。动态肌群由程序绘制，底图不可自带红绿状态。",
+    "positive": "Clean Japanese visual novel interface illustration, two neutral adult anatomical mannequin silhouettes, front view on the left and back view on the right, full body, symmetrical relaxed standing pose, arms slightly away from torso, pale cool grey contours, simplified smooth forms, flat orthographic view, even soft studio light, transparent background, generous margins, no muscle colors, no labels, crisp high resolution edges.",
+    "negative": "text, letters, labels, watermark, logo, colored muscle groups, red heatmap, green heatmap, medical wounds, gore, exaggerated muscles, sexualized anatomy, extra limbs, extra fingers, missing limbs, distorted proportions, busy background, perspective distortion, dramatic shadows, blur"
+  },
+  "recovery_scene": {
+    "name": "恢复站 · 休息角",
+    "path": "assets/ui/recovery_scene.png",
+    "size": "1200 × 360",
+    "ratio": "10:3",
+    "transparent": false,
+    "placement": "植物与靠枕在右侧；左侧约65%保持低细节留白，文字另由界面显示。",
+    "positive": "Refined Japanese visual novel background, a quiet sunlit resting corner, ivory wall, pale sage cushions and a small potted plant on the far right, soft morning light, warm white and muted mint palette, wide horizontal composition, left sixty five percent clean low detail negative space for interface content, delicate cel shading, calm domestic atmosphere, high quality illustration.",
+    "negative": "people, face, text, logo, watermark, clutter, multiple focal points, saturated neon colors, harsh contrast, deep black shadows, detailed patterns in left area, messy perspective, blur, low resolution"
+  }
+}

@@ -23,7 +23,8 @@ class ModuleViewTests(unittest.TestCase):
         for job in self.hub.jobs.values():job.cancel.set();job.wait(5000)
         APP.processEvents();self.window.close();self.window.deleteLater();APP.processEvents();self.temp.cleanup()
     def test_navigation_focus_settlement_and_persistence(self):
-        self.assertEqual(self.window.page_stack.count(),11)
+        self.assertEqual(self.window.page_stack.count(),10)
+        self.assertTrue(hasattr(self.window,"relationship_button"))
         self.assertEqual(self.config.value['main_page'],'focus')
         page=self.pages['FocusPage'];clock=[0];self.hub.focus.clock=lambda:clock[0]
         page.begin();self.assertEqual(self.hub.focus.status()['state'],'running');self.assertFalse(page.start.isEnabled())

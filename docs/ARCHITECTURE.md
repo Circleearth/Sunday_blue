@@ -129,3 +129,8 @@ Build Sunday Blue.bat → build.ps1 → SundayBlue.spec，SPECPATH 为 spec 所�
 - `context_budget.py` 无字符估算；Provider count_tokens使用[官方计数接口](https://platform.claude.com/docs/en/api/messages/count_tokens)。不支持时仅API实际usage回退，未知保持未知。阈值受用户配置真实上下文限制；自定义服务没有可靠通用模型容量探测。压缩使用独立摘要请求、批次计数和安全用户轮次切点，所有批次成功才提交summary/summarized_through，原消息不删除；工具调用链不被半截截断。
 - LivingMemory适配器使用上游resolve_memory_scope生成写入及召回session_id，角色独立库不变，user模式固定当前owner；没有直接改vendor或迁移真实记忆。新增startup设置存在module_settings，默认false，网络与预热线程异步；只管理本APP启动的进程树，共用设置/检测其他模型时保留Ollama。需共用同一向量模型时由用户显式启用shared，因为服务未提供全部客户端租约信息。
 - 工作仍由work/focus_task_links/activity_records汇总，界面不另建统计口径；商城仍调用原Rewards/Allowance事务，卡片只负责呈现。素材在assets/shop，缺图白色占位。
+
+### 生活 UI 分层与窗口适配
+生活页从 life_work 拆出为 `module_views/life.py`，原导出保留；共享输入/对话框在 `module_forms.py`，Work/Duties复用，保存语义不变。`life_widgets.py` 为只读展示与实际记录说明，不拥有持久化或奖励逻辑。`art_assets.py` 加载可替换图片及提示词清单；文件路径限制在本项目 assets。关系复用旧 RelationsPage，由聊天的单一弹窗入口打开；旧 main_page=relations 会转入聊天并打开弹窗，不迁移数据。独立顶部页面减少为10个，打包检查同时验证关系入口。
+
+`window_geometry.py` 仅管理几何：初始矩形居中且不超屏幕可用区；Windows无边框最大化从本显示器工作区得到物理像素尺寸，不混用Qt逻辑像素。数值输入灰色占位修复保留并补充鼠标输入测试。UI规范统一见 `docs/UI_DESIGN_SYSTEM.md`，没有新增第二套主题系统。

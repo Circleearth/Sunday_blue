@@ -12,96 +12,7 @@ from ..modules.life_state import MUSCLES
 STATUS={'todo':'待开始','doing':'进行中','paused':'暂缓','done':'已完成'}
 INTENSITY={'light':'轻','moderate':'中','high':'高'}
 
-def button(text,fn,layout,primary=False):
-    widget=QPushButton(text)
-    if primary:widget.setObjectName('primary')
-    widget.clicked.connect(fn);layout.addWidget(widget);return widget
-
-def hm_pair(default_minutes=None):
-    """Aligned input: [x] 小时 [x] 分钟. Both start at '未记录'; typing a number
-    replaces the placeholder in that box. .value() -> total minutes, None only
-    when neither box was touched (both still '未记录'). .load(minutes or None)."""
-    widget=QWidget();row=QHBoxLayout(widget);row.setContentsMargins(0,0,0,0)
-    hours=AutoSelectSpin();mins=AutoSelectSpin();hours.setRange(-1,24);mins.setRange(-1,59)
-    hours.setSpecialValueText('未记录');mins.setSpecialValueText('未记录')
-    hours.setValue((default_minutes or 0)//60 if default_minutes is not None else -1)
-    mins.setValue((default_minutes or 0)%60 if default_minutes is not None else -1)
-    def _v(spin):return spin.value() if spin.value()>=0 else 0
-    widget.value=lambda:(_v(hours)*60+_v(mins) if hours.value()>=0 or mins.value()>=0 else None)
-    def load(m):
-        if m is None:hours.setValue(-1);mins.setValue(-1)
-        else:hours.setValue(m//60);mins.setValue(m%60)
-    widget.load=load
-    widget.hours=hours;widget.mins=mins
-    row.addWidget(hours);row.addWidget(QLabel(' 小时'));row.addWidget(mins);row.addWidget(QLabel(' 分钟'));row.addStretch()
-    return widget
-
-def clock_pair():
-    """Required clock time as [x] 小时 [x] 分钟, both starting '未记录'.
-    Typing one box replaces its placeholder; the untouched one counts as 0.
-    .value() -> 'HH:mm', None only when neither box was touched. .load('HH:mm' or None)."""
-    widget=QWidget();row=QHBoxLayout(widget);row.setContentsMargins(0,0,0,0)
-    hours=AutoSelectSpin();mins=AutoSelectSpin();hours.setRange(-1,23);mins.setRange(-1,59)
-    hours.setSpecialValueText('未记录');mins.setSpecialValueText('未记录');hours.setValue(-1);mins.setValue(-1)
-    widget.value=lambda:('%02d:%02d'%(max(0,hours.value()),max(0,mins.value())) if hours.value()>=0 or mins.value()>=0 else None)
-    def load(text):
-        if text:
-            a,b=text.split(':');hours.setValue(int(a));mins.setValue(int(b))
-        else:hours.setValue(-1);mins.setValue(-1)
-    widget.load=load
-    widget.hours=hours;widget.mins=mins
-    row.addWidget(hours);row.addWidget(QLabel(' 小时'));row.addWidget(mins);row.addWidget(QLabel(' 分钟'));row.addStretch()
-    return widget
-
-MUSCLE_COLORS={'red':('#ef6b73','建议休息'),'orange':('#d99249','减少负荷'),'yellow':('#bca142','轻量活动'),'green':('#5d9b74','可正常安排')}
-
-class AutoSelectSpin(QSpinBox):
-    """A spin box whose text is fully selected on focus, so typing a digit
-    immediately replaces the '未记录' / '未设置' placeholder instead of being
-    rejected mid-placeholder (QSpinBox's specialValueText is not editable in place)."""
-    def focusInEvent(self,event):
-        super().focusInEvent(event);self.lineEdit().selectAll()
-
-def muscle_tiles(rows,layout,remove):
-    """Vertical stack of one soft-colored tile per muscle part; replaces previous tiles."""
-    for widget in remove:widget.setParent(None);widget.deleteLater()
-    tiles=[]
-    for row in rows:
-        color,advice=MUSCLE_COLORS[row['level']]
-        tile=QFrame();tile.setStyleSheet(f"background:{color}2e;border:1px solid {color}66;border-radius:10px;")
-        h=QHBoxLayout(tile);h.setContentsMargins(14,10,14,10)
-        swatch=QLabel();swatch.setFixedSize(10,10);swatch.setStyleSheet(f"background:{color};border-radius:5px;")
-        name=QLabel(row['part']);name.setStyleSheet(f"font-weight:600;color:{color};font-size:14px;")
-        text=QLabel(advice);text.setObjectName('muted')
-        h.addWidget(swatch);h.addWidget(name,1);h.addWidget(text)
-        layout.addWidget(tile);tiles.append(tile)
-    return tiles
-
-def form_dialog(parent,title):
-    dialog=QDialog(parent);dialog.setWindowTitle(title);dialog.setMinimumWidth(450)
-    layout=QVBoxLayout(dialog);form=QFormLayout();form.setSpacing(12);layout.addLayout(form)
-    error=QLabel();error.setWordWrap(True);layout.addWidget(error)
-    buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Save|QDialogButtonBox.StandardButton.Cancel)
-    buttons.rejected.connect(dialog.reject);layout.addWidget(buttons)
-    return dialog,form,error,buttons
-
-def spin(value=0,maximum=100000,suffix=''):
-    widget=AutoSelectSpin();widget.setRange(0,maximum);widget.setValue(round(value or 0));widget.setSuffix(suffix);return widget
-
-class ModulePage(QWidget):
-    module='life'
-    def layout_header(self,title,note):
-        layout=QVBoxLayout(self);layout.setContentsMargins(28,24,28,24);layout.setSpacing(16)
-        head=QLabel(title);head.setObjectName('title');layout.addWidget(head)
-        caption=QLabel(note);caption.setObjectName('muted');caption.setWordWrap(True);layout.addWidget(caption)
-        return layout
-    def invoke(self,action):
-        try:
-            result=action();self.hub.changed.emit(self.module);return result
-        except Exception as exc:QMessageBox.warning(self,'暂未完成',str(exc))
-    def save_dialog(self,dialog,error,action):
-        try:action();self.hub.changed.emit(self.module);dialog.accept()
-        except Exception as exc:error.setText(str(exc))
+from .module_forms import ModulePage,button,hm_pair,clock_pair,PlaceholderSpin,form_dialog,spin
 
 class WorkPage(ModulePage):
     module='work'
@@ -168,7 +79,7 @@ class WorkPage(ModulePage):
         if row:self.edit_task(row)
     def edit_task(self,row=None,parent_id=None):
         row=row or {};dlg,form,error,buttons=form_dialog(self,'编辑工作任务' if row else '新建工作任务')
-        title=QLineEdit(row.get('title',''));estimate=spin(row.get('estimate_minutes'),24000,' 分钟');estimate.setSpecialValueText('未设置')
+        title=QLineEdit(row.get('title',''));estimate=spin(row.get('estimate_minutes'),24000,' 分钟',zero_placeholder=True)
         due=QLineEdit(row.get('due',''));due.setPlaceholderText('YYYY-MM-DD；留空不设截止')
         priority=QSpinBox();priority.setRange(0,3);priority.setValue(row.get('priority',1))
         dida=QLineEdit(row.get('dida_id',''));dida.setPlaceholderText('可选：已有滴答任务 ID，仅关联标识')
@@ -209,107 +120,6 @@ class WorkPage(ModulePage):
     def suggestions(self):
         rows=self.hub.work.suggest();text='\n'.join(f"{i+1}. {r['title']} · 截止 {r['due'] or '未设置'} · 预计 {r['estimate_minutes']} 分钟" for i,r in enumerate(rows))
         QMessageBox.information(self,'今日安排建议','根据截止日期、优先级和预计时长排序，仅供选择，不会自动改动计划。\n\n'+(text or '暂无可安排任务。'))
-
-class LifePage(ModulePage):
-    def __init__(self,hub,parent=None):
-        super().__init__(parent);self.hub=hub
-        layout=self.layout_header('生活 · 恢复站','记录昨天的生活，了解今天的状态。规则估计仅供安排活动，不代表医学测量。')
-        tabs=QTabWidget();layout.addWidget(tabs,1)
-        recovery=QWidget();rec=QVBoxLayout(recovery);tabs.addTab(recovery,'今日状态')
-        self.state_note=QLabel();self.state_note.setWordWrap(True);self.state_note.setObjectName('cardTitle');rec.addWidget(self.state_note)
-        stat=QWidget();stat_layout=QFormLayout(stat);stat_layout.setSpacing(12);rec.addWidget(stat)
-        self.bars={}
-        for key,label in [('physical','体力'),('focus','专注力'),('eye_strain','视疲劳')]:
-            bar=QProgressBar();bar.setRange(0,1000);bar.setMinimumHeight(24);bar.setTextVisible(True);self.bars[key]=bar;stat_layout.addRow(QLabel(label),bar)
-        self.advice=QLabel();self.advice.setWordWrap(True);self.advice.setObjectName('muted');rec.addWidget(self.advice)
-        muscle_head=QLabel('前一日训练参考 · 逐日恢复：当天红 → 次日橙 → 第 3 天黄 → 3 天后绿');muscle_head.setObjectName('cardTitle');rec.addWidget(muscle_head)
-        self.muscle_box=QVBoxLayout();self.muscle_box.setSpacing(8);rec.addLayout(self.muscle_box);self.muscle_tiles=[]
-        trend_head=QLabel('过去 7 天 · 体力 / 专注参考（行为估计，不是医学测量）');rec.addWidget(trend_head)
-        self.trend=QListWidget();rec.addWidget(self.trend,1)
-        daily=QWidget();dl=QVBoxLayout(daily);scroll=QScrollArea();scroll.setWidgetResizable(True);scroll.setWidget(daily);tabs.addTab(scroll,'生活上报');form=QFormLayout();dl.addLayout(form)
-        self.day=QDateEdit(QDate.currentDate().addDays(-1));self.day.setCalendarPopup(True);self.day.setMaximumDate(QDate.currentDate());form.addRow('生活事实所属日期（默认昨天）',self.day)
-        self.meal=QPlainTextEdit();self.meal.setMaximumHeight(90);form.addRow('当天饮食',self.meal)
-        self.bed=clock_pair();self.wake=clock_pair()
-        form.addRow('睡觉时间（必填）',self.bed);form.addRow('起床时间（必填）',self.wake)
-        sleep_note=QLabel('入睡到起床自动算时长；起床早于入睡视为跨到次日。睡觉、起床必填，未填无法上报。');sleep_note.setObjectName('muted');form.addRow(sleep_note)
-        self.phone_total=hm_pair();self.phone_fun=hm_pair()
-        form.addRow('屏幕使用时长',self.phone_total);form.addRow('其中娱乐时长',self.phone_fun)
-        self.note=QLineEdit();form.addRow('备注',self.note)
-        hint=QLabel('例如今天 11/12：今日状态属于 11/12；默认上报 11/11 的饮食、屏幕使用及从 11/11 入睡到 11/12 起床的睡眠。睡觉/起床必填；未知项留空，不填 0。');hint.setWordWrap(True);dl.addWidget(hint)
-        button('保存生活上报',self.save_daily,dl,True);self.daily_status=QLabel();self.daily_status.setWordWrap(True);dl.addWidget(self.daily_status)
-        house=QHBoxLayout();self.house_title=QLineEdit();self.house_title.setPlaceholderText('完成的家务，如整理桌面');house.addWidget(self.house_title);button('今日家务打卡',self.housework,house);dl.addLayout(house);dl.addStretch()
-        exercise=QWidget();ex=QVBoxLayout(exercise);tabs.addTab(exercise,'运动记录')
-        row=QHBoxLayout();button('记录运动',lambda:self.exercise_dialog(),row,True);button('修改所选',self.edit_exercise,row);ex.addLayout(row)
-        hint=QLabel('运动金币按有效时长递减结算，高强度不加倍；同一记录修改按差额核算。正向结算同步增加体力上限，越高成长越慢。');hint.setWordWrap(True);ex.addWidget(hint);self.exercises=QListWidget();ex.addWidget(self.exercises,1)
-        activity=QWidget();al=QVBoxLayout(activity);tabs.addTab(activity,'生活正计时')
-        self.activity_title=QLineEdit();self.activity_title.setPlaceholderText('例如：玩游戏、散步休息、看书放松');al.addWidget(self.activity_title);self.clock_label=QLabel();self.clock_label.setObjectName('title');al.addWidget(self.clock_label)
-        row=QHBoxLayout();button('开始',lambda:self.invoke(lambda:self.hub.life_timer.start(self.activity_title.text())),row,True);button('暂停',lambda:self.invoke(self.hub.life_timer.pause),row);button('继续',lambda:self.invoke(self.hub.life_timer.resume),row);button('结束并核对时长',self.finish_activity,row);al.addLayout(row)
-        al.addWidget(QLabel('与运行中的番茄钟互斥，避免重复统计。可在结算时扣除忘记暂停的时间；休息可选择恢复模式，不发放金币。'))
-        self.activity_history=QListWidget();al.addWidget(self.activity_history,1)
-        self.day.dateChanged.connect(self.load_daily);hub.changed.connect(lambda *_:self.refresh())
-        self.clock=QTimer(self);self.clock.setInterval(1000);self.clock.timeout.connect(self.clock_refresh);self.clock.start();hub.closed.connect(self.clock.stop)
-        self.load_daily();self.refresh()
-    def selected_day(self):return self.day.date().toString('yyyy-MM-dd')
-    def load_daily(self,*args):
-        row=self.hub.life.daily(self.selected_day()) or {};self.meal.setPlainText(row.get('meal') or '');self.note.setText(row.get('note') or '')
-        self.bed.load(row.get('sleep_start'));self.wake.load(row.get('sleep_end'))
-        self.phone_total.load(row.get('phone_total'));self.phone_fun.load(row.get('phone_fun'))
-        self.daily_status.setText(('旧睡眠时长 '+str(row['sleep_hours'])+' 小时；填写新起止时间前保留。') if row.get('sleep_hours') is not None and not row.get('sleep_start') else '上报资料属于 '+self.selected_day())
-    def save_daily(self):
-        if self.bed.value() is None:QMessageBox.warning(self,'缺少数据','睡觉时间必填，请补上再上报。');return
-        if self.wake.value() is None:QMessageBox.warning(self,'缺少数据','起床时间必填，请补上再上报。');return
-        old=self.hub.life.daily(self.selected_day())
-        values=dict(meal=self.meal.toPlainText(),phone_total=self.phone_total.value(),phone_fun=self.phone_fun.value(),note=self.note.text(),
-            screen_hours=old.get('screen_hours'),energy=old.get('energy'),sleep_hours=old.get('sleep_hours'),
-            sleep_start=self.bed.value(),sleep_end=self.wake.value())
-        result=self.invoke(lambda:self.hub.life.save_daily(self.selected_day(),**values))
-        if result is not None:self.daily_status.setText(f"已保存 {self.selected_day()} · 睡眠 {result.get('sleep_hours','未知')} 小时；上传奖励不重复。")
-    def housework(self):
-        self.invoke(lambda:self.hub.life.housework(self.house_title.text()))
-    def edit_exercise(self):
-        item=self.exercises.currentItem()
-        if item:self.exercise_dialog(item.data(Qt.ItemDataRole.UserRole))
-    def exercise_dialog(self,row=None):
-        row=row or {};dlg,form,error,buttons=form_dialog(self,'运动记录')
-        day=QDateEdit(QDate.fromString(row['day'],'yyyy-MM-dd') if row else QDate.currentDate());day.setCalendarPopup(True);day.setMaximumDate(QDate.currentDate())
-        kind=QComboBox();kind.setEditable(True);kind.addItems(['快走','慢跑','羽毛球','足球','骑行','力量训练','其他']);kind.setCurrentText(row.get('kind','快走'))
-        minutes=spin(row.get('minutes',20),180,' 分钟');intensity=QComboBox()
-        for key,label in INTENSITY.items():intensity.addItem(label,key)
-        intensity.setCurrentIndex(max(0,intensity.findData(row.get('intensity','moderate'))))
-        for label,w in [('日期',day),('运动类型',kind),('有效时长',minutes),('强度',intensity)]:form.addRow(label,w)
-        parts=QWidget();pl=QHBoxLayout(parts);boxes={};existing=json.loads(row.get('muscles') or '[]')
-        for name in MUSCLES:
-            box=QCheckBox(name);box.setChecked(name in existing);boxes[name]=box;pl.addWidget(box)
-        form.addRow('训练部位（可多选）',parts)
-        buttons.accepted.connect(lambda:self.save_dialog(dlg,error,lambda:self.hub.life.exercise(kind.currentText(),minutes.value(),intensity.currentData(),day=day.date().toString('yyyy-MM-dd'),record_id=row.get('id'),muscles=[k for k,v in boxes.items() if v.isChecked()])));dlg.exec()
-    def clock_refresh(self):
-        self.hub.life_timer.checkpoint();state=self.hub.life_timer.status();seconds=int(state['elapsed']);self.clock_label.setText(f"{state.get('title','等待开始')} · {seconds//3600:02}:{seconds//60%60:02}:{seconds%60:02} · {state['state']}")
-    def finish_activity(self):
-        self.hub.life_timer.pause();state=self.hub.life_timer.status()
-        if state['state']=='idle':return
-        dlg,form,error,buttons=form_dialog(self,'结算活动 · 保留原始计时')
-        minutes=QDoubleSpinBox();minutes.setRange(0,state['elapsed']/60);minutes.setDecimals(2);minutes.setValue(state['elapsed']/60);form.addRow('调整后有效分钟',minutes)
-        physical=QComboBox();focus=QComboBox()
-        for w in (physical,focus):
-            for label,key in [('低','low'),('中','medium'),('高','high')]:w.addItem(label,key)
-        form.addRow('体力影响强度',physical);form.addRow('专注力影响强度',focus);rest=QCheckBox('这次是恢复性休息（增加恢复估计，而非扣减）');form.addRow(rest)
-        buttons.accepted.connect(lambda:self.save_dialog(dlg,error,lambda:self.hub.life_timer.finish(minutes.value()*60,physical.currentData(),focus.currentData(),rest.isChecked())));dlg.exec()
-    def refresh_energy(self):
-        today=QDate.currentDate().toString('yyyy-MM-dd');result=self.hub.life.energy(today)
-        for key,bar in self.bars.items():
-            bar.setValue(round(result[key]*10));bar.setFormat('%p%' if key=='eye_strain' else f"{int(round(result['physical_value']))} / {int(round(result['physical_cap']))} 点" if key=='physical' else f"{int(round(result['focus_value']))} / {int(round(result['focus_cap']))} 点")
-        self.state_note.setText(f"今日状态 · {today}   工作 {int(result['work_minutes'])} 分 · 学习 {int(result['study_minutes'])} 分 · 运动 {int(result['exercise_minutes'])} 分")
-        self.advice.setText('\n'.join(result['suggestions']))
-        self.muscle_tiles=muscle_tiles(result['muscles'],self.muscle_box,self.muscle_tiles)
-        self.trend.clear()
-        for row in result['trend']:self.trend.addItem(f"{row['day']} · 体力参考 {row['physical']} / 100 · 专注参考 {row['focus']} / 100")
-    def refresh(self,*args):
-        self.exercises.clear()
-        for row in self.hub.life.exercises():
-            item=QListWidgetItem(f"{row['day']} · {row['kind']} · {row['minutes']:g} 分钟 · {INTENSITY.get(row['intensity'])}强度 · {row['coins']} 币");item.setData(Qt.ItemDataRole.UserRole,row);self.exercises.addItem(item)
-        self.activity_history.clear()
-        for row in self.hub.life_timer.history():self.activity_history.addItem(f"{row['day']} · {row['title']} · 原始 {row['elapsed']/60:.1f} / 有效 {row['effective']/60:.1f} 分钟 · {'恢复' if row['rest'] else '活动'}")
-        self.refresh_energy();self.clock_refresh()
 
 class DutiesPage(ModulePage):
     module='duties'
@@ -379,3 +189,6 @@ class DutiesPage(ModulePage):
         if not row or row['status'] in ('done','completed'):return
         text,ok=QInputDialog.getText(self,'保留失败交接','失败原因 / 需要用户澄清的内容：')
         if ok:self.invoke(lambda:self.hub.duties.fail_handoff(row['id'],text))
+
+# Compatibility import: shared form helpers above remain available to Work/Duties.
+from .life import LifePage

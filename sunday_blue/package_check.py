@@ -31,7 +31,7 @@ def verify():
             def check_hide():
                 try:
                     result['pages'] = window.page_stack.count()
-                    assert result['pages'] >= 11, 'Missing application pages'
+                    assert result['pages'] >= 10 and hasattr(window,'relationship_button'), 'Missing pages or chat relationships entry'
                     result['tray_available'] = QSystemTrayIcon.isSystemTrayAvailable()
                     if result['tray_available']:
                         window.close()

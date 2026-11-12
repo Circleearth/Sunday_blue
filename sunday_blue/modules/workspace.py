@@ -23,6 +23,10 @@ def install_workspace(window):
         window.module_nav.addWidget(button);button.clicked.connect(lambda checked=False,k=key:select(k))
     hub.navigate.connect(lambda key:select(key) if key in positions else None)
     default=window.config.value.get('main_page','focus')
+    if default=='relations':
+        default='chat'
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0,window.open_relations)
     if default not in positions:default='focus'
     select(default);buttons.button(positions[default]).setChecked(True)
     def changed(module):

@@ -56,3 +56,8 @@ THEMES = {
 
 def tokens(theme='dark'):
     return BASE | THEMES['light' if theme == 'light' else 'dark']
+
+# Recovery visualization semantics; pastel fills remain readable in both themes.
+RECOVERY_COLORS = {'red':'#efb6b5','orange':'#efccaa','yellow':'#eadfa8','green':'#bddbc9','unknown':'#dce1e8'}
+RECOVERY_LABELS = {'red':'建议恢复','orange':'谨慎安排','yellow':'基本恢复','green':'可考虑训练','unknown':'数据不足'}
+STATE_ACCENTS = {'ready':'#75a38b','caution':'#c5aa64','rest':'#ca8e8d'}
