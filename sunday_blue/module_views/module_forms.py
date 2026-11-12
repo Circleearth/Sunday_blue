@@ -96,4 +96,3 @@ class ModulePage(QWidget):
     def save_dialog(self,dialog,error,action):
         try:action();self.hub.changed.emit(self.module);dialog.accept()
         except Exception as exc:error.setText(str(exc))
-
