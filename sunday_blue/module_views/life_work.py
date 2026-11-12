@@ -22,7 +22,7 @@ def hm_pair(default_minutes=None):
     replaces the placeholder in that box. .value() -> total minutes, None only
     when neither box was touched (both still '未记录'). .load(minutes or None)."""
     widget=QWidget();row=QHBoxLayout(widget);row.setContentsMargins(0,0,0,0)
-    hours=QSpinBox();mins=QSpinBox();hours.setRange(-1,24);mins.setRange(-1,59)
+    hours=AutoSelectSpin();mins=AutoSelectSpin();hours.setRange(-1,24);mins.setRange(-1,59)
     hours.setSpecialValueText('未记录');mins.setSpecialValueText('未记录')
     hours.setValue((default_minutes or 0)//60 if default_minutes is not None else -1)
     mins.setValue((default_minutes or 0)%60 if default_minutes is not None else -1)
@@ -41,7 +41,7 @@ def clock_pair():
     Typing one box replaces its placeholder; the untouched one counts as 0.
     .value() -> 'HH:mm', None only when neither box was touched. .load('HH:mm' or None)."""
     widget=QWidget();row=QHBoxLayout(widget);row.setContentsMargins(0,0,0,0)
-    hours=QSpinBox();mins=QSpinBox();hours.setRange(-1,23);mins.setRange(-1,59)
+    hours=AutoSelectSpin();mins=AutoSelectSpin();hours.setRange(-1,23);mins.setRange(-1,59)
     hours.setSpecialValueText('未记录');mins.setSpecialValueText('未记录');hours.setValue(-1);mins.setValue(-1)
     widget.value=lambda:('%02d:%02d'%(max(0,hours.value()),max(0,mins.value())) if hours.value()>=0 or mins.value()>=0 else None)
     def load(text):
@@ -54,6 +54,13 @@ def clock_pair():
     return widget
 
 MUSCLE_COLORS={'red':('#ef6b73','建议休息'),'orange':('#d99249','减少负荷'),'yellow':('#bca142','轻量活动'),'green':('#5d9b74','可正常安排')}
+
+class AutoSelectSpin(QSpinBox):
+    """A spin box whose text is fully selected on focus, so typing a digit
+    immediately replaces the '未记录' / '未设置' placeholder instead of being
+    rejected mid-placeholder (QSpinBox's specialValueText is not editable in place)."""
+    def focusInEvent(self,event):
+        super().focusInEvent(event);self.lineEdit().selectAll()
 
 def muscle_tiles(rows,layout,remove):
     """Vertical stack of one soft-colored tile per muscle part; replaces previous tiles."""
@@ -79,7 +86,7 @@ def form_dialog(parent,title):
     return dialog,form,error,buttons
 
 def spin(value=0,maximum=100000,suffix=''):
-    widget=QSpinBox();widget.setRange(0,maximum);widget.setValue(round(value or 0));widget.setSuffix(suffix);return widget
+    widget=AutoSelectSpin();widget.setRange(0,maximum);widget.setValue(round(value or 0));widget.setSuffix(suffix);return widget
 
 class ModulePage(QWidget):
     module='life'
