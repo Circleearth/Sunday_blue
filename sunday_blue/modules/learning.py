@@ -4,10 +4,13 @@ from datetime import datetime,timedelta,timezone
 from .database import stamp
 from .life import number
 
+FAMILIARITY={'unseen':('未接触',0),'learning':('学习中',50),'familiar':('已熟悉',100)}
 class Learning:
  def __init__(self,db):
   self.db=db
   with db.connect() as c:c.executescript('''
+   CREATE TABLE IF NOT EXISTS learning_notebook(node TEXT PRIMARY KEY,note TEXT NOT NULL,questions TEXT NOT NULL,extensions TEXT NOT NULL,state TEXT NOT NULL,updated TEXT NOT NULL);
+   CREATE TABLE IF NOT EXISTS learning_note_history(id INTEGER PRIMARY KEY,node TEXT,before_json TEXT,created TEXT);
    CREATE TABLE IF NOT EXISTS learning_nodes(id TEXT PRIMARY KEY,parent TEXT,kind TEXT,title TEXT,self_score REAL DEFAULT 0,done INTEGER DEFAULT 0,created TEXT);
    CREATE TABLE IF NOT EXISTS learning_attempts(id TEXT PRIMARY KEY,unit TEXT,total INTEGER,correct INTEGER,note TEXT,created TEXT);
    CREATE TABLE IF NOT EXISTS learning_reviews(id TEXT PRIMARY KEY,unit TEXT,passed INTEGER,note TEXT,day TEXT,created TEXT,UNIQUE(unit,day));
@@ -15,6 +18,42 @@ class Learning:
    CREATE TABLE IF NOT EXISTS learning_focus_links(run_id TEXT PRIMARY KEY,unit TEXT);
    CREATE TABLE IF NOT EXISTS learning_mastery(unit TEXT PRIMARY KEY,first_mastered TEXT);
   ''')
+ def notebook_rows(self):
+  with self.db.connect() as c:
+   rows=[dict(r) for r in c.execute("SELECT n.*,COALESCE(b.note,'') AS note,COALESCE(b.questions,'') AS questions,COALESCE(b.extensions,'') AS extensions,COALESCE(b.state,CASE WHEN m.unit IS NOT NULL THEN 'familiar' ELSE 'unseen' END) AS state FROM learning_nodes n LEFT JOIN learning_notebook b ON b.node=n.id LEFT JOIN learning_mastery m ON m.unit=n.id ORDER BY n.created,n.rowid")]
+   times={r[0]:r[1] for r in c.execute('SELECT l.unit,sum(a.seconds)/60.0 FROM learning_focus_links l JOIN activity_records a ON a.id=l.run_id GROUP BY l.unit')}
+  children={}
+  for r in rows:children.setdefault(r['parent'],[]).append(r)
+  def units(r):return [r] if r['kind']=='unit' else [u for child in children.get(r['id'],[]) for u in units(child)]
+  for r in rows:
+   leaves=units(r);r['progress']=sum(FAMILIARITY[u['state']][1] for u in leaves)/len(leaves) if leaves else 0;r['familiar_count']=sum(u['state']=='familiar' for u in leaves);r['unit_count']=len(leaves);r['minutes']=sum(times.get(u['id'],0) for u in leaves)
+  return rows
+ def notebook(self,nid):
+  for r in self.notebook_rows():
+   if r['id']==nid:return r
+  raise ValueError('学习项目不存在')
+ def save_notebook(self,nid,note,questions='',extensions='',state=None,expected=None):
+  values={'note':note,'questions':questions,'extensions':extensions}
+  if any(not isinstance(v,str) or len(v)>30000 for v in values.values()):raise ValueError('每栏笔记需为3万字以内文字')
+  with self.db.connect() as c:
+   c.execute('BEGIN IMMEDIATE');node=c.execute('SELECT * FROM learning_nodes WHERE id=?',(nid,)).fetchone()
+   if not node:raise ValueError('学习项目不存在')
+   row=c.execute('SELECT * FROM learning_notebook WHERE node=?',(nid,)).fetchone()
+   prior=dict(row) if row else dict(node=nid,note='',questions='',extensions='',state='familiar' if c.execute('SELECT 1 FROM learning_mastery WHERE unit=?',(nid,)).fetchone() else 'unseen',updated='')
+   if expected is not None and any(prior[k]!=expected[k] for k in ('note','questions','extensions','state')):raise ValueError('这份笔记已在其他窗口更新，请关闭后重新打开，避免覆盖。')
+   state=state or prior['state']
+   if state not in FAMILIARITY:raise ValueError('请选择有效熟悉状态')
+   if node['kind']!='unit' and state!=prior['state']:raise ValueError('课程和章节的进度由知识点汇总')
+   values['state']=state
+   if all(prior[k]==v for k,v in values.items()):return
+   c.execute('INSERT INTO learning_note_history(node,before_json,created) VALUES(?,?,?)',(nid,json.dumps(prior,ensure_ascii=False),stamp()))
+   c.execute('INSERT INTO learning_notebook VALUES(?,?,?,?,?,?) ON CONFLICT(node) DO UPDATE SET note=excluded.note,questions=excluded.questions,extensions=excluded.extensions,state=excluded.state,updated=excluded.updated',(nid,note,questions,extensions,state,stamp()))
+ def rename(self,nid,title):
+  title=str(title).strip()
+  if not title or len(title)>150:raise ValueError('名称需为1–150字')
+  with self.db.connect() as c:
+   if not c.execute('SELECT 1 FROM learning_nodes WHERE id=?',(nid,)).fetchone():raise ValueError('学习项目不存在')
+   c.execute('UPDATE learning_nodes SET title=? WHERE id=?',(title,nid))
  def options(self):return {'mastery_threshold':80,'minimum_questions':10}|self.db.get('learning_options',{})
  def configure(self,threshold,minimum):
   value={'mastery_threshold':int(number(threshold,60,100,'掌握阈值')),'minimum_questions':int(number(minimum,5,100,'最低题量'))};self.db.set('learning_options',value)

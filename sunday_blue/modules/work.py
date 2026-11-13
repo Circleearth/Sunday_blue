@@ -1,5 +1,5 @@
 """Stable, module-owned work tasks; progress is reported, never inferred from time."""
-from datetime import date,datetime
+from datetime import date,datetime,timedelta
 import json
 import math
 import sqlite3
@@ -18,11 +18,27 @@ class Work:
                 id TEXT PRIMARY KEY,parent_id TEXT,title TEXT,estimate_minutes REAL,due TEXT,
                 status TEXT,progress REAL,priority INTEGER,archived INTEGER,dida_id TEXT,
                 created TEXT,updated TEXT);
+                CREATE TABLE IF NOT EXISTS work_day_notes(day TEXT PRIMARY KEY,body TEXT NOT NULL,updated TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS work_day_note_history(id INTEGER PRIMARY KEY,day TEXT,body TEXT,created TEXT);
                 CREATE TABLE IF NOT EXISTS work_notes(task_id TEXT PRIMARY KEY,notes TEXT NOT NULL);
                 CREATE UNIQUE INDEX IF NOT EXISTS work_dida_unique ON work_tasks(dida_id) WHERE dida_id<>'';
                 CREATE INDEX IF NOT EXISTS work_parent ON work_tasks(parent_id);
                 CREATE TABLE IF NOT EXISTS work_history (
                 id TEXT PRIMARY KEY,task_id TEXT,kind TEXT,payload TEXT,created TEXT);''')
+
+    def day_note(self,day=None):
+        day=day or date.today().isoformat();date.fromisoformat(day)
+        with self.db.connect() as c:
+            row=c.execute('SELECT body FROM work_day_notes WHERE day=?',(day,)).fetchone();return row[0] if row else ''
+
+    def leave_for_tomorrow(self,body,today=None):
+        target=((today or date.today())+timedelta(days=1)).isoformat();body=self._text(body,'明日备注',3000)
+        with self.db.connect() as c:
+            c.execute('BEGIN IMMEDIATE');old=c.execute('SELECT body FROM work_day_notes WHERE day=?',(target,)).fetchone()
+            if old and old[0]==body:return target
+            if old:c.execute('INSERT INTO work_day_note_history(day,body,created) VALUES(?,?,?)',(target,old[0],stamp()))
+            c.execute('INSERT INTO work_day_notes VALUES(?,?,?) ON CONFLICT(day) DO UPDATE SET body=excluded.body,updated=excluded.updated',(target,body,stamp()))
+        return target
 
     @staticmethod
     def _text(value,label,limit,empty=False):

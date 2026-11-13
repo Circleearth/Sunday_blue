@@ -1,5 +1,5 @@
 """Work, daily life and duty-slot views. Domain services own validation and all writes."""
-from datetime import date
+from datetime import date,timedelta
 import json
 from PySide6.QtCore import Qt,QDate,QTimer
 from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QFormLayout,QLabel,QPushButton,
@@ -30,29 +30,26 @@ class WorkPage(ModulePage):
         button('开始所选任务的番茄钟',self.start_selected,focus,True);focus.addStretch();layout.addLayout(focus)
         self.summary=QLabel();self.summary.setWordWrap(True);layout.addWidget(self.summary)
         button('查看今日安排建议',self.suggestions,layout)
-        row=QHBoxLayout();button('下班结算 · 进入恢复',self.end_work,row,True);button('我的状态 / 恢复安排',self.recovery_options,row);layout.addLayout(row)
-        self.recovery_note=QLabel();self.recovery_note.setWordWrap(True);layout.addWidget(self.recovery_note)
-        hub.feedback.connect(self.afterwork_feedback)
+        notes=QHBoxLayout();layout.addLayout(notes);left=QVBoxLayout();right=QVBoxLayout();notes.addLayout(left,1);notes.addLayout(right,1)
+        self.today_caption=QLabel('今天接续');left.addWidget(self.today_caption);self.today_note=QPlainTextEdit();self.today_note.setReadOnly(True);self.today_note.setMaximumHeight(70);left.addWidget(self.today_note)
+        heading=QHBoxLayout();self.tomorrow_caption=QLabel('留给明天');heading.addWidget(self.tomorrow_caption);button('确认留给明天',self.save_tomorrow,heading,True);right.addLayout(heading)
+        self.tomorrow_note=QPlainTextEdit();self.tomorrow_note.setPlaceholderText('明天先做什么、停在哪里、有哪些注意事项……');self.tomorrow_note.setMaximumHeight(70);right.addWidget(self.tomorrow_note)
+        self.note_status=QLabel();self.note_status.setObjectName('muted');layout.addWidget(self.note_status);self.tomorrow_note.textChanged.connect(lambda:self.note_status.setText('尚未确认：点击「确认留给明天」后保存。') if self.tomorrow_note.document().isModified() else None)
+        self.day_timer=QTimer(self);self.day_timer.setInterval(60000);self.day_timer.timeout.connect(self.refresh_notes);hub.closed.connect(self.day_timer.stop);self.day_timer.start()
         hub.changed.connect(lambda *_:self.refresh());self.refresh()
-    def afterwork_feedback(self,role,text):
-        director=next((s['role_id'] for s in self.hub.duties.slots() if s['id']=='director'),None)
-        if self.hub.recovery.status().get('active') and role==director:self.recovery_note.setText(text)
-    def end_work(self):
-        minutes,ok=QInputDialog.getInt(self,'下班恢复','休息多久（分钟，不消耗金币）',60,5,240)
-        if ok:
-            result=self.invoke(lambda:self.hub.end_work(minutes))
-            if result:self.recovery_note.setText(f"今天 {result['minutes']} 分钟有效工作，新建 {len(result.get('created',[]))} 项，{len(result['completed'])} 项确认完成，{len(result['progress'])} 项进展。"+self.hub.recovery.suggestion()+'\n新建：'+('、'.join(result.get('created',[])) or '无')+'\n已完成：'+('、'.join(result['completed']) or '无'))
-    def recovery_options(self):
-        choices=['我有些疲惫','我有些难过','我有些烦躁','情绪已平静','恢复后继续休息','结束恢复，我想轻量学习','结束恢复，我想轻量活动']
-        text,ok=QInputDialog.getItem(self,'状态与意愿','不会因为缺少记录扣分，也不会自动派新任务',choices,0,False)
-        if not ok:return
-        index=choices.index(text)
-        if index<4:self.hub.recovery.report(['tired','sad','irritable','calm'][index])
-        else:self.hub.recovery.finish(['rest','study','activity'][index-4])
-        self.recovery_note.setText(self.hub.recovery.suggestion());self.hub.changed.emit('recovery')
+    def refresh_notes(self):
+        today=date.today();tomorrow=today+timedelta(days=1);self.today_caption.setText('今天接续 · '+today.isoformat());self.tomorrow_caption.setText('留给明天 · '+tomorrow.isoformat())
+        body=self.hub.work.day_note(today.isoformat());self.today_note.setPlainText(body or '今天没有预留备注，直接从任务列表开始。')
+        if not self.tomorrow_note.document().isModified():
+            self.tomorrow_note.setPlainText(self.hub.work.day_note(tomorrow.isoformat()));self.tomorrow_note.document().setModified(False)
+    def save_tomorrow(self):
+        try:
+            target=self.hub.work.leave_for_tomorrow(self.tomorrow_note.toPlainText());self.tomorrow_note.document().setModified(False);self.note_status.setText('✓ 已确认，'+target+' 会显示在「今天接续」。');self.refresh_notes()
+        except Exception as exc:QMessageBox.information(self,'备注未保存',str(exc))
     def selected(self):
         item=self.tree.currentItem();return item.data(0,Qt.ItemDataRole.UserRole) if item else None
     def refresh(self,*args):
+        self.refresh_notes()
         selected=self.selected();selected_id=selected['id'] if selected else None
         rows=self.hub.work.tasks(self.archived.isChecked());self.tree.clear();items={}
         for row in rows:

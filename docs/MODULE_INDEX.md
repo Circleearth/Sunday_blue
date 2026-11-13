@@ -6,6 +6,7 @@
 
 | 需求 | 优先读取 | 必要测试 |
 |---|---|---|
+| 学习笔记 / 熟悉进度 / 明日工作便签 | `module_views/learning_notebook.py`、`modules/learning.py`；`module_views/life_work.py`、`modules/work.py` | `test_learning_notebook.py`、`test_growth.py` |
 | 页面导航 / 后台生命周期 | `main.py` 的 install_workspace 调用；`modules/workspace.py`、`modules/hub.py` | `test_module_views.py` |
 | 专注、有效记录、结算 | `modules/focus.py`、`module_views/focus.py` | `test_modules.py`、`test_module_views.py` |
 | 番茄钟阶段 / 声音设置 | `modules/focus_preferences.py`、`focus_alarm.py`、`module_views/focus_settings.py`；Hub 的 focus_timer | `test_pomodoro.py` |

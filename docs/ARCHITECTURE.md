@@ -153,3 +153,11 @@ Build Sunday Blue.bat → build.ps1 → SundayBlue.spec，SPECPATH 为 spec 所�
 
 
 使用体验修整：`image_layouts.py`统一外部图片选择、QPainter等比构图、拖动预览及原子JSON配置；图片不随exe内嵌，动态肌群仍由原矢量图层独立绘制。ArtworkSlot继承该组件，角色头像通过同一framed函数呈现；变更信号即时刷新相关区域。`eye_daily_load`保存自然日有效工作/学习分钟，残留底线=分钟×0.02（上限20）；旧视疲劳状态及9点结转不迁移。生活页以已有daily_life是否有该日记录决定完成态/编辑态；Life.latest_missing_day一次读取日期集合找最近缺日报，日结算仍由Reports/Focus原事务负责。
+
+## 2026-11-13 工作接续与学习笔记
+
+- `module_views/learning_notebook.py` 独立承载学习树与笔记编辑，`growth.py` 复用该页面；学习和契约服务边界不变。
+- `learning_notebook` 按稳定 node ID 保存备注、疑惑、拓展、熟悉状态；`learning_note_history` 保存每次改变前的内容。保存使用事务和旧值比较，阻止并行编辑静默覆盖。新字段采用附表，旧练习、复习、自评、掌握表不迁移、不删除。
+- 新 UI 熟悉进度按知识点 0/50/100 等权平均；旧 summary/evidence 与契约继续使用原证据规则，不混淆笔记熟悉度和实际掌握证据。
+- `work_day_notes` 按目标日期保存明日便签，`work_day_note_history` 保留旧版本。确认时以本机当日+1为目标；页面每分钟刷新日期，未确认草稿不覆盖。移除的是工作页恢复控制，非后端恢复保护系统。
+- 验证：`tests/test_learning_notebook.py`；完整回归仍使用 unittest discover。
