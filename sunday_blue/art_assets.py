@@ -34,16 +34,8 @@ def asset_details(parent,root,key):
         copy=QPushButton('复制完整 '+label);copy.clicked.connect(lambda checked=False,t=spec[key]:QApplication.clipboard().setText(t));box.addWidget(copy);tabs.addTab(page,label)
     close=QPushButton('关闭');close.clicked.connect(dialog.accept);layout.addWidget(close);dialog.exec()
 
-class ArtworkSlot(QWidget):
+from .image_layouts import EditableImage
+class ArtworkSlot(EditableImage):
     def __init__(self,root,key,parent=None):
-        super().__init__(parent);self.spec=asset_spec(root,key);self.pixmap=QPixmap(str(self.spec['file']));self.setMinimumHeight(90)
-        layout=QVBoxLayout(self);layout.addStretch();button=QPushButton(self.spec['name']+' · 素材 / 提示词');button.clicked.connect(lambda:asset_details(self,root,key));layout.addWidget(button,0,Qt.AlignmentFlag.AlignRight)
-        self.setToolTip(self.spec['size']+' · '+self.spec['placement'])
-    def paintEvent(self,event):
-        p=QPainter(self);p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        if self.pixmap.isNull():
-            p.setPen(Qt.PenStyle.NoPen);p.setBrush(QColor('#eef3ef'));p.drawRoundedRect(self.rect(),12,12)
-            p.setPen(QColor('#687c73'));p.drawText(self.rect().adjusted(18,8,-18,-35),Qt.AlignmentFlag.AlignLeft|Qt.AlignmentFlag.AlignVCenter,'留一点空白，给今天的自己。')
-        else:
-            size=self.pixmap.size();size.scale(self.size(),Qt.AspectRatioMode.KeepAspectRatio if self.spec.get("fit")=="contain" else Qt.AspectRatioMode.KeepAspectRatioByExpanding)
-            p.drawPixmap(QRectF((self.width()-size.width())/2,(self.height()-size.height())/2,size.width(),size.height()),self.pixmap,QRectF(self.pixmap.rect()))
+        spec=asset_spec(root,key);a,b=map(float,spec['ratio'].split(':'));super().__init__(root,key,spec['file'],'选择图片 / 调整',a/b,parent);self.spec=spec
+        button=QPushButton(spec['name']+' · 素材说明');button.clicked.connect(lambda:asset_details(self,root,key));self.layout().addWidget(button,0,Qt.AlignmentFlag.AlignRight)

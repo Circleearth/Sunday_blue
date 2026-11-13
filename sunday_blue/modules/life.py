@@ -97,6 +97,12 @@ class Life:
             from .attention import Attention
             Attention.apply_sleep(c,day,values['sleep_hours'])
         return self.daily(day)
+    def latest_missing_day(self):
+        target=date.fromisoformat(today())-timedelta(days=1)
+        with self.db.connect() as c:known={r[0] for r in c.execute('SELECT day FROM daily_life WHERE day<?',(today(),))}
+        while target.isoformat() in known:target-=timedelta(days=1)
+        return target.isoformat()
+
     def daily(self,day=None):
         day=day or today();date.fromisoformat(day)
         with self.db.connect() as c:

@@ -7,7 +7,7 @@ from ..art_assets import ArtworkSlot
 class ReportsPage(ModulePage):
  module='reports'
  def __init__(self,hub,parent=None):
-  super().__init__(parent);self.hub=hub;box=self.layout_header('结算与回顾','上报前一天生活后生成日结算；周期报告使用截止日前的完整日期，不重复发金币。');row=QHBoxLayout();self.day=QDateEdit(QDate.currentDate().addDays(-1));self.day.setCalendarPopup(True);self.day.setMaximumDate(QDate.currentDate().addDays(-1));row.addWidget(self.day);button('生成 / 更新日结算',self.generate,row,True);button('查看所选报告',self.open_selected,row);button('复制所选报告',self.copy_selected,row);box.addLayout(row)
+  super().__init__(parent);self.hub=hub;box=self.layout_header('结算与回顾','上报前一天生活后生成日结算；周期报告使用截止日前的完整日期，不重复发金币。');row=QHBoxLayout();self.day=QDateEdit(QDate.currentDate().addDays(-1));self.day.setCalendarPopup(True);self.day.setMaximumDate(QDate.currentDate().addDays(-1));row.addWidget(self.day);button('查看该日结算',self.generate,row,True);button('查看所选报告',self.open_selected,row);button('复制所选报告',self.copy_selected,row);box.addLayout(row)
   self.items=QListWidget();self.items.setWordWrap(True);self.items.itemDoubleClicked.connect(lambda *_:self.open_selected());box.addWidget(self.items,1);self.dialog=None;hub.reports.ready.connect(lambda *_:self.refresh());hub.report_open.connect(self.show_report);self.refresh()
  def refresh(self):
   current=self.items.currentItem();rid=current.data(Qt.ItemDataRole.UserRole)['id'] if current else None;self.items.clear()
@@ -15,8 +15,12 @@ class ReportsPage(ModulePage):
    item=QListWidgetItem(f"{r['start']} → {r['end']}（不含截止日） · "+{'day':'日结算','week':'周报','month':'月报','year':'年报'}[r['kind']]+' · '+{'queued':'等待评价','running':'正在评价','done':'已完成','fallback':'本次未评价'}[r['state']]);item.setData(Qt.ItemDataRole.UserRole,r);self.items.addItem(item)
    if r['id']==rid:self.items.setCurrentItem(item)
  def generate(self):
-  rid=self.invoke(lambda:self.hub.reports.daily(self.day.date().toString('yyyy-MM-dd')))
-  if rid:self.show_report(rid)
+  from datetime import date,timedelta
+  day=self.day.date().toString('yyyy-MM-dd');rid='day:'+day+':'+(date.fromisoformat(day)+timedelta(days=1)).isoformat()
+  if self.hub.reports.get(rid):self.show_report(rid)
+  else:
+   from PySide6.QtWidgets import QMessageBox
+   QMessageBox.information(self,'尚无该日报告','请在生活上报中填写或修改该日资料，保存时统一生成结算。')
  def selected(self):
   item=self.items.currentItem();return item.data(Qt.ItemDataRole.UserRole) if item else None
  def copy_selected(self):

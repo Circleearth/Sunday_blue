@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QLabel,QListWidge
     QFrame,QDialog,QFormLayout,QLineEdit,QComboBox,QSpinBox,QDoubleSpinBox,QMessageBox,QInputDialog)
 from PySide6.QtGui import QPixmap
 from ..roles import list_roles
+from ..image_layouts import EditableImage
 from ..numeric_inputs import NumberSpin as QSpinBox, DecimalSpin as QDoubleSpinBox
 
 
@@ -14,14 +15,10 @@ class RewardsPage(QWidget):
         title=QLabel('努力可以兑换，休息不需要许可。');title.setObjectName('title');layout.addWidget(title)
         self.balance=QLabel();layout.addWidget(self.balance)
         note=QLabel('金币是虚拟激励，与真实预算分开。预算奖励只有在你确认实际消费后，才记入预算。');note.setWordWrap(True);layout.addWidget(note)
-        banner=QLabel('奖励商店');banner.setMinimumHeight(80);banner.setStyleSheet('background: #fafafa; color: #566078; border-radius: 12px; padding: 20px;');layout.addWidget(banner)
+        banner=EditableImage(hub.root,'shop_background',hub.root/'assets/shop/background.png',ratio=1600/300);banner.setFixedHeight(100);layout.addWidget(banner)
         body=QHBoxLayout();layout.addLayout(body,3)
         self.items=QListWidget();self.items.setViewMode(QListWidget.ViewMode.IconMode);self.items.setResizeMode(QListWidget.ResizeMode.Adjust);self.items.setMovement(QListWidget.Movement.Static);self.items.setGridSize(QSize(270,245));self.items.setSpacing(12);body.addWidget(self.items,1)
-        self.mascot=QLabel('看板娘立绘预留\nassets/shop/mascot.png');self.mascot.setAlignment(Qt.AlignmentFlag.AlignCenter);self.mascot.setMinimumWidth(180);self.mascot.setStyleSheet('background:#fafafa;color:#778099;border-radius:14px;');body.addWidget(self.mascot)
-        art=hub.root/'assets/shop/mascot.png'
-        if art.is_file():self.mascot.setPixmap(QPixmap(str(art)).scaled(220,430,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation))
-        background=hub.root/'assets/shop/background.png'
-        if background.is_file():banner.setPixmap(QPixmap(str(background)).scaled(800,150,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation))
+        self.mascot=EditableImage(hub.root,'shop_mascot',hub.root/'assets/shop/mascot.png',ratio=.6);self.mascot.setMinimumWidth(180);body.addWidget(self.mascot)
         row=QHBoxLayout()
         for label,callback in [('兑换所选',self.redeem),('商店设置',self.settings)]:
             button=QPushButton(label);button.clicked.connect(callback);row.addWidget(button)
@@ -43,9 +40,7 @@ class RewardsPage(QWidget):
                 suffix=f" · {r['minutes']} 分钟"
             item=QListWidgetItem(f"{r['title']} · {r['cost']} 金币{suffix}");item.setData(Qt.ItemDataRole.UserRole,r);item.setSizeHint(QSize(250,225));self.items.addItem(item)
             card=QFrame();card.setObjectName('card');box=QVBoxLayout(card);box.setSpacing(10)
-            art=QLabel();art.setFixedHeight(92);art.setStyleSheet('background:#fafafa;border-radius:10px;');art.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            image=self.hub.root/'assets/shop'/(r['id']+'.png')
-            if image.is_file():art.setPixmap(QPixmap(str(image)).scaled(230,92,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation))
+            art=EditableImage(self.hub.root,'shop_item:'+r['id'],self.hub.root/'assets/shop'/(r['id']+'.png'),ratio=2.5);art.setFixedHeight(92)
             box.addWidget(art);name=QLabel(r['title']);name.setWordWrap(True);name.setObjectName('cardTitle');box.addWidget(name)
             price=QLabel(str(r['cost'])+' 金币'+suffix);price.setWordWrap(True);box.addWidget(price)
             buy=QPushButton('兑换');buy.clicked.connect(lambda checked=False,i=item:self.buy_item(i));box.addWidget(buy);self.items.setItemWidget(item,card)

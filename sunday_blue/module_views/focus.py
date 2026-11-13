@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QBoxLayout, QL
     QComboBox, QLineEdit, QPushButton, QListWidget, QListWidgetItem, QMessageBox,
     QSpinBox, QFrame, QScrollArea, QButtonGroup)
 from ..roles import list_roles
+from ..image_layouts import EditableImage
 from ..design_system import tokens
 from ..modules.focus_preferences import PHASES
 from .focus_settings import FocusSettings
@@ -101,7 +102,7 @@ class FocusPage(QWidget):
         self.roles = QComboBox()
         for rid, name, *_ in list_roles(hub.root): self.roles.addItem(name, rid)
         self.roles.setCurrentIndex(max(0, self.roles.findData('rui'))); side.addWidget(self.roles)
-        self.avatar = QLabel(); self.avatar.setAlignment(Qt.AlignmentFlag.AlignCenter); self.avatar.setFixedHeight(90)
+        self.avatar = EditableImage(hub.root,'avatar:rui',hub.root/'assets/roles/rui/avatar.png',ratio=1);self.avatar.setFixedHeight(100)
         side.addWidget(self.avatar)
         self.companion_note = QLabel('把注意力交给眼前。暂停和休息都不会扣分。')
         self.companion_note.setWordWrap(True); self.companion_note.setObjectName('muted'); side.addWidget(self.companion_note)
@@ -145,10 +146,7 @@ class FocusPage(QWidget):
     def art(self):
         role = str(self.roles.currentData())
         if role == self._art_role: return
-        self._art_role = role; self.avatar.clear()
-        pix = QPixmap(str(self.hub.root/'assets/roles'/role/'avatar.png'))
-        if pix.isNull(): self.avatar.setText(self.roles.currentText())
-        else: self.avatar.setPixmap(pix.scaled(80, 80, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        self._art_role=role;self.avatar.set_slot('avatar:'+role,self.hub.root/'assets/roles'/role/'avatar.png')
 
     def invoke(self, fn):
         try: return fn()

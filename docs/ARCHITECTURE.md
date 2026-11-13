@@ -150,3 +150,6 @@ Build Sunday Blue.bat → build.ps1 → SundayBlue.spec，SPECPATH 为 spec 所�
 
 
 2026-11-13补充：work_notes保存备注，Work统一递归汇总/继承截止/祖先权限；不改旧任务主表。attention_capacity保存每日专注消耗，LifeState读取上限，Attention负责余量、恢复及上限内夹取。契约继续使用原challenge_ledger，按所属metric隔离学习/运动账户，challenge_settlement_evidence保存结算证据，Reports只读取实际结算流水。私人控制的表单和恢复卡均读PrivateWellbeing同一滚动窗口。focus_feedback_trace是有界无正文诊断，不参与LLM回复决策。
+
+
+使用体验修整：`image_layouts.py`统一外部图片选择、QPainter等比构图、拖动预览及原子JSON配置；图片不随exe内嵌，动态肌群仍由原矢量图层独立绘制。ArtworkSlot继承该组件，角色头像通过同一framed函数呈现；变更信号即时刷新相关区域。`eye_daily_load`保存自然日有效工作/学习分钟，残留底线=分钟×0.02（上限20）；旧视疲劳状态及9点结转不迁移。生活页以已有daily_life是否有该日记录决定完成态/编辑态；Life.latest_missing_day一次读取日期集合找最近缺日报，日结算仍由Reports/Focus原事务负责。

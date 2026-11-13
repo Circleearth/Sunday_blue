@@ -54,12 +54,17 @@ def recovery_rows(states,exercises,today):
         result.append(row)
     return result
 
+from ..image_layouts import EVENTS,framed
+from PySide6.QtCore import QSize
 class MuscleMap(QWidget):
     selected=Signal(str)
     def __init__(self,root,parent=None):
         super().__init__(parent);self.rows={};self.regions=[];self.active='';self.setMouseTracking(True);self.setMinimumSize(310,300);self.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Expanding)
-        self.pixmap=QPixmap(str(asset_spec(root,'recovery_body')['file']));self._build()
+        self.root=root;self.reload_art();EVENTS.changed.connect(self.art_changed);self._build()
         self.setAccessibleName('正面与背面肌群恢复图；也可使用下方部位按钮选择')
+    def reload_art(self):self.pixmap=framed(self.root,'recovery_body',asset_spec(self.root,'recovery_body')['file'],QSize(440,330));self.update()
+    def art_changed(self,root,key):
+        if root==str(self.root) and key=='recovery_body':self.reload_art()
     def _build(self):
         def polygon(points):
             p=QPainterPath(QPointF(*points[0]))

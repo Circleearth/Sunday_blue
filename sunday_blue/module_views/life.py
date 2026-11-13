@@ -5,7 +5,8 @@ from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QForm
 from .module_forms import ModulePage,button,clock_pair,hm_pair,spin,form_dialog,INTENSITY
 from .life_widgets import StatusCard,MuscleMap,TrendChart,card,label,recovery_rows,RECOVERY_COLORS,RECOVERY_LABELS
 from ..modules.life_state import MUSCLES,DEFAULT_PARTS
-from ..art_assets import ArtworkSlot,asset_details
+from ..art_assets import ArtworkSlot,asset_details,asset_spec
+from ..image_layouts import edit_image
 from ..numeric_inputs import NumberSpin as QSpinBox, DecimalSpin as QDoubleSpinBox
 
 class LifePage(ModulePage):
@@ -14,7 +15,7 @@ class LifePage(ModulePage):
         super().__init__(parent);self.hub=hub;self.setObjectName('lifePage')
         layout=QVBoxLayout(self);layout.setContentsMargins(24,20,24,16);layout.setSpacing(14)
         head=QHBoxLayout();titles=QVBoxLayout();titles.addWidget(label('生活 · 恢复站','title'));self.state_note=label();titles.addWidget(self.state_note);head.addLayout(titles,1)
-        button('补记昨天',lambda:self.open_daily(),head);button('记录运动',lambda:self.exercise_dialog(),head,True);layout.addLayout(head)
+        button('补报未记录日期',self.open_missing_daily,head);button('记录运动',lambda:self.exercise_dialog(),head,True);layout.addLayout(head)
         self.tabs=QTabWidget();self.tabs.setObjectName('lifeTabs');layout.addWidget(self.tabs,1)
         recovery,rec=self.page('恢复站')
         self.cards_row=QBoxLayout(QBoxLayout.Direction.LeftToRight);self.cards_row.setSpacing(12);self.cards={};self.bars={}
@@ -35,6 +36,7 @@ class LifePage(ModulePage):
             w=QPushButton(name);w.setCheckable(True);w.clicked.connect(lambda checked=False,p=name:self.select_muscle(p));self.part_buttons[name]=w;parts.addWidget(w,i//3,i%3)
         an.addLayout(parts)
         legend=label('● 浅红 恢复　● 浅橙 谨慎　● 浅黄 基本恢复　● 浅绿 可考虑训练');an.addWidget(legend)
+        button('选择人体底图 / 调整',lambda:edit_image(self,hub.root,'recovery_body',asset_spec(hub.root,'recovery_body')['file'],4/3),an)
         button('人体底图 · 替换与提示词',lambda:asset_details(self,hub.root,'recovery_body'),an)
         side=QWidget();sb=QVBoxLayout(side);sb.setContentsMargins(0,0,0,0);sb.setSpacing(12);self.main_row.addWidget(side,2)
         advice,ad=card('今天，按自己的节奏');self.advice=label('','lifeAdvice');ad.addWidget(self.advice);self.training_advice=label();ad.addWidget(self.training_advice);sb.addWidget(advice)
@@ -49,7 +51,9 @@ class LifePage(ModulePage):
         daily_row=QBoxLayout(QBoxLayout.Direction.LeftToRight);daily_row.setSpacing(12);self.daily_row=daily_row
         meal,ml=card('饮食与备注');self.meal=QPlainTextEdit();self.meal.setPlaceholderText('简单记下吃了什么，不需要精确到每一克');self.meal.setMaximumHeight(100);ml.addWidget(self.meal);self.note=QLineEdit();self.note.setPlaceholderText('其他想记下的事');ml.addWidget(self.note);daily_row.addWidget(meal,1)
         phone,ph=card('手机使用');pf=QFormLayout();self.phone_total=hm_pair();self.phone_fun=hm_pair();pf.addRow('总使用时长',self.phone_total);pf.addRow('其中娱乐',self.phone_fun);ph.addLayout(pf);ph.addWidget(label('未知可留空；娱乐时长包含在总时长内。'));daily_row.addWidget(phone,1);dl.addLayout(daily_row)
-        save=QHBoxLayout();button('保存生活上报',self.save_daily,save,True);self.daily_status=label();save.addWidget(self.daily_status,1);dl.addLayout(save)
+        save=QHBoxLayout();self.submit_daily=button('保存上报并生成日结算',self.save_daily,save,True);self.daily_status=label();save.addWidget(self.daily_status,1);dl.addLayout(save)
+        self.saved_panel=QWidget();saved_box=QVBoxLayout(self.saved_panel);self.saved_message=label('已经记下了昨天，今天可以安心继续。','cardTitle');saved_box.addWidget(self.saved_message);button('修改上报内容，重新上报',lambda:self.set_daily_saved(False),saved_box);button('补充上报以前内容',self.open_missing_daily,saved_box);dl.addWidget(self.saved_panel);self.saved_panel.hide()
+        self.daily_sections=[top,sleep,meal,phone];self.daily_save_row=save
         house,hl=card('顺手完成一件家务');row=QHBoxLayout();self.house_title=QLineEdit();self.house_title.setPlaceholderText('例如整理桌面');row.addWidget(self.house_title);button('今日家务打卡',self.housework,row);hl.addLayout(row);dl.addWidget(house);dl.addStretch()
         exercise,ex=self.page('运动记录');top=QHBoxLayout();button('记录一场运动',lambda:self.exercise_dialog(),top,True);button('修改所选记录',self.edit_exercise,top);top.addStretch();self.exercise_summary=label();top.addWidget(self.exercise_summary);ex.addLayout(top)
         ex.addWidget(label('记录真实活动，温和积累成长。修改沿用原记录，金币按差额结算。'))
@@ -65,7 +69,7 @@ class LifePage(ModulePage):
         self.trend_summary=label();his.addWidget(self.trend_summary);self.daily_history=QListWidget();self.daily_history.setMinimumHeight(160);self.daily_history.itemDoubleClicked.connect(self.open_history_day);his.addWidget(self.daily_history);his.addStretch()
         private,pr=card('私人健康记录 · 仅本机保存')
         self.private_count=spin(0,100);self.private_minutes=spin(0,1440,'分钟');self.private_discomfort=QCheckBox('有疼痛或其他不适');self.private_impact=QCheckBox('影响睡眠、工作或日常生活')
-        pf=QFormLayout();pf.addRow('所选记录日次数',self.private_count);pf.addRow('总时间',self.private_minutes);pf.addRow(self.private_discomfort);pf.addRow(self.private_impact);pr.addLayout(pf);self.private_status=label();pr.addWidget(self.private_status);dl.insertWidget(3,private)
+        pf=QFormLayout();pf.addRow('所选记录日次数',self.private_count);pf.addRow('总时间',self.private_minutes);pf.addRow(self.private_discomfort);pf.addRow(self.private_impact);pr.addLayout(pf);self.private_status=label();pr.addWidget(self.private_status);dl.insertWidget(3,private);self.daily_sections.append(private)
         from .reports import ReportsPage
         self.reports_page=ReportsPage(hub,self);self.tabs.addTab(self.reports_page,'结算报告')
         self.day.dateChanged.connect(self.load_daily);hub.changed.connect(self.on_changed)
@@ -74,6 +78,13 @@ class LifePage(ModulePage):
         self.selected_part='胸';self.load_daily();self.refresh()
     def page(self,title):
         page=QWidget();box=QVBoxLayout(page);box.setContentsMargins(4,16,4,8);box.setSpacing(14);scroll=QScrollArea();scroll.setWidgetResizable(True);scroll.setWidget(page);self.tabs.addTab(scroll,title);return page,box
+    def set_daily_saved(self,saved):
+        for w in self.daily_sections:w.setVisible(not saved)
+        self.submit_daily.setVisible(not saved);self.saved_panel.setVisible(saved)
+        if saved:self.saved_message.setText('✓ '+self.selected_day()+' 已上报。生活记录已保存，修改不会重复领奖。')
+    def open_missing_daily(self):
+        target=QDate.fromString(self.hub.life.latest_missing_day(),'yyyy-MM-dd')
+        self.day.setDate(target);self.set_daily_saved(False);self.tabs.setCurrentIndex(self.daily_index)
     def open_daily(self):
         self.day.setDate(QDate.currentDate().addDays(-1));self.tabs.setCurrentIndex(self.daily_index)
     def open_history_day(self,item):
@@ -97,7 +108,7 @@ class LifePage(ModulePage):
         self.bed.load(row.get('sleep_start'));self.wake.load(row.get('sleep_end'))
         self.phone_total.load(row.get('phone_total'));self.phone_fun.load(row.get('phone_fun'))
         private=self.hub.private_wellbeing.get(self.selected_day());self.private_count.setValue(private.get('count',0));self.private_minutes.setValue(private.get('minutes',0));self.private_discomfort.setChecked(bool(private.get('discomfort')));self.private_impact.setChecked(bool(private.get('impact')))
-        self.refresh_private()
+        self.refresh_private();self.set_daily_saved(bool(row))
         self.daily_status.setText(('旧睡眠时长 '+str(row['sleep_hours'])+' 小时；填写新起止时间前保留。') if row.get('sleep_hours') is not None and not row.get('sleep_start') else '上报资料属于 '+self.selected_day())
     def refresh_private(self):
         r=self.hub.private_wellbeing.status(self.selected_day());self.private_status.setText(f"近7天 {r['week_count']} 次 / {r['week_minutes']:g} 分钟 · 近30天 {r['month_count']} 次\n"+r['note']);self.private_status.setStyleSheet('border-left:4px solid '+RECOVERY_COLORS[r['level']]+';padding-left:8px;')
@@ -119,6 +130,7 @@ class LifePage(ModulePage):
             if self.selected_day()<QDate.currentDate().toString('yyyy-MM-dd'):
                 rid=self.invoke(lambda:self.hub.reports.daily(self.selected_day()))
                 if rid:self.hub.report_open.emit(rid)
+            self.set_daily_saved(True)
 
     def housework(self):
         self.invoke(lambda:self.hub.life.housework(self.house_title.text()))
@@ -158,7 +170,7 @@ class LifePage(ModulePage):
         private=self.hub.private_wellbeing.status();self.private_recovery.setText(f"近7天 {private['week_count']} 次 · 日均 {private['daily_average']:.2f} 次\n控制比例 {private['ratio']:.0%}（近7天次数 ÷ {private['limit']}）\n"+private['note']);self.private_recovery.setStyleSheet('border-left:4px solid '+RECOVERY_COLORS[private['level']]+';padding-left:8px;')
         today=QDate.currentDate().toString('yyyy-MM-dd');r=self.hub.life.energy(today)
         self.cards['physical'].set_state(round(r['physical_value'],1),round(r['physical_cap'],1),r['physical'],'低于 40% 时，优先恢复再安排活动。')
-        a=self.hub.attention.status();self.attention_status.setText(f"用眼估算 {a['eye']:.1f}% · {a['source']} · 休息只恢复视疲劳与专注")
+        a=self.hub.attention.status();self.attention_status.setText(f"用眼估算 {a['eye']:.1f}% · 当日残留底线 {a['eye_floor']:.1f}% · {a['source']} · 休息只恢复视疲劳与专注")
         self.cards['focus'].set_state(round(r['focus_value'],1),r['focus_cap'],r['focus'],'留意连续投入后的余量，适时切换节奏。')
         self.cards['eye_strain'].set_state(r['eye_strain'],100,r['eye_strain'],'数值越低越轻松；较高时先离屏远眺。',True)
         self.state_note.setText(f"{today}  ·  工作 {r['work_minutes']:.0f} 分  /  学习 {r['study_minutes']:.0f} 分  /  运动 {r['exercise_minutes']:.0f} 分")

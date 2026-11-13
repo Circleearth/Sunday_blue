@@ -180,3 +180,10 @@
 - 当日专注上限：attention_capacity → Attention / LifeState.caps → Life.energy；不要在UI重复扣减。
 - 每日运动契约：Contracts.exercise_days / progress / ledger_filter；Reports.snapshot按结算日期纳入。学习与运动积分不可相互透支。
 - 专注备用原因：focus_feedback_trace，只有元数据；本轮不改调用决策。后续先按日志区分预算/冷却/请求/过滤，避免凭气泡猜测。
+
+### 图片及上报修整入口
+
+- 统一图片构图：image_layouts.py；绑定点art_assets、ui_components.Portrait、ui.refresh_art、focus、rewards、life_widgets.MuscleMap。不可把人体动态状态烘焙进图片。
+- 工作成果：Recovery.end_work / Hub.end_work；按当天创建/变更历史取事实，不从所有已完成任务猜测今天成果。
+- 休息及自然日限制：Attention.eye_daily_load / attention_capacity；重启不得清空日账。生活上报状态与最近缺日报：LifePage / Life.latest_missing_day。
+- 验证：test_experience_polish.py，另跑全套回归；图片测试使用合成图片，不访问用户外部图片。

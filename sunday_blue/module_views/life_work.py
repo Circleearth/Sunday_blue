@@ -41,7 +41,7 @@ class WorkPage(ModulePage):
         minutes,ok=QInputDialog.getInt(self,'下班恢复','休息多久（分钟，不消耗金币）',60,5,240)
         if ok:
             result=self.invoke(lambda:self.hub.end_work(minutes))
-            if result:self.recovery_note.setText(f"今天 {result['minutes']} 分钟有效工作，{len(result['completed'])} 项确认完成，{len(result['progress'])} 项进展。"+self.hub.recovery.suggestion())
+            if result:self.recovery_note.setText(f"今天 {result['minutes']} 分钟有效工作，新建 {len(result.get('created',[]))} 项，{len(result['completed'])} 项确认完成，{len(result['progress'])} 项进展。"+self.hub.recovery.suggestion()+'\n新建：'+('、'.join(result.get('created',[])) or '无')+'\n已完成：'+('、'.join(result['completed']) or '无'))
     def recovery_options(self):
         choices=['我有些疲惫','我有些难过','我有些烦躁','情绪已平静','恢复后继续休息','结束恢复，我想轻量学习','结束恢复，我想轻量活动']
         text,ok=QInputDialog.getItem(self,'状态与意愿','不会因为缺少记录扣分，也不会自动派新任务',choices,0,False)

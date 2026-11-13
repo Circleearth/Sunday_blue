@@ -400,6 +400,12 @@ class Settings(QDialog):
         layout.addWidget(label('无需打包；托盘可重新打开或退出。电脑休眠、注销或关机不会继续生成回复。'))
         layout.addWidget(label('头像与立绘是普通 PNG 文件，不需要重新编译软件。替换后点击主界面的“刷新素材”。'))
         layout.addWidget(QLabel('assets/roles/<角色 ID>/avatar.png\n推荐：512 × 512，正方形\n\nassets/roles/<角色 ID>/portrait.png\n推荐：1200 × 1800，透明背景，人物居中\n\n软件会等比例缩放；头像建议避免边缘重要内容。'))
+        from .image_layouts import edit_image
+        art_role=QComboBox()
+        for rid,name,*_ in list_roles(self.config.root):art_role.addItem(name,rid)
+        layout.addWidget(art_role)
+        for kind,title,ratio in [('avatar','选择头像 / 调整',1),('portrait','选择立绘 / 调整',2/3)]:
+            art_button=QPushButton(title);art_button.clicked.connect(lambda checked=False,k=kind,r=ratio:edit_image(self,self.config.root,k+':'+art_role.currentData(),self.config.root/'assets/roles'/art_role.currentData()/(k+'.png'),r));layout.addWidget(art_button)
         for title,relative in [('打开素材目录','assets/roles'),('打开数据目录','data'),('打开使用说明','README.md')]:
             button=QPushButton(title)
             button.clicked.connect(lambda checked=False,p=relative:QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.config.root/p)))); layout.addWidget(button)

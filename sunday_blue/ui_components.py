@@ -41,17 +41,26 @@ class Composer(QPlainTextEdit):
             return
         super().keyPressEvent(event)
 
+from .image_layouts import EVENTS,selection,paint_image,edit_image
 class Portrait(QFrame):
     def __init__(self,root):
         super().__init__()
         self.root=root; self.role='rui'; self.pix=QPixmap(); self.tint=QColor('#7cb7ff'); self.theme='dark'
         self.setObjectName('portrait'); self.setMinimumHeight(310)
+        self.choose_art=QPushButton('选择立绘 / 调整',self);self.choose_art.clicked.connect(lambda:edit_image(self,self.root,'portrait:'+self.role,self.root/'assets/roles'/self.role/'portrait.png',max(1,self.width()-28)/max(1,self.height()-90)));EVENTS.changed.connect(self.art_changed)
 
     def set_role(self,role):
         self.role=role
-        self.pix=QPixmap(str(self.root/'assets'/'roles'/role/'portrait.png'))
+        self.art_cfg=selection(self.root,'portrait:'+role);fallback=self.root/'assets/roles'/role/'portrait.png';self.pix=QPixmap(self.art_cfg.get('path',str(fallback)))
+        if self.pix.isNull():self.pix=QPixmap(str(fallback))
         self.tint=QColor(next(r[3] for r in list_roles(self.root) if r[0]==role))
         self.update()
+
+    def art_changed(self,root,key):
+        if root==str(self.root) and key=='portrait:'+self.role:self.set_role(self.role)
+    def resizeEvent(self,event):
+        super().resizeEvent(event)
+        if hasattr(self,'choose_art'):self.choose_art.setGeometry(20,self.height()-50,max(1,self.width()-40),28)
 
     def paintEvent(self,event):
         super().paintEvent(event)
@@ -63,8 +72,8 @@ class Portrait(QFrame):
         for x,y,dx,dy in [(10,10,1,1),(width-11,10,-1,1),(10,height-11,1,-1),(width-11,height-11,-1,-1)]:
             p.setPen(QPen(self.tint,2)); p.drawLine(x,y,x+14*dx,y); p.drawLine(x,y,x,y+14*dy)
         if not self.pix.isNull():
-            pix=self.pix.scaled(max(1,width-28),max(1,height-90),Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation)
-            p.drawPixmap((width-pix.width())//2,48+(height-100-pix.height())//2,pix)
+            from PySide6.QtCore import QRectF
+            paint_image(p,QRectF(14,45,max(1,width-28),max(1,height-100)),self.pix,self.art_cfg)
         p.setPen(QColor(t['text_muted'])); p.setFont(QFont('Noto Sans SC',9))
         p.drawText(22,29,'CHARACTER  /  '+self.role.upper())
         p.setPen(QColor(t['text_subtle']))

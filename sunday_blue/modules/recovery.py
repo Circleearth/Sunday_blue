@@ -40,9 +40,16 @@ class Recovery:
             if datetime.fromisoformat(r['created']).astimezone().date().isoformat()!=day():continue
             p=json.loads(r['payload']);after=p.get('after',{})
             if 'progress' in after or after.get('status')=='done':progress.append({'task_id':r['task_id'],'before':p.get('before',{}),'after':after})
-        snapshot={'day':day(),'minutes':round(sum(r['seconds'] for r in rows)/60,1),'segments':len(rows),'progress':progress[-20:],
-                  'completed':[t['title'] for t in work.tasks(True) if t['status']=='done' and any(p['task_id']==t['id'] and p['after'].get('status')=='done' for p in progress)][:15]}
-        key=hashlib.sha256(json.dumps([day(),[r['id'] for r in rows],progress],sort_keys=True).encode()).hexdigest()
+        tasks=work.tasks(True);byid={t['id']:t for t in tasks};completed_ids={p['task_id'] for p in progress if p['after'].get('status')=='done'}
+        for tid in list(completed_ids):
+            parent=byid.get(tid,{}).get('parent_id')
+            while parent in byid:
+                if byid[parent]['status']=='done':completed_ids.add(parent)
+                parent=byid[parent]['parent_id']
+        created=[t['title'] for t in work.tasks(True) if datetime.fromisoformat(t['created']).astimezone().date().isoformat()==day()]
+        snapshot={'created':created,'day':day(),'minutes':round(sum(r['seconds'] for r in rows)/60,1),'segments':len(rows),'progress':progress[-20:],
+                  'completed':[t['title'] for t in tasks if t['status']=='done' and t['id'] in completed_ids]}
+        key=hashlib.sha256(json.dumps([day(),[r['id'] for r in rows],progress,created],sort_keys=True).encode()).hexdigest()
         value=self.db.get('recovery_state',{})
         if value.get('settlement_key')==key:return value.get('summary',snapshot)
         value.update(until=self.clock()+minutes*60,ready_until=0,settlement_key=key,summary=snapshot,preference='rest')

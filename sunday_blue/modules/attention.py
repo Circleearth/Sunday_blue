@@ -24,6 +24,7 @@ class Attention:
   with db.connect() as c:c.executescript('''CREATE TABLE IF NOT EXISTS attention_state(id INTEGER PRIMARY KEY,eye REAL,focus REAL,band INTEGER,last_alert TEXT,created TEXT,updated TEXT);
    CREATE TABLE IF NOT EXISTS attention_days(day TEXT PRIMARY KEY,screen_seconds REAL DEFAULT 0,rest_seconds REAL DEFAULT 0,paper_seconds REAL DEFAULT 0,eye REAL,focus REAL);
    CREATE TABLE IF NOT EXISTS attention_capacity(day TEXT PRIMARY KEY,spent REAL NOT NULL DEFAULT 0);
+   CREATE TABLE IF NOT EXISTS eye_daily_load(day TEXT PRIMARY KEY,minutes REAL NOT NULL DEFAULT 0);
    CREATE TABLE IF NOT EXISTS attention_sleep(day TEXT PRIMARY KEY,hours REAL);
    ''')
   with db.connect() as c:
@@ -36,11 +37,13 @@ class Attention:
    saved=db.get('attention_options',{})
    if 'rest_focus' in saved:saved['rest_focus']=max(.01,saved['rest_focus']/2);db.set('attention_options',saved)
    db.set('attention_rest_half_v1',True)
- def options(self):return {'mode':'auto','intensity':'medium','eye_rate':.35,'focus_rate':.18,'rest_eye':.65,'rest_focus':.25,'sleep_eye':7,'sleep_focus':6,'light_threshold':60,'high_threshold':80,'cooldown_minutes':60,'night_start':'22:00','night_end':'09:00','focus_eye_bonus':.15}|self.db.get('attention_options',{})
+  if not db.get('attention_eye_rest_v2',False):
+   saved=db.get('attention_options',{});saved['rest_eye']=max(3.5,saved.get('rest_eye',.65)*5);saved['rest_eye']=min(20,saved['rest_eye']);db.set('attention_options',saved);db.set('attention_eye_rest_v2',True)
+ def options(self):return {'mode':'auto','intensity':'medium','eye_rate':.35,'focus_rate':.18,'rest_eye':3.5,'rest_focus':.25,'sleep_eye':7,'sleep_focus':6,'light_threshold':60,'high_threshold':80,'cooldown_minutes':60,'night_start':'22:00','night_end':'09:00','focus_eye_bonus':.15}|self.db.get('attention_options',{})
  def configure(self,values):
   o=self.options()|values
   if o['mode'] not in MODES or o['intensity'] not in ('low','medium','high'):raise ValueError('请选择有效模式和强度')
-  for key,lo,hi in [('eye_rate',.05,2),('focus_eye_bonus',0,2),('focus_rate',.01,1),('rest_eye',.05,3),('rest_focus',.01,2),('sleep_eye',0,20),('sleep_focus',0,20),('light_threshold',10,90),('high_threshold',20,99),('cooldown_minutes',15,240)]:o[key]=number(o[key],lo,hi,key)
+  for key,lo,hi in [('eye_rate',.05,2),('focus_eye_bonus',0,2),('focus_rate',.01,1),('rest_eye',.05,20),('rest_focus',.01,2),('sleep_eye',0,20),('sleep_focus',0,20),('light_threshold',10,90),('high_threshold',20,99),('cooldown_minutes',15,240)]:o[key]=number(o[key],lo,hi,key)
   if o['light_threshold']>=o['high_threshold']:raise ValueError('轻提醒阈值必须小于高提醒阈值')
   for key in ('night_start','night_end'):
    try:o[key]=datetime.strptime(o[key],'%H:%M').strftime('%H:%M')
@@ -50,7 +53,8 @@ class Attention:
  def status(self):
   with self.db.connect() as c:r=dict(c.execute('SELECT * FROM attention_state WHERE id=1').fetchone())
   with self.db.connect() as c:spent=c.execute('SELECT spent FROM attention_capacity WHERE day=?',(datetime.now(ZONE).date().isoformat(),)).fetchone()
-  return r|{'focus_cap':max(0,100-(spent[0] if spent else 0)/2),'source':self.last_mode,'mode':self.options()['mode']}
+  with self.db.connect() as c:load=c.execute('SELECT minutes FROM eye_daily_load WHERE day=?',(datetime.now(ZONE).date().isoformat(),)).fetchone()
+  return r|{'eye_floor':min(20,(load[0] if load else 0)*.02),'focus_cap':max(0,100-(spent[0] if spent else 0)/2),'source':self.last_mode,'mode':self.options()['mode']}
  def tick(self,focus=None,active=None,now=None):
   self.new_alert=0
   self.daily_boundary(now)
@@ -74,7 +78,10 @@ class Attention:
    consumed=max(0,r['focus']-max(0,power));daykey=now.astimezone(ZONE).date().isoformat()
    c.execute('INSERT INTO attention_capacity VALUES(?,?) ON CONFLICT(day) DO UPDATE SET spent=spent+excluded.spent',(daykey,consumed))
    spent=c.execute('SELECT spent FROM attention_capacity WHERE day=?',(daykey,)).fetchone()[0];cap=max(0,100-spent/2)
-   eye=max(0,min(100,eye));power=max(0,min(cap,power));band=r['band']
+   if working and focus.get('category') in ('工作','学习') and mode in ('screen','paper'):
+    c.execute('INSERT INTO eye_daily_load VALUES(?,?) ON CONFLICT(day) DO UPDATE SET minutes=minutes+excluded.minutes',(daykey,minutes))
+   load=c.execute('SELECT minutes FROM eye_daily_load WHERE day=?',(daykey,)).fetchone();floor=min(20,(load[0] if load else 0)*.02)
+   eye=max(floor,min(100,eye));power=max(0,min(cap,power));band=r['band']
    if eye<o['light_threshold']-10:band=0
    level=2 if eye>=o['high_threshold'] else 1 if eye>=o['light_threshold'] else 0
    last=datetime.fromisoformat(r['last_alert']) if r['last_alert'] else None
@@ -115,7 +122,8 @@ class Attention:
   import json
   cfg=c.execute("SELECT value FROM module_settings WHERE key='attention_options'").fetchone();o=json.loads(cfg[0]) if cfg else {}
   spent=c.execute('SELECT spent FROM attention_capacity WHERE day=?',(today.isoformat(),)).fetchone();cap=max(0,100-(spent[0] if spent else 0)/2)
-  c.execute('INSERT INTO attention_sleep VALUES(?,?)',(day,hours));c.execute('UPDATE attention_state SET eye=max(0,eye-?),focus=min(?,focus+?),updated=? WHERE id=1',(hours*o.get('sleep_eye',7),cap,hours*o.get('sleep_focus',6),stamp()))
+  load=c.execute('SELECT minutes FROM eye_daily_load WHERE day=?',(today.isoformat(),)).fetchone();floor=min(20,(load[0] if load else 0)*.02)
+  c.execute('INSERT INTO attention_sleep VALUES(?,?)',(day,hours));c.execute('UPDATE attention_state SET eye=max(?,eye-?),focus=min(?,focus+?),updated=? WHERE id=1',(floor,hours*o.get('sleep_eye',7),cap,hours*o.get('sleep_focus',6),stamp()))
  def sleep(self,day,hours):
   with self.db.connect() as c:c.execute('BEGIN IMMEDIATE');self.apply_sleep(c,day,hours)
  def days(self):

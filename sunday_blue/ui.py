@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (QApplication, QWidget, QFrame, QLabel, QPushButto
     QProgressBar, QDialog, QMessageBox, QInputDialog, QFileDialog, QSizeGrip, QSizePolicy, QMenu, QToolButton, QStackedWidget)
 from .storage import Store, plain
 from .roles import list_roles, require_role
+from .image_layouts import EVENTS,edit_image,framed
 from .agent import Agent, is_compact_command
 from .legacy_greetings import LegacyGreetings as Greetings
 from .settings import Settings
@@ -118,6 +119,7 @@ class MainWindow(QWidget):
         if self.role not in active:
             self.role=list_roles(self.config.root)[0][0]; self.sid=None
         self._populate_roles()
+        EVENTS.changed.connect(self.art_selection_changed)
         self._force_rebuild=True
         self.switch_role(self.role)
         if hasattr(self,'module_hub'):self.module_hub.changed.emit('roles')
@@ -250,15 +252,18 @@ class MainWindow(QWidget):
         for rid,name,desc,color in list_roles(self.config.root):
             b=QToolButton(); b.setObjectName('role'); b.setCheckable(True);b.setText(name)
             b.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon);b.setIconSize(QSize(44,44))
-            b.setToolTip(name+' · '+desc); b.clicked.connect(lambda checked=False,r=rid:self.switch_role(r))
+            b.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu);b.customContextMenuRequested.connect(lambda pos,r=rid:edit_image(self,self.config.root,'avatar:'+r,self.config.root/'assets/roles'/r/'avatar.png',1));b.setToolTip(name+' · '+desc+'（右键选择 / 调整头像）'); b.clicked.connect(lambda checked=False,r=rid:self.switch_role(r))
             b.setStyleSheet(f'QToolButton {{border-top:2px solid {color};}}')
             self.role_buttons[rid]=b; items.addWidget(b);b.setFixedSize(76,88)
         items.addStretch()
         self.refresh_art()
 
+    def art_selection_changed(self,root,key):
+        if root==str(self.config.root):self.refresh_art()
+
     def refresh_art(self):
         for rid,b in getattr(self,'role_buttons',{}).items():
-            pix=QPixmap(str(self.config.root/'assets'/'roles'/rid/'avatar.png'))
+            pix=framed(self.config.root,'avatar:'+rid,self.config.root/'assets/roles'/rid/'avatar.png',QSize(44,44))
             b.setIcon(QIcon(pix.scaled(44,44,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation)))
         if hasattr(self,'portrait'): self.portrait.set_role(self.role)
 

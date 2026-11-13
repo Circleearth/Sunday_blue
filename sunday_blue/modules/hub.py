@@ -85,7 +85,7 @@ class ModuleHub(QObject):
                 self.afterwork_dialogue=FocusDialogue(self);self.closed.connect(self.afterwork_dialogue.close)
             director=next((s['role_id'] for s in self.duties.slots() if s['id']=='director'),None)
             if director:
-                event=f"下班结算：今天记录了 {summary['minutes']} 分钟有效工作；完成任务：{', '.join(summary['completed']) or '尚无确认完成的任务'}；已报告进展 {len(summary['progress'])} 项。今天的投入已经记下，接下来安心休息。"
+                event=f"下班结算：今天记录了 {summary['minutes']} 分钟有效工作；新建任务：{', '.join(summary.get('created',[])) or '无'}；完成任务：{', '.join(summary['completed']) or '尚无确认完成的任务'}；已报告进展 {len(summary['progress'])} 项。今天的投入已经记下，接下来安心休息。"
                 self.afterwork_dialogue.respond(director,'afterwork:'+self.recovery.status()['settlement_key'],event,True,guidance='这是下班恢复的回应，不是继续专注指令。具体认可真实成果，不编造成就；不派学习、运动或打卡任务，不用固定夸奖。')
         return summary
 
