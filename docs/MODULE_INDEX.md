@@ -160,3 +160,15 @@
 - 测试：`tests/test_growth.py`覆盖掌握证据、错题重做、时长绑定/循环、旧金币去重、契约增量基线/签约规则/结算上限、QQ本机outbox、夜间持续使用、休息与体力隔离、睡眠去重、旧导航兼容。QQ实发未执行；共享投递仍由已有隔离HTTP测试覆盖。
 
 本轮验证：全量 **221 tests / 89.806s / OK**（`.cache/role-refactor-checkpoint/growth-final.log`）；夜间时间格式归一化后专项 **13 tests / 3.873s / OK**（growth-recheck.log）。源码隔离启动检查9个主页、托盘与后台循环通过；成长/契约原生截图及状态参数滚动边界检查通过。未调用付费LLM、未向真实QQ试发、未改写用户事实或原金币账本。新功能核心链路可用，规则与识别局限见 LEARNING_AND_STATE；未重新构建EXE。
+
+## 2026-11-13：数字输入、专注语境、日常状态与结算
+
+| 需求 | 唯一实现入口 | 验证 |
+|---|---|---|
+| 数字与不可选单位、焦点全选 | `numeric_inputs.py`；现有表单使用别名复用 | `test_daily_experience.py`、原UI测试 |
+| 专注当天短上下文 / 模型来源 | `modules/focus_dialogue.py` → `module_views/focus.py` | 同上、`test_shared_features.py` |
+| 09点结转、22点提醒、阶段模式 | `modules/attention.py` / Hub / `life_timer.py` | 同上、`test_growth.py` |
+| 私人记录与修订 | `modules/private_wellbeing.py` → `module_views/life.py` | 同上 |
+| 日结算 / 周月年报告 / 异步评价 | `modules/reports.py` → `module_views/reports.py` | 同上；完整回归232项通过 |
+
+使用/迁移边界见 [DAILY_EXPERIENCE.md](DAILY_EXPERIENCE.md)。新表均为增量创建，不重算旧账、不迁移或删除旧事实。

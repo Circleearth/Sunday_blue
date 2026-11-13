@@ -18,5 +18,15 @@
     "placement": "植物与靠枕在右侧；左侧约65%保持低细节留白，文字另由界面显示。",
     "positive": "Refined Japanese visual novel background, a quiet sunlit resting corner, ivory wall, pale sage cushions and a small potted plant on the far right, soft morning light, warm white and muted mint palette, wide horizontal composition, left sixty five percent clean low detail negative space for interface content, delicate cel shading, calm domestic atmosphere, high quality illustration.",
     "negative": "people, face, text, logo, watermark, clutter, multiple focal points, saturated neon colors, harsh contrast, deep black shadows, detailed patterns in left area, messy perspective, blur, low resolution"
+  },
+  "settlement_host": {
+    "name": "结算看板娘",
+    "path": "assets/ui/settlement_host.png",
+    "size": "600 × 900",
+    "ratio": "2:3",
+    "transparent": true,
+    "placement": "成年陪伴角色居中，完整半身或立绘；四周留白，文字由界面显示。",
+    "positive": "Refined Japanese visual novel character illustration, an adult woman companion with warm composed expression, elegant casual cream cardigan and muted blue skirt, relaxed welcoming pose, hands naturally visible, soft even lighting, clean cel shading, centered three quarter body composition, generous empty margins, transparent background, crisp high resolution silhouette.",
+    "negative": "child, text, watermark, logo, extra fingers, missing fingers, distorted hands, extra limbs, malformed anatomy, exaggerated proportions, cluttered background, harsh shadows, blurry edges"
   }
 }

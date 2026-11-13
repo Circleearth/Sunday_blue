@@ -10,6 +10,7 @@ from ..roles import list_roles
 from ..design_system import tokens
 from ..modules.focus_preferences import PHASES
 from .focus_settings import FocusSettings
+from ..numeric_inputs import NumberSpin as QSpinBox, DecimalSpin as QDoubleSpinBox
 
 
 def _hm(iso):
@@ -105,6 +106,7 @@ class FocusPage(QWidget):
         self.companion_note = QLabel('把注意力交给眼前。暂停和休息都不会扣分。')
         self.companion_note.setWordWrap(True); self.companion_note.setObjectName('muted'); side.addWidget(self.companion_note)
         self.feed = QListWidget(); self.feed.setWordWrap(True); self.feed.setMaximumHeight(130); side.addWidget(self.feed)
+        self.reply_source=QLabel();self.reply_source.setObjectName("muted");side.addWidget(self.reply_source)
         side.addStretch()
         summary, stats_layout = _card(); self.stats = QLabel(); self.stats.setWordWrap(True)
         self.stats.setObjectName('cardTitle'); stats_layout.addWidget(self.stats); layout.addWidget(summary)
@@ -186,6 +188,8 @@ class FocusPage(QWidget):
         self.banner.setText(self.result_text(result)); self.banner.show(); self.silence.show(); self.refresh(True)
 
     def feedback(self, role, text):
+        source=self.hub.db.get("focus_dialogue_status",{}).get("source")
+        self.reply_source.setText("本次陪伴：模型生成" if source=="llm" else "本次陪伴：本地备用短句")
         names = {r[0]: r[1] for r in list_roles(self.hub.root)}
         item = QListWidgetItem(names.get(role, '伙伴')+'：'+text); self.feed.addItem(item)
         while self.feed.count()>20: self.feed.takeItem(0)

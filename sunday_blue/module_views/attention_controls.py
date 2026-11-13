@@ -3,6 +3,7 @@ from PySide6.QtWidgets import QDialog,QVBoxLayout,QHBoxLayout,QComboBox,QDoubleS
 from .module_forms import form_dialog
 from .life_widgets import label
 from ..modules.attention import MODES
+from ..numeric_inputs import NumberSpin as QSpinBox, DecimalSpin as QDoubleSpinBox
 
 def settings(page):
  hub=page.hub;o=hub.attention.options();dlg,f,error,b=form_dialog(page,'状态估算参数');mode=QComboBox()
@@ -10,7 +11,7 @@ def settings(page):
  mode.setCurrentIndex(mode.findData(o['mode']));intensity=QComboBox()
  for k,v in [('low','低'),('medium','中'),('high','高')]:intensity.addItem(v,k)
  intensity.setCurrentIndex(intensity.findData(o['intensity']));f.addRow('当前模式',mode);f.addRow('用眼强度',intensity);fields={}
- for key,title,lo,hi in [('eye_rate','用眼每分钟累积',.05,2),('focus_rate','每分钟专注消耗',.01,1),('rest_eye','休息每分钟恢复视疲劳',.05,3),('rest_focus','休息每分钟恢复专注',.05,2),('sleep_eye','睡眠每小时恢复视疲劳',0,20),('sleep_focus','睡眠每小时恢复专注',0,20),('light_threshold','轻提醒阈值 %',10,90),('high_threshold','QQ引导阈值 %',20,99),('cooldown_minutes','重复提醒冷却分钟',15,240)]:
+ for key,title,lo,hi in [('eye_rate','用眼每分钟累积',.05,2),('focus_eye_bonus','工作 / 学习每分钟额外视疲劳',0,2),('focus_rate','每分钟专注消耗',.01,1),('rest_eye','休息每分钟恢复视疲劳',.05,3),('rest_focus','休息每分钟恢复专注',.05,2),('sleep_eye','睡眠每小时恢复视疲劳',0,20),('sleep_focus','睡眠每小时恢复专注',0,20),('light_threshold','轻提醒阈值 %',10,90),('high_threshold','QQ引导阈值 %',20,99),('cooldown_minutes','重复提醒冷却分钟',15,240)]:
   w=QDoubleSpinBox();w.setRange(lo,hi);w.setDecimals(2);w.setValue(o[key]);fields[key]=w;f.addRow(title,w)
  start=QLineEdit(o['night_start']);end=QLineEdit(o['night_end']);f.addRow('夜间开始 HH:mm',start);f.addRow('夜间结束 HH:mm',end);f.addRow(label('仅在软件运行时观察本机输入活跃度，不读屏幕/应用内容。视频、纸面学习请选择明确模式。夜间仍在用眼则继续累积；暂停估算不会自动恢复。'))
  def save():

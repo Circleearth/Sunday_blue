@@ -5,7 +5,7 @@ from .life_state import ZONE
 from .database import stamp
 from .life import number
 from .notices import notify
-MODES={'auto':'自动（仅本机输入活跃度）','screen':'持续用眼（阅读 / 视频）','paper':'纸面学习（仍用眼）','rest':'离屏休息','paused':'暂停估算'}
+MODES={'auto':'自动（日间累积 / 夜间按活动）','screen':'持续用眼（阅读 / 视频）','paper':'纸面学习（仍用眼）','rest':'离屏休息','paused':'暂停估算'}
 
 def input_active():
  if sys.platform!='win32':return None
@@ -25,12 +25,17 @@ class Attention:
    CREATE TABLE IF NOT EXISTS attention_days(day TEXT PRIMARY KEY,screen_seconds REAL DEFAULT 0,rest_seconds REAL DEFAULT 0,paper_seconds REAL DEFAULT 0,eye REAL,focus REAL);
    CREATE TABLE IF NOT EXISTS attention_sleep(day TEXT PRIMARY KEY,hours REAL);
    ''')
-  with db.connect() as c:c.execute('INSERT OR IGNORE INTO attention_state VALUES(1,0,100,0,NULL,?,?)',(stamp(),stamp()))
- def options(self):return {'mode':'auto','intensity':'medium','eye_rate':.35,'focus_rate':.18,'rest_eye':.65,'rest_focus':.5,'sleep_eye':7,'sleep_focus':6,'light_threshold':60,'high_threshold':80,'cooldown_minutes':60,'night_start':'22:00','night_end':'08:30'}|self.db.get('attention_options',{})
+  with db.connect() as c:
+   created=c.execute('INSERT OR IGNORE INTO attention_state VALUES(1,0,100,0,NULL,?,?)',(stamp(),stamp())).rowcount
+   c.execute('CREATE TABLE IF NOT EXISTS attention_boundaries(day TEXT PRIMARY KEY,before REAL,after REAL)')
+   if created:
+    now=datetime.now(ZONE);cycle=now.date() if now.hour>=9 else now.date()-timedelta(days=1)
+    c.execute('INSERT OR IGNORE INTO attention_boundaries VALUES(?,0,0)',(cycle.isoformat(),))
+ def options(self):return {'mode':'auto','intensity':'medium','eye_rate':.35,'focus_rate':.18,'rest_eye':.65,'rest_focus':.5,'sleep_eye':7,'sleep_focus':6,'light_threshold':60,'high_threshold':80,'cooldown_minutes':60,'night_start':'22:00','night_end':'09:00','focus_eye_bonus':.15}|self.db.get('attention_options',{})
  def configure(self,values):
   o=self.options()|values
   if o['mode'] not in MODES or o['intensity'] not in ('low','medium','high'):raise ValueError('请选择有效模式和强度')
-  for key,lo,hi in [('eye_rate',.05,2),('focus_rate',.01,1),('rest_eye',.05,3),('rest_focus',.05,2),('sleep_eye',0,20),('sleep_focus',0,20),('light_threshold',10,90),('high_threshold',20,99),('cooldown_minutes',15,240)]:o[key]=number(o[key],lo,hi,key)
+  for key,lo,hi in [('eye_rate',.05,2),('focus_eye_bonus',0,2),('focus_rate',.01,1),('rest_eye',.05,3),('rest_focus',.05,2),('sleep_eye',0,20),('sleep_focus',0,20),('light_threshold',10,90),('high_threshold',20,99),('cooldown_minutes',15,240)]:o[key]=number(o[key],lo,hi,key)
   if o['light_threshold']>=o['high_threshold']:raise ValueError('轻提醒阈值必须小于高提醒阈值')
   for key in ('night_start','night_end'):
    try:o[key]=datetime.strptime(o[key],'%H:%M').strftime('%H:%M')
@@ -42,6 +47,7 @@ class Attention:
   return r|{'source':self.last_mode,'mode':self.options()['mode']}
  def tick(self,focus=None,active=None,now=None):
   self.new_alert=0
+  self.daily_boundary(now)
   current=self.clock();seconds=max(0,current-self.anchor);self.anchor=current
   if seconds>30:return # Resume/restart/offline time is not presumed observed or restful.
   self._seconds+=seconds
@@ -49,14 +55,14 @@ class Attention:
   seconds=self._seconds;self._seconds=0;now=now or datetime.now(ZONE);o=self.options();mode=o['mode'];active=input_active() if active is None else active
   focus=focus or {};working=focus.get('state')=='running' and focus.get('phase','focus')=='focus'
   clock=now.astimezone(ZONE).strftime('%H:%M');night=clock>=o['night_start'] or clock<o['night_end'] if o['night_start']>o['night_end'] else o['night_start']<=clock<o['night_end']
-  if mode=='auto':mode='screen' if active or working else 'rest' if active is False and (night or focus.get('state')=='running' and not working) else 'paused'
+  if mode=='auto':mode='screen' if active or working or '09:00'<=clock<'22:00' else 'rest' if active is False and (night or focus.get('state')=='running' and not working) else 'paused'
   # Mouse/keyboard use contradicts an explicit rest interval: never recover while interacting.
   elif mode=='rest' and active:mode='screen'
   self.last_mode={'screen':'正在用眼','paper':'纸面学习（仍用眼）','rest':'有效离屏休息','paused':'未计入 / 等待明确活动'}[mode]
   if mode=='paused':return
   with self.db.connect() as c:
    c.execute('BEGIN IMMEDIATE');r=c.execute('SELECT * FROM attention_state WHERE id=1').fetchone();eye=r['eye'];power=r['focus'];minutes=seconds/60;scale={'low':.7,'medium':1,'high':1.4}[o['intensity']]
-   if mode=='screen':eye+=minutes*o['eye_rate']*scale;power-=minutes*o['focus_rate']*scale
+   if mode=='screen':eye+=minutes*(o['eye_rate']*scale+(o['focus_eye_bonus'] if working and focus.get('category') in ('工作','学习') else 0));power-=minutes*o['focus_rate']*scale
    elif mode=='paper':eye+=minutes*o['eye_rate']*.7;power-=minutes*o['focus_rate']
    else:eye-=minutes*o['rest_eye'];power+=minutes*o['rest_focus']
    eye=max(0,min(100,eye));power=max(0,min(100,power));band=r['band']
@@ -72,6 +78,21 @@ class Attention:
    while start<now:
     end=min(now,(start+timedelta(days=1)).replace(hour=0,minute=0,second=0,microsecond=0));span=(end-start).total_seconds();column={'screen':'screen_seconds','rest':'rest_seconds','paper':'paper_seconds'}[mode]
     c.execute('INSERT OR IGNORE INTO attention_days(day) VALUES(?)',(start.astimezone(ZONE).date().isoformat(),));c.execute(f'UPDATE attention_days SET {column}={column}+?,eye=?,focus=? WHERE day=?',(span,eye,power,start.astimezone(ZONE).date().isoformat()));start=end
+ def daily_boundary(self,now=None):
+  now=(now or datetime.now(ZONE)).astimezone(ZONE);today=now.date().isoformat()
+  with self.db.connect() as c:
+   c.execute('CREATE TABLE IF NOT EXISTS attention_boundaries(day TEXT PRIMARY KEY,before REAL,after REAL)')
+   c.execute('BEGIN IMMEDIATE');r=c.execute('SELECT * FROM attention_state WHERE id=1').fetchone()
+   if now.hour>=9 and not c.execute('SELECT 1 FROM attention_boundaries WHERE day=?',(today,)).fetchone():
+    # First install starts from its configured baseline. Offline catch-up applies once, not once per missed day.
+    previous=(now.date()-timedelta(days=1)).isoformat();old=c.execute('SELECT eye FROM attention_days WHERE day=?',(previous,)).fetchone()
+    base=old['eye'] if old and old['eye'] is not None else r['eye']
+    rate=.1 if base<20 else .2 if base<50 else .3 if base<80 else .5
+    after=round(base*rate,2)
+    c.execute('INSERT INTO attention_boundaries VALUES(?,?,?)',(today,base,after));c.execute('UPDATE attention_state SET eye=?,band=0 WHERE id=1',(after,))
+   if now.hour>=22:
+    current=c.execute('SELECT eye FROM attention_state WHERE id=1').fetchone()[0]
+    if current>50:notify(c,'attention-night:'+today,f'22点视疲劳检查：当前估计 {current:.0f}%，建议离屏休息。',True,True,now.isoformat())
  @staticmethod
  def apply_sleep(c,day,hours):
   if hours is None or hours<=0 or not c.execute("SELECT 1 FROM sqlite_master WHERE name='attention_state'").fetchone():return

@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (QDialog,QVBoxLayout,QFormLayout,QHBoxLayout,QChec
     QComboBox,QSpinBox,QLabel,QPushButton,QMessageBox)
 from .storage import protect
 from .models import resolve_api,RoleProvider
+from .numeric_inputs import NumberSpin as QSpinBox, DecimalSpin as QDoubleSpinBox
 
 
 class ModelTest(QThread):

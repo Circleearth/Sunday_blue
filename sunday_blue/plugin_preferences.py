@@ -3,6 +3,7 @@ import json
 from PySide6.QtWidgets import (QDialog,QVBoxLayout,QFormLayout,QDialogButtonBox,QCheckBox,
     QSpinBox,QDoubleSpinBox,QLineEdit,QPlainTextEdit,QComboBox,QLabel,QScrollArea,QWidget,QMessageBox,
     QStyledItemDelegate,QStyleOptionViewItem)
+from .numeric_inputs import NumberSpin as QSpinBox, DecimalSpin as QDoubleSpinBox
 
 class PluginRowDelegate(QStyledItemDelegate):
     def initStyleOption(self,option,index):

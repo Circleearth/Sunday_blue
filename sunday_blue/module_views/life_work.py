@@ -192,3 +192,4 @@ class DutiesPage(ModulePage):
 
 # Compatibility import: shared form helpers above remain available to Work/Duties.
 from .life import LifePage
+from ..numeric_inputs import NumberSpin as QSpinBox, DecimalSpin as QDoubleSpinBox

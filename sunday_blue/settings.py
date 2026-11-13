@@ -19,6 +19,7 @@ from .chat_preferences import ChatPreferences
 from .native_plugins import enabled
 from .plugin_runtime import discover,parameters,load
 from .plugin_preferences import PluginPreferences,PluginRowDelegate
+from .numeric_inputs import NumberSpin as QSpinBox, DecimalSpin as QDoubleSpinBox
 
 def label(text):
     w = QLabel(text)

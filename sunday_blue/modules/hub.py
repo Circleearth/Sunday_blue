@@ -21,6 +21,7 @@ class SocialJob(QThread):
 
 
 class ModuleHub(QObject):
+    report_open=Signal(str)
     rest_requested=Signal()
     navigate=Signal(str)
     changed=Signal(str)
@@ -59,6 +60,9 @@ class ModuleHub(QObject):
         from .attention import Attention
         self.learning=Learning(self.db);self.contracts=Contracts(self.db);self.attention=Attention(self.db)
         self._attention_display=None
+        from .private_wellbeing import PrivateWellbeing
+        from .reports import Reports
+        self.private_wellbeing=PrivateWellbeing(self.db);self.reports=Reports(self)
         from .focus_dialogue import FocusDialogue
         self.focus_dialogue=FocusDialogue(self)
         self.social=Social(self.db,config,self.changed.emit);self.jobs={};self._last_event=0
@@ -125,6 +129,7 @@ class ModuleHub(QObject):
     def _focus_changed(self,module,text=''):
         self.relations.project()
         status=self.focus.status();role=status['role_id']
+        if hasattr(self,'attention') and status['state']=='running':self.attention.configure({'mode':'auto' if status['phase']=='focus' else 'rest'})
         if status['state']=='idle' and self.focus.last_settlement and self.focus.last_settlement.get('record'):
             role=self.focus.last_settlement['record']['role_id']
         if status['state']=='idle' and self.focus.last_settlement and not self.focus.last_settlement.get('completed_timer'):
@@ -175,6 +180,7 @@ class ModuleHub(QObject):
         try:
             self.life.state.settle();self.life.state.report_cycle()
             self.attention.tick(self.focus.status());self.contracts.tick()
+            self.reports.due();self.reports.pump()
             if self.attention.new_alert==2:self.rest_requested.emit()
             a=self.attention.status();display=(round(a['eye']),round(a['focus']),a['source'])
             if display!=self._attention_display:self._attention_display=display;self.changed.emit('attention')

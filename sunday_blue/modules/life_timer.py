@@ -25,6 +25,8 @@ class LifeTimer:
    if c.execute("SELECT 1 FROM life_timers WHERE state IN ('running','paused')").fetchone():raise ValueError('已有活动，请先结束')
    c.execute('INSERT INTO life_timers VALUES(?,?,?, ?,NULL,0,NULL,NULL,NULL,0,?)',(uuid.uuid4().hex,title,'running',stamp(),day()))
   self.anchor=self.clock()
+  from .attention import Attention
+  Attention(self.db).configure({'mode':'auto'})
  def checkpoint(self):
   state=self.status()
   if state['state']!='running':return
@@ -46,6 +48,8 @@ class LifeTimer:
    c.execute('BEGIN IMMEDIATE');self.no_focus(c)
    c.execute("UPDATE life_timers SET state='running' WHERE state='paused'")
   self.anchor=self.clock()
+  from .attention import Attention
+  Attention(self.db).configure({'mode':'auto'})
  def finish(self,effective,physical='low',focus='low',rest=False):
   self.pause();state=self.status()
   if state['state']=='idle':raise ValueError('没有进行中的活动')

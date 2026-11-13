@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QFormLayout,QLabe
     QDialog,QDialogButtonBox,QMessageBox,QInputDialog,QScrollArea)
 from ..roles import list_roles
 from ..modules.life_state import MUSCLES
+from ..numeric_inputs import NumberSpin as QSpinBox, DecimalSpin as QDoubleSpinBox
 
 STATUS={'todo':'待开始','doing':'进行中','paused':'暂缓','done':'已完成'}
 INTENSITY={'light':'轻','moderate':'中','high':'高'}

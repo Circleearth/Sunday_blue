@@ -10,6 +10,8 @@ DEFAULTS={
  'recovery_scene':dict(name='恢复站 · 休息角',path='assets/ui/recovery_scene.png',size='1200 × 360',ratio='10:3',transparent=False,placement='植物与靠枕在右侧；左侧约65%保持低细节留白，文字另由界面显示。',positive='Refined Japanese visual novel background, a quiet sunlit resting corner, ivory wall, pale sage cushions and a small potted plant on the far right, soft morning light, warm white and muted mint palette, wide horizontal composition, left sixty five percent clean low detail negative space for interface content, delicate cel shading, calm domestic atmosphere, high quality illustration.',negative='people, face, text, logo, watermark, clutter, multiple focal points, saturated neon colors, harsh contrast, deep black shadows, detailed patterns in left area, messy perspective, blur, low resolution')
 }
 
+DEFAULTS['settlement_host']=dict(name='结算看板娘',path='assets/ui/settlement_host.png',size='600 × 900',ratio='2:3',transparent=True,fit='contain',placement='成年陪伴角色居中，完整半身或立绘；四周留白，文字由界面显示。',positive='Refined Japanese visual novel character illustration, an adult woman companion with warm composed expression, elegant casual cream cardigan and muted blue skirt, relaxed welcoming pose, hands naturally visible, soft even lighting, clean cel shading, centered three quarter body composition, generous empty margins, transparent background, crisp high resolution silhouette.',negative='child, text, watermark, logo, extra fingers, missing fingers, distorted hands, extra limbs, malformed anatomy, exaggerated proportions, cluttered background, harsh shadows, blurry edges')
+
 def asset_spec(root,key):
     spec=dict(DEFAULTS[key])
     path=Path(root)/'assets/ui/resources.json'
@@ -43,5 +45,5 @@ class ArtworkSlot(QWidget):
             p.setPen(Qt.PenStyle.NoPen);p.setBrush(QColor('#eef3ef'));p.drawRoundedRect(self.rect(),12,12)
             p.setPen(QColor('#687c73'));p.drawText(self.rect().adjusted(18,8,-18,-35),Qt.AlignmentFlag.AlignLeft|Qt.AlignmentFlag.AlignVCenter,'留一点空白，给今天的自己。')
         else:
-            size=self.pixmap.size();size.scale(self.size(),Qt.AspectRatioMode.KeepAspectRatioByExpanding)
+            size=self.pixmap.size();size.scale(self.size(),Qt.AspectRatioMode.KeepAspectRatio if self.spec.get("fit")=="contain" else Qt.AspectRatioMode.KeepAspectRatioByExpanding)
             p.drawPixmap(QRectF((self.width()-size.width())/2,(self.height()-size.height())/2,size.width(),size.height()),self.pixmap,QRectF(self.pixmap.rect()))

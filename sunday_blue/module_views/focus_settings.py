@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QFormLayout, QHBoxLayout, Q
     QSpinBox, QCheckBox, QPushButton, QFileDialog, QMessageBox, QDialogButtonBox, QWidget)
 from ..modules.focus_preferences import PHASES, import_sound
 from ..modules.focus_alarm import FocusAlarm
+from ..numeric_inputs import NumberSpin as QSpinBox, DecimalSpin as QDoubleSpinBox
 
 
 class FocusSettings(QDialog):

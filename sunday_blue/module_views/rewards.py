@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QLabel,QListWidge
     QFrame,QDialog,QFormLayout,QLineEdit,QComboBox,QSpinBox,QDoubleSpinBox,QMessageBox,QInputDialog)
 from PySide6.QtGui import QPixmap
 from ..roles import list_roles
+from ..numeric_inputs import NumberSpin as QSpinBox, DecimalSpin as QDoubleSpinBox
 
 
 class RewardsPage(QWidget):

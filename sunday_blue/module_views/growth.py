@@ -6,6 +6,7 @@ from .module_forms import ModulePage,button,form_dialog,spin
 from .life_widgets import label
 from ..modules.contracts import METRICS
 from ..modules.life_state import ZONE
+from ..numeric_inputs import NumberSpin as QSpinBox, DecimalSpin as QDoubleSpinBox
 
 class LearningPage(ModulePage):
  module='learning'

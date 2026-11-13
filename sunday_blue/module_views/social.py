@@ -4,6 +4,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QLabel,QComboBox,QPushButton,QTextBrowser,
     QPlainTextEdit,QDialog,QFormLayout,QLineEdit,QListWidget,QListWidgetItem,QCheckBox,QSpinBox,QMessageBox)
 from ..roles import list_roles
+from ..numeric_inputs import NumberSpin as QSpinBox, DecimalSpin as QDoubleSpinBox
 
 
 def _when(iso):

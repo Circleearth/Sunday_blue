@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (QWidget,QFormLayout,QSpinBox,QComboBox,QCheckBox,
 from .chat_presentation import options,validate,font_options
 from .design_system import UI_FONTS,CHAT_FONTS,ROLE_FONT_DEFAULTS
 from .roles import list_roles
+from .numeric_inputs import NumberSpin as QSpinBox, DecimalSpin as QDoubleSpinBox
 
 def _card(title, description=''):
     frame=QFrame();frame.setObjectName('card');layout=QVBoxLayout(frame);layout.setContentsMargins(16,14,16,16);layout.setSpacing(10)

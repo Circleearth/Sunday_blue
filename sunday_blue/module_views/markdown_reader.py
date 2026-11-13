@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (QFileSystemModel,QWidget,QVBoxLayout,QHBoxLayout,
     QMessageBox,QLineEdit,QListWidget,QListWidgetItem,QTextBrowser,QPlainTextEdit,QTabWidget,QFileDialog,QSpinBox)
 from ..modules.markdown_library import MarkdownLibrary
 from ..files import inside,no_links,WRITE_LOCK
+from ..numeric_inputs import NumberSpin as QSpinBox, DecimalSpin as QDoubleSpinBox
 
 class SafeMarkdown(QTextBrowser):
     def __init__(self,library,parent=None):super().__init__(parent);self.library=library

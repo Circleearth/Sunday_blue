@@ -141,3 +141,9 @@ Build Sunday Blue.bat → build.ps1 → SundayBlue.spec，SPECPATH 为 spec 所�
 通知使用 `notices.notify` → 现有 Planner outbox → ReminderDelivery，非紧急契约受恢复保护，高疲劳提醒标记优先并通过Hub信号打开非阻塞引导。总负责人/学习负责人可读学习摘要，精力负责人可读注意力估计；未扩展AI自主签约权限。
 
 导航为9个顶级页面，GrowthPage承载学习/契约，SchedulePage承载原日历/提醒/打卡；workspace兼容旧页面键。完整数据、规则与限制单一说明见 `docs/LEARNING_AND_STATE.md`。
+
+## 日常体验与结算层（2026-11-13）
+
+`numeric_inputs`统一数字编辑而不改值类型/范围。`FocusDialogue`沿用RoleProvider后台请求，新增短期日内缓存；它不属于聊天或长期记忆。`Attention.daily_boundary`在事务内以日期主键结转，晚间通知复用提醒outbox；页面只按分钟刷新。私人事实及修订独立保存在`private_wellbeing*`，报告查询显式白名单，不读私人表。
+
+`Reports`读取原有事实/流水形成可重复构建的快照，按类型+起止日唯一、内容摘要去重；评价后台单任务、取消标志、有限预算，写入时校验摘要避免过期响应覆盖新事实。实际计时/发奖仍属于Focus原事务；补结算仅增加可选归属日。UI位于生活子页，不增加主页签。细则及测试见[日常状态与结算](DAILY_EXPERIENCE.md)。

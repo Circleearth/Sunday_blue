@@ -138,12 +138,17 @@ class Focus:
         self.changed('focus','欢迎回来，从这一刻继续就好。')
         return self.status()
 
-    def finish(self):
+    def finish(self,record_day=None):
         with self.lock:
             self.checkpoint(auto_finish=False);row=self._active()
             if not row:
                 if self.last_settlement:return self.last_settlement
                 raise ValueError('没有可以结算的专注。')
+            settlement_day=record_day or day()
+            if record_day:
+                from datetime import datetime
+                if not datetime.fromisoformat(row['started']).astimezone().date().isoformat()<=record_day<=day():raise ValueError('补结算日期不在计时范围内')
+                date.fromisoformat(record_day)
             seconds=row['elapsed'];valid=seconds>120 and row['phase']=='focus';record=None;coins=0;points=0;bonus=0;personal=False;task_info={}
             timed_complete=bool(row['duration'] and seconds>=row['duration'])
             with self.db.connect() as db:
@@ -153,7 +158,7 @@ class Focus:
                 if valid:
                     previous=db.execute('SELECT COALESCE(max(seconds),0) FROM activity_records').fetchone()[0]
                     record={k:row[k] for k in ('id','category','label','role_id','started')}
-                    record.update(seconds=round(seconds,2),day=day(),finished=stamp())
+                    record.update(seconds=round(seconds,2),day=settlement_day,finished=stamp())
                     db.execute('INSERT INTO activity_records VALUES(?,?,?,?,?,?,?,?)',tuple(record[k] for k in
                         ('id','category','label','role_id','seconds','day','started','finished')))
                     policy=db.execute('SELECT policy FROM focus_reward_policy WHERE run_id=?',(row['id'],)).fetchone()
@@ -162,19 +167,19 @@ class Focus:
                         points=int(seconds//60)
                         db.execute('INSERT OR IGNORE INTO work_points VALUES(?,?,?,?)',('work:'+row['id'],points,'work:'+row['id'],stamp()))
                     elif legacy or row['category'] in ('学习','家务'):
-                        earned=db.execute("SELECT COALESCE(sum(c.amount),0) FROM coin_ledger c JOIN activity_records a ON c.reason='focus:'||a.id WHERE a.day=? AND (? OR a.category=?)",(day(),int(legacy),row['category'])).fetchone()[0]
+                        earned=db.execute("SELECT COALESCE(sum(c.amount),0) FROM coin_ledger c JOIN activity_records a ON c.reason='focus:'||a.id WHERE a.day=? AND (? OR a.category=?)",(settlement_day,int(legacy),row['category'])).fetchone()[0]
                         rate=300 if row['category']=='家务' and not legacy else 60
                         cap=12 if row['category']=='家务' and not legacy else 180
                         coins=max(0,min(int(seconds//rate),cap-earned))
                         if row['category']=='家务' and not legacy:
                             from .life import Life
-                            total=db.execute("SELECT COALESCE(sum(seconds),0) FROM activity_records WHERE day=? AND category='家务' AND lower(trim(label))=lower(trim(?))",(day(),row['label'])).fetchone()[0]
-                            coins=Life.housework_credit(db,row['label'],day(),int(total//300))
+                            total=db.execute("SELECT COALESCE(sum(seconds),0) FROM activity_records WHERE day=? AND category='家务' AND lower(trim(label))=lower(trim(?))",(settlement_day,row['label'])).fetchone()[0]
+                            coins=Life.housework_credit(db,row['label'],settlement_day,int(total//300))
                         db.execute('INSERT OR IGNORE INTO coin_ledger VALUES(?,?,?,?)',('focus:'+row['id'],coins,'focus:'+row['id'],stamp()))
                         if row['category']=='学习' and not legacy:
-                            study=db.execute("SELECT COALESCE(sum(seconds),0) FROM activity_records WHERE day=? AND category='学习'",(day(),)).fetchone()[0]
+                            study=db.execute("SELECT COALESCE(sum(seconds),0) FROM activity_records WHERE day=? AND category='学习'",(settlement_day,)).fetchone()[0]
                             if study>=600:
-                                bonus=3 if db.execute("INSERT OR IGNORE INTO coin_ledger VALUES(?,?,?,?)",('study-first:'+day(),3,'study-first:'+day(),stamp())).rowcount else 0
+                                bonus=3 if db.execute("INSERT OR IGNORE INTO coin_ledger VALUES(?,?,?,?)",('study-first:'+settlement_day,3,'study-first:'+settlement_day,stamp())).rowcount else 0
                                 coins+=bonus
                     link=db.execute('SELECT * FROM focus_task_links WHERE run_id=?',(row['id'],)).fetchone()
                     if link:
