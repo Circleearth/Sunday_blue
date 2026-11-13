@@ -14,7 +14,6 @@ class WorkTests(unittest.TestCase):
             db.executescript('CREATE TABLE focus_runs(id TEXT PRIMARY KEY,state TEXT); CREATE TABLE focus_task_links(run_id TEXT PRIMARY KEY,task_id TEXT,title TEXT,progress_start REAL); CREATE TABLE activity_records(id TEXT PRIMARY KEY,seconds REAL);')
     def test_hierarchy_weighted_progress_is_not_time(self):
         parent=self.work.create('release');a=self.work.create('code',parent,estimate_minutes=30);b=self.work.create('review',parent,estimate_minutes=90)
-        with self.assertRaises(ValueError):self.work.create('too deep',a)
         self.work.update(a,progress=100);self.assertEqual(self.work.task(a)['status'],'done');self.assertEqual(self.work.task(parent)['progress'],25)
         self.tables()
         with self.db.connect() as db:

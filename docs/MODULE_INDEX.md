@@ -172,3 +172,11 @@
 | 日结算 / 周月年报告 / 异步评价 | `modules/reports.py` → `module_views/reports.py` | 同上；完整回归232项通过 |
 
 使用/迁移边界见 [DAILY_EXPERIENCE.md](DAILY_EXPERIENCE.md)。新表均为增量创建，不重算旧账、不迁移或删除旧事实。
+
+### 同日补充维护入口
+
+- 多层任务 / 备注 / 继承截止：modules/work.py、module_views/life_work.py；测试test_work_service.py及test_daily_followup.py。
+- 私人控制分档：modules/private_wellbeing.py、module_views/life.py、attention_controls.py；参考值不在日常表单。
+- 当日专注上限：attention_capacity → Attention / LifeState.caps → Life.energy；不要在UI重复扣减。
+- 每日运动契约：Contracts.exercise_days / progress / ledger_filter；Reports.snapshot按结算日期纳入。学习与运动积分不可相互透支。
+- 专注备用原因：focus_feedback_trace，只有元数据；本轮不改调用决策。后续先按日志区分预算/冷却/请求/过滤，避免凭气泡猜测。

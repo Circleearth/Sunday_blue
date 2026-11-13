@@ -8,7 +8,7 @@ from .database import stamp,ModuleDB
 
 
 class Work:
-    FIELDS={'title','estimate_minutes','due','status','progress','priority','dida_id'}
+    FIELDS={'title','estimate_minutes','due','status','progress','priority','dida_id','notes'}
     STATES={'todo','doing','paused','done'}
 
     def __init__(self,db):
@@ -18,6 +18,7 @@ class Work:
                 id TEXT PRIMARY KEY,parent_id TEXT,title TEXT,estimate_minutes REAL,due TEXT,
                 status TEXT,progress REAL,priority INTEGER,archived INTEGER,dida_id TEXT,
                 created TEXT,updated TEXT);
+                CREATE TABLE IF NOT EXISTS work_notes(task_id TEXT PRIMARY KEY,notes TEXT NOT NULL);
                 CREATE UNIQUE INDEX IF NOT EXISTS work_dida_unique ON work_tasks(dida_id) WHERE dida_id<>'';
                 CREATE INDEX IF NOT EXISTS work_parent ON work_tasks(parent_id);
                 CREATE TABLE IF NOT EXISTS work_history (
@@ -45,6 +46,7 @@ class Work:
         if 'progress' in out:out['progress']=cls._number(out['progress'],'完成进度',100)
         if 'priority' in out:out['priority']=cls._number(out['priority'],'优先级',3,True)
         if 'status' in out and (not isinstance(out['status'],str) or out['status'] not in cls.STATES):raise ValueError('任务状态无效')
+        if 'notes' in out:out['notes']=cls._text(out['notes'],'备注',10000,True)
         if 'dida_id' in out:out['dida_id']=cls._text(out['dida_id'],'滴答任务标识',200,True)
         if 'due' in out:
             out['due']=cls._text(out['due'],'截止时间',50,True)
@@ -75,10 +77,10 @@ class Work:
     def _get(conn,tid):
         row=conn.execute('SELECT * FROM work_tasks WHERE id=?',(tid,)).fetchone()
         if not row:raise ValueError('工作任务不存在')
-        return dict(row)
+        result=dict(row);note=conn.execute('SELECT notes FROM work_notes WHERE task_id=?',(tid,)).fetchone();result['notes']=note[0] if note else '';return result
 
-    def create(self,title,parent_id=None,estimate_minutes=0,due='',priority=1,dida_id=''):
-        values=self._fields(dict(title=title,estimate_minutes=estimate_minutes,due=due,priority=priority,dida_id=dida_id))
+    def create(self,title,parent_id=None,estimate_minutes=0,due='',priority=1,dida_id='',notes=''):
+        values=self._fields(dict(title=title,estimate_minutes=estimate_minutes,due=due,priority=priority,dida_id=dida_id,notes=notes))
         if parent_id is not None and not isinstance(parent_id,str):raise ValueError('父任务标识无效')
         tid=uuid.uuid4().hex;now=stamp()
         try:
@@ -86,19 +88,25 @@ class Work:
                 conn.execute('BEGIN IMMEDIATE')
                 if parent_id:
                     parent=self._get(conn,parent_id)
-                    if parent['parent_id']:raise ValueError('初期仅支持父任务和一层子任务')
+                    ancestor=parent;depth=1
+                    while ancestor['parent_id']:
+                        ancestor=self._get(conn,ancestor['parent_id']);depth+=1
+                        if ancestor['archived'] or ancestor['status']=='done':raise ValueError('上级任务已归档或完成')
+                        if depth>=32:raise ValueError('任务嵌套最多32层')
                     if parent['archived'] or parent['status']=='done':raise ValueError('归档或完成的任务不能新增子任务')
                     if self._busy(conn,[parent_id]):raise ValueError('父任务正在计时，请先结束本轮再添加子任务')
                 conn.execute('INSERT INTO work_tasks VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',
                     (tid,parent_id or None,values['title'],values['estimate_minutes'],values['due'],'todo',0,values['priority'],0,values['dida_id'],now,now))
+                conn.execute('INSERT INTO work_notes VALUES(?,?)',(tid,values['notes']))
                 self._record(conn,tid,'created',values|{'parent_id':parent_id or None})
         except sqlite3.IntegrityError:raise ValueError('该滴答任务标识已关联另一项任务') from None
         return tid
 
     @staticmethod
     def _weighted_progress(children):
-        total=sum((r['estimate_minutes'] or 1) for r in children)
-        value=round(sum(r['progress']*(r['estimate_minutes'] or 1) for r in children)/total,2)
+        weighted=all(r['estimate_minutes']>0 for r in children)
+        weights=[r['estimate_minutes'] if weighted else 1 for r in children];total=sum(weights)
+        value=round(sum(r['progress']*weight for r,weight in zip(children,weights))/total,2)
         return min(value,99.99) if any(r['progress']<100 for r in children) else 100.0
 
     @classmethod
@@ -107,10 +115,22 @@ class Work:
         children={}
         for r in rows:
             if r['parent_id']:children.setdefault(r['parent_id'],[]).append(r)
-        for tid,kids in children.items():
-            if tid not in byid:continue
-            byid[tid]['progress']=cls._weighted_progress(kids)
-            if byid[tid]['progress']==100:byid[tid]['status']='done'
+        visited=set()
+        def visit(tid,trail=()):
+            if tid in visited:return
+            if tid in trail:raise ValueError('任务层级存在循环')
+            r=byid[tid];kids=children.get(tid,[])
+            for k in kids:visit(k['id'],trail+(tid,))
+            if kids:
+                r['progress']=cls._weighted_progress([byid[k['id']] for k in kids])
+                if r['progress']==100:r['status']='done'
+                elif r['status']=='done':r['status']='doing'
+            visited.add(tid)
+        for tid in byid:visit(tid)
+        for tid,r in byid.items():
+            r['due_explicit']=r['due'];parent=r['parent_id'];seen={tid}
+            while not r['due'] and parent in byid and parent not in seen:
+                seen.add(parent);r['due']=byid[parent]['due'];parent=byid[parent]['parent_id']
         return byid,children
 
     def update(self,tid,**fields):
@@ -120,7 +140,7 @@ class Work:
             with self.db.connect() as conn:
                 conn.execute('BEGIN IMMEDIATE');old=self._get(conn,tid)
                 if old['archived']:raise ValueError('请先恢复归档任务再编辑')
-                children=[dict(r) for r in conn.execute('SELECT * FROM work_tasks WHERE parent_id=?',(tid,))]
+                aggregate_rows,_=self._aggregate([dict(r) for r in conn.execute('SELECT * FROM work_tasks')]);children=[r for r in aggregate_rows.values() if r['parent_id']==tid]
                 if children:
                     aggregate=self._weighted_progress(children)
                     if 'progress' in values and values['progress']!=aggregate:raise ValueError('父任务进度由子任务汇总，请更新子任务进度')
@@ -136,18 +156,21 @@ class Work:
                     raise ValueError('重新打开已完成任务时，请同时降低进度')
                 changes={k:new[k] for k in self.FIELDS if new[k]!=old[k]}
                 if changes:
-                    conn.execute('UPDATE work_tasks SET '+','.join(k+'=?' for k in changes)+',updated=? WHERE id=?',tuple(changes.values())+(stamp(),tid))
+                    columns={k:v for k,v in changes.items() if k!='notes'}
+                    if columns:conn.execute('UPDATE work_tasks SET '+','.join(k+'=?' for k in columns)+',updated=? WHERE id=?',tuple(columns.values())+(stamp(),tid))
+                    if 'notes' in changes:conn.execute('INSERT INTO work_notes VALUES(?,?) ON CONFLICT(task_id) DO UPDATE SET notes=excluded.notes',(tid,changes['notes']))
                     self._record(conn,tid,'updated',{'before':{k:old[k] for k in changes},'after':changes})
                     # A reported child reopening invalidates a previously confirmed parent
                     # completion. Keep this correction and its audit in the same transaction.
-                    if old['parent_id']:
-                        parent=self._get(conn,old['parent_id'])
+                    parent_id=old['parent_id']
+                    while parent_id:
+                        parent=self._get(conn,parent_id)
                         if parent['status']=='done':
-                            siblings=[dict(r) for r in conn.execute('SELECT * FROM work_tasks WHERE parent_id=?',(old['parent_id'],))]
-                            progress=self._weighted_progress(siblings)
+                            all_rows,_=self._aggregate([dict(r) for r in conn.execute('SELECT * FROM work_tasks')]);progress=all_rows[parent_id]['progress']
                             if progress<100:
-                                conn.execute('UPDATE work_tasks SET status=?,progress=?,updated=? WHERE id=?',('doing',progress,stamp(),parent['id']))
-                                self._record(conn,parent['id'],'child_reopened',{'child_id':tid,'before':{'status':parent['status'],'progress':parent['progress']},'after':{'status':'doing','progress':progress}})
+                                conn.execute('UPDATE work_tasks SET status=?,progress=?,updated=? WHERE id=?',('doing',progress,stamp(),parent_id))
+                                self._record(conn,parent_id,'child_reopened',{'child_id':tid,'before':{'status':parent['status'],'progress':parent['progress']},'after':{'status':'doing','progress':progress}})
+                        parent_id=parent['parent_id']
         except sqlite3.IntegrityError:raise ValueError('该滴答任务标识已关联另一项任务') from None
         return self.task(tid)
 
@@ -156,7 +179,7 @@ class Work:
         with self.db.connect() as conn:
             conn.execute('BEGIN IMMEDIATE');old=self._get(conn,tid)
             if not archived and old['parent_id'] and self._get(conn,old['parent_id'])['archived']:raise ValueError('请先恢复父任务')
-            ids=[tid]+[r[0] for r in conn.execute('SELECT id FROM work_tasks WHERE parent_id=?',(tid,))]
+            ids=[r[0] for r in conn.execute('WITH RECURSIVE subtree(id) AS (SELECT ? UNION SELECT w.id FROM work_tasks w JOIN subtree s ON w.parent_id=s.id) SELECT id FROM subtree',(tid,))]
             if archived and self._busy(conn,ids):raise ValueError('任务仍有正在进行或暂停的番茄钟，请先结束本轮')
             for key in ids:
                 current=self._get(conn,key)
@@ -167,11 +190,14 @@ class Work:
     def tasks(self,include_archived=False):
         with self.db.connect() as conn:
             rows=[dict(r) for r in conn.execute('SELECT * FROM work_tasks ORDER BY created,rowid')]
+            notes={r[0]:r[1] for r in conn.execute('SELECT * FROM work_notes')}
+            for r in rows:r['notes']=notes.get(r['id'],'')
             byid,children=self._aggregate(rows);times={}
             if self._exists(conn,'focus_task_links') and self._exists(conn,'activity_records'):
                 times={r[0]:r[1] for r in conn.execute('SELECT l.task_id,COALESCE(sum(a.seconds),0) FROM focus_task_links l JOIN activity_records a ON a.id=l.run_id GROUP BY l.task_id')}
-        for tid,r in byid.items():r['actual_seconds']=times.get(tid,0)+sum(times.get(k['id'],0) for k in children.get(tid,[]))
-        return [r for r in byid.values() if include_archived or not r['archived']]
+        def total(tid):return times.get(tid,0)+sum(total(k['id']) for k in children.get(tid,[]))
+        for tid,r in byid.items():r['actual_seconds']=total(tid)
+        return sorted([r for r in byid.values() if include_archived or not r['archived']],key=lambda r:(r['status']!='done',r['created']))
 
     def task(self,tid):
         for row in self.tasks(True):
@@ -185,15 +211,24 @@ class Work:
     def suggest(self):
         rows=self.tasks(True);parents={r['parent_id'] for r in rows if r['parent_id']};byid={r['id']:r for r in rows}
         ready=[r for r in rows if not r['archived'] and r['id'] not in parents and r['status'] in ('todo','doing') and r['progress']<100 and (not r['parent_id'] or not byid[r['parent_id']]['archived'] and byid[r['parent_id']]['status'] not in ('done','paused'))]
-        return sorted(ready,key=lambda r:(r['due'] or '9999-12-31',-r['priority'],max(0,r['estimate_minutes']*(1-r['progress']/100)),r['created']))
+        def allowed(r):
+            parent=r['parent_id']
+            while parent:
+                ancestor=byid[parent]
+                if ancestor['archived'] or ancestor['status'] in ('done','paused'):return False
+                parent=ancestor['parent_id']
+            return True
+        return sorted(filter(allowed,ready),key=lambda r:(r['due'] or '9999-12-31',-r['priority'],max(0,r['estimate_minutes']*(1-r['progress']/100)),r['created']))
 
     @classmethod
     def validate_binding(cls,conn,task_id):
         if not isinstance(task_id,str) or not task_id:raise ValueError('工作任务标识无效')
         row=cls._get(conn,task_id)
         if row['archived'] or row['status'] in ('done','paused') or row['progress']>=100:raise ValueError('该任务已完成、暂缓或归档，不能开始专注')
-        if row['parent_id']:
-            parent=cls._get(conn,row['parent_id'])
-            if parent['archived'] or parent['status'] in ('done','paused'):raise ValueError('父任务已完成、暂缓或归档')
+        parent_id=row['parent_id']
+        while parent_id:
+            parent=cls._get(conn,parent_id)
+            if parent['archived'] or parent['status'] in ('done','paused'):raise ValueError('上级任务已完成、暂缓或归档')
+            parent_id=parent['parent_id']
         if conn.execute('SELECT 1 FROM work_tasks WHERE parent_id=?',(task_id,)).fetchone():raise ValueError('请绑定具体子任务，父任务仅汇总进度')
         return row

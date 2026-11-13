@@ -18,7 +18,7 @@ class WorkPage(ModulePage):
     module='work'
     def __init__(self,hub,parent=None):
         super().__init__(parent);self.hub=hub
-        layout=self.layout_header('工作管理','时间记录投入，进度记录实际推进。子任务最多一层；归档保留历史。')
+        layout=self.layout_header('工作管理','时间记录投入，进度记录实际推进。支持嵌套子任务；归档保留历史。')
         row=QHBoxLayout();button('新建任务',lambda:self.edit_task(),row,True);button('添加子任务',self.add_child,row)
         self.archived=QCheckBox('显示已归档');self.archived.toggled.connect(self.refresh);row.addStretch();row.addWidget(self.archived);layout.addLayout(row)
         self.tree=QTreeWidget();self.tree.setHeaderLabels(['任务','状态','完成进度','投入 / 预计（时间比例）','截止','优先级']);self.tree.setRootIsDecorated(True);self.tree.setAlternatingRowColors(True);layout.addWidget(self.tree,1)
@@ -62,6 +62,8 @@ class WorkPage(ModulePage):
             item=items[row['id']];parent_item=items.get(row['parent_id'])
             if parent_item:parent_item.addChild(item)
             else:self.tree.addTopLevelItem(item)
+        for row in rows:
+            item=items[row['id']]
             progress=QProgressBar();progress.setRange(0,100);progress.setValue(round(row['progress']));progress.setFormat('完成 %p%');progress.setMaximumHeight(20);self.tree.setItemWidget(item,2,progress)
             if row['id']==selected_id:self.tree.setCurrentItem(item)
         self.tree.expandAll();self.tree.setColumnWidth(0,280);self.tree.setColumnWidth(2,150);self.tree.setColumnWidth(3,255)
@@ -72,7 +74,6 @@ class WorkPage(ModulePage):
     def add_child(self):
         row=self.selected()
         if not row:return
-        if row['parent_id']:QMessageBox.information(self,'两级任务','请选择父任务，再添加同级子任务。');return
         self.edit_task(parent_id=row['id'])
     def edit_selected(self):
         row=self.selected()
@@ -80,10 +81,10 @@ class WorkPage(ModulePage):
     def edit_task(self,row=None,parent_id=None):
         row=row or {};dlg,form,error,buttons=form_dialog(self,'编辑工作任务' if row else '新建工作任务')
         title=QLineEdit(row.get('title',''));estimate=spin(row.get('estimate_minutes'),24000,' 分钟',zero_placeholder=True)
-        due=QLineEdit(row.get('due',''));due.setPlaceholderText('YYYY-MM-DD；留空不设截止')
+        due=QLineEdit(row.get('due_explicit',row.get('due','')));due.setPlaceholderText('YYYY-MM-DD；子任务留空继承上级截止')
         priority=QSpinBox();priority.setRange(0,3);priority.setValue(row.get('priority',1))
-        dida=QLineEdit(row.get('dida_id',''));dida.setPlaceholderText('可选：已有滴答任务 ID，仅关联标识')
-        for label,w in [('任务名称',title),('预计时长',estimate),('截止日期',due),('优先级（越大越优先）',priority),('滴答关联',dida)]:form.addRow(label,w)
+        notes=QPlainTextEdit(row.get('notes',''));notes.setMaximumHeight(120);notes.setPlaceholderText('任务说明、资料链接或其他备注')
+        for label,w in [('任务名称',title),('预计时长',estimate),('截止日期',due),('优先级（越大越优先）',priority),('备注',notes)]:form.addRow(label,w)
         status=QComboBox()
         for key,label in STATUS.items():status.addItem(label,key)
         status.setCurrentIndex(max(0,status.findData(row.get('status','todo'))));progress=spin(row.get('progress'),100,' %')
@@ -91,7 +92,7 @@ class WorkPage(ModulePage):
         if row and any(t['parent_id']==row['id'] for t in self.hub.work.tasks(True)):
             progress.setEnabled(False);form.addRow(QLabel('父任务进度由子任务汇总，请更新子任务。'))
         def save():
-            values=dict(title=title.text(),estimate_minutes=estimate.value(),due=due.text().strip(),priority=priority.value(),dida_id=dida.text().strip())
+            values=dict(title=title.text(),estimate_minutes=estimate.value(),due=due.text().strip(),priority=priority.value(),notes=notes.toPlainText())
             if row:
                 values['status']=status.currentData()
                 if progress.isEnabled():values['progress']=progress.value()

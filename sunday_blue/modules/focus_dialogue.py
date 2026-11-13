@@ -16,11 +16,13 @@ class FocusDialogue(QObject):
     def __init__(self,hub):
         super().__init__(hub);self.hub=hub;self.session='';self.history=[];self.calls=0
         self.used=0;self.last=0;self.busy=False;self.offline=False;self.cancel=threading.Event()
-        self.request_id='';self.ready.connect(self.receive)
+        self.request_id='';self.ready.connect(self.receive);self.response_reasons={}
+        with hub.db.connect() as c:c.execute('CREATE TABLE IF NOT EXISTS focus_feedback_trace(id INTEGER PRIMARY KEY,created TEXT,role TEXT,source TEXT,reason TEXT)')
     def reset(self,key):
         self.cancel.set();self.cancel=threading.Event();self.session=key;self.history=[]
         self.calls=0;self.used=0;self.last=0;self.busy=False;self.offline=False;self.request_id=''
-    def fallback(self,role,event,end):
+    def fallback(self,role,event,end,reason="local"):
+        self.trace(role,"fallback",reason)
         if self.busy:
             self.cancel.set();self.cancel=threading.Event();self.request_id='';self.busy=False
         text=self.local_reply(event,end)
@@ -37,7 +39,8 @@ class FocusDialogue(QObject):
         self.history=cached.get('history',[])[-12:]
         now=time.monotonic();config=self.hub.config.snapshot()
         if not self.hub.focus.options().get('llm_feedback',True) or self.busy or self.offline and now-self.last<60 or now-self.last<10:
-            self.fallback(role,event,end)
+            reason='disabled' if not self.hub.focus.options().get('llm_feedback',True) else 'busy_cancelled' if self.busy else 'failure_backoff' if self.offline and now-self.last<60 else 'cooldown'
+            self.fallback(role,event,end,reason)
             return
         try:
             provider=RoleProvider(self.hub.root,role,config,self.cancel,purpose='focus_feedback')
@@ -63,11 +66,12 @@ class FocusDialogue(QObject):
             if daily.get('day')!=day():daily={'day':day(),'calls':0,'reserved':0}
             if daily['calls']>=60 or daily['reserved']+reserved>100000:raise ValueError('Daily budget')
             daily['calls']+=1;daily['reserved']+=reserved;self.hub.db.set('focus_dialogue_budget',daily)
-        except Exception:
-            self.last=now;self.offline=True;self.fallback(role,event,end)
+        except Exception as exc:
+            reason=str(exc) if type(exc) is ValueError and str(exc) in ('No model','Budget','Daily budget') else 'prepare:'+type(exc).__name__
+            self.last=now;self.offline=True;self.fallback(role,event,end,reason)
             return
         self.calls+=1;self.used+=reserved;self.last=now;self.busy=True
-        ticket=uuid.uuid4().hex;self.request_id=ticket
+        ticket=uuid.uuid4().hex;self.request_id=ticket;self.trace(role,'request','started')
         def work():
             failed=False
             try:
@@ -75,13 +79,16 @@ class FocusDialogue(QObject):
                 text=plain(blocks).strip()[:200]
                 if not text or '?' in text or '？' in text:raise ValueError('UnwantedQuestion')
                 if any(SequenceMatcher(None,text,m['content']).ratio()>.85 for m in messages if m['role']=='assistant'):raise ValueError('RepeatedReply')
-            except Exception:text=event;failed=True
+            except Exception as exc:
+                text=event;failed=True;self.response_reasons[ticket]=str(exc) if type(exc) is ValueError and str(exc) in ('UnwantedQuestion','RepeatedReply') else 'request:'+type(exc).__name__
             try:self.ready.emit(ticket,role,text,failed)
             except RuntimeError:pass
         self._pending=(key,event,end);self._pending_role=role
         threading.Thread(target=work,daemon=True,name='focus-dialogue').start()
     def receive(self,key,role,text,failed):
+        reason=self.response_reasons.pop(key,'accepted')
         if key!=self.request_id:return
+        self.trace(role,'fallback' if failed else 'llm',reason)
         self.busy=False;self.offline=failed
         _,event,end=self._pending
         if failed:text=self.local_reply(event,end)
@@ -89,6 +96,12 @@ class FocusDialogue(QObject):
         self.remember(role,event,text,'fallback' if failed else 'llm')
         self.hub.feedback.emit(role,text)
         if end:self.reset('')
+    def trace(self,role,source,reason):
+        try:
+            with self.hub.db.connect() as c:
+                c.execute('INSERT INTO focus_feedback_trace(created,role,source,reason) VALUES(?,?,?,?)',(datetime.now(ZONE).isoformat(),role,source,reason))
+                c.execute('DELETE FROM focus_feedback_trace WHERE id NOT IN (SELECT id FROM focus_feedback_trace ORDER BY id DESC LIMIT 1000)')
+        except Exception:pass  # Diagnostics must never alter the reply strategy.
     def local_reply(self,event,end=False):
         state=self.hub.focus.status();record=(self.hub.focus.last_settlement or {}).get('record') or {}
         category=record.get('category') if end else state.get('category');category=category or state.get('category','专注')

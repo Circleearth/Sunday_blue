@@ -31,9 +31,10 @@ class Reports(QObject):
    coins=c.execute("SELECT COALESCE(sum(amount),0) FROM coin_ledger WHERE reason IN (SELECT 'focus:'||id FROM activity_records WHERE day>=? AND day<?) OR reason IN (SELECT 'study-first:'||day FROM activity_records WHERE day>=? AND day<?)",(start,end,start,end)).fetchone()[0]
    other_coins=c.execute("SELECT COALESCE(sum(amount),0) FROM coin_ledger WHERE reason IN (SELECT 'exercise:'||id FROM exercise_records WHERE day>=? AND day<?) OR reason IN (SELECT 'housework:'||id FROM housework_records WHERE day>=? AND day<?) OR id IN (SELECT 'life-upload:'||day FROM daily_life WHERE day>=? AND day<?)",(start,end,start,end,start,end)).fetchone()[0]
    points=c.execute("SELECT COALESCE(sum(amount),0) FROM work_points WHERE id IN (SELECT 'work:'||id FROM activity_records WHERE day>=? AND day<?)",(start,end)).fetchone()[0]
+   contracts=[dict(r) for r in c.execute("SELECT t.title,t.metric,t.status,l.amount,date(l.created,'+8 hours') AS day FROM challenge_ledger l JOIN challenge_contracts t ON t.id=l.contract_id WHERE date(l.created,'+8 hours')>=? AND date(l.created,'+8 hours')<?",(start,end))]
    progress=[dict(r) for r in c.execute('SELECT l.title,a.day,l.progress_start,t.progress FROM focus_task_links l JOIN activity_records a ON a.id=l.run_id LEFT JOIN work_tasks t ON t.id=l.task_id WHERE a.day>=? AND a.day<?',(start,end))]
   totals={k:round(sum(r['seconds']/60 for r in records if r['category']==k),1) for k in ('工作','学习','家务')}
-  payload={'start_inclusive':start,'end_exclusive':end,'minutes':totals,'focus_coins':coins,'life_coins':other_coins,'total_activity_coins':coins+other_coins,'work_points':points,'records':records[-60:],'daily':life[-366:],'exercise':exercise[-60:],'tasks_current_progress_not_historical':progress[-30:],'record_count':len(records),'private_records':'excluded'}
+  payload={'contracts':contracts,'start_inclusive':start,'end_exclusive':end,'minutes':totals,'focus_coins':coins,'life_coins':other_coins,'total_activity_coins':coins+other_coins,'work_points':points,'records':records[-60:],'daily':life[-366:],'exercise':exercise[-60:],'tasks_current_progress_not_historical':progress[-30:],'record_count':len(records),'private_records':'excluded'}
   return payload
  def prepare(self,kind,start,end):
   if not start<end:raise ValueError('报告区间无效')
@@ -45,6 +46,7 @@ class Reports(QObject):
   lines+=[f"饮食：{r['day']} {r['meal'][:160]}" for r in payload['daily'] if r['meal']]
   lines+=[f"运动：{r['day']} {r['kind']} {r['minutes']} 分钟" for r in payload['exercise']]
   lines+=[f"任务：{r['title']}，开始时 {r['progress_start']}%，目前 {r['progress']}%（非历史快照）" for r in payload['tasks_current_progress_not_historical']]
+  lines+=[f"契约：{r['day']} {r['title']} · {'运动' if r['metric']=='exercise_daily' else '学习'}契约积分 {r['amount']:+d} · {dict(success='已达成',failed='核对未达成',cancelled='已解约').get(r['status'],r['status'])}" for r in payload['contracts']]
   lines+=['私人性活动记录不包含在复制文本或模型输入中。','记录缺失不等于没有完成；长区间细目仅展示最近60条，时长汇总涵盖全部。']
   body='\n'.join(lines)
   with self.db.connect() as c:
@@ -65,7 +67,7 @@ class Reports(QObject):
   self.last_check=today
   for kind in ('week','month','year'):
    start,end=period_window(kind,today);data=self.snapshot(start.isoformat(),end.isoformat())
-   if data['record_count'] or data['daily'] or data['exercise']:self.prepare(kind,start.isoformat(),end.isoformat())
+   if data['record_count'] or data['daily'] or data['exercise'] or data['contracts']:self.prepare(kind,start.isoformat(),end.isoformat())
  def get(self,rid):
   with self.db.connect() as c:
    row=c.execute('SELECT * FROM settlement_reports WHERE id=?',(rid,)).fetchone();return dict(row) if row else None

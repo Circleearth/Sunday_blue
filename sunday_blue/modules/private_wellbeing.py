@@ -22,8 +22,8 @@ class PrivateWellbeing:
  def get(self,day):
   with self.db.connect() as c:r=c.execute('SELECT * FROM private_wellbeing WHERE day=?',(day,)).fetchone();return dict(r) if r else {}
  def status(self,day=None):
-  target=date.fromisoformat(day) if day else date.today();start=(target-timedelta(days=29)).isoformat();week=(target-timedelta(days=6)).isoformat();limit=self.db.get('private_weekly_reference',7)
+  target=date.fromisoformat(day) if day else date.today();start=(target-timedelta(days=29)).isoformat();week=(target-timedelta(days=6)).isoformat();limit=self.db.get('private_control_reference',5)
   with self.db.connect() as c:rows=[dict(r) for r in c.execute('SELECT * FROM private_wellbeing WHERE day>=? AND day<=?',(start,target.isoformat()))]
   recent=[r for r in rows if r['day']>=week];count=sum(r['count'] for r in recent);ratio=count/max(limit,1)
-  level='red' if any(r['discomfort'] or r['impact'] for r in recent) else 'orange' if ratio>1 else 'yellow' if ratio>=.8 else 'green'
-  return {'level':level,'week_count':count,'month_count':sum(r['count'] for r in rows),'week_minutes':sum(r['minutes'] for r in recent),'limit':limit,'recorded_days':len(rows),'note':'有不适或影响生活的自报：建议暂停、调整；持续不适请咨询专业人员。' if level=='red' else '超过个人参考目标，可回顾时间安排；次数本身不表示健康异常。' if level=='orange' else '接近个人参考目标，不是医学警戒线。' if level=='yellow' else '暂无已报告的不适或生活影响；未上报不等于没有发生。'}
+  level='red' if any(r['discomfort'] or r['impact'] for r in recent) else 'red' if ratio>=1.5 else 'orange' if ratio>=1 else 'yellow' if ratio>=.5 else 'green'
+  return {'level':level,'week_count':count,'month_count':sum(r['count'] for r in rows),'week_minutes':sum(r['minutes'] for r in recent),'limit':limit,'ratio':ratio,'daily_average':count/7,'recorded_days':len(rows),'note':('有不适或影响生活的自报：建议暂停、调整；持续不适请咨询专业人员。' if any(r['discomfort'] or r['impact'] for r in recent) else '已达到个人控制目标150%以上，建议暂停并安排其他活动。') if level=='red' else '超过个人参考目标，可回顾时间安排；次数本身不表示健康异常。' if level=='orange' else '接近个人参考目标，不是医学警戒线。' if level=='yellow' else '暂无已报告的不适或生活影响；未上报不等于没有发生。'}

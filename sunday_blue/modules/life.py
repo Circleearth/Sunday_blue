@@ -162,7 +162,7 @@ class Life:
                         if snapshot and snapshot['eye'] is not None:row['eye_strain']=round(snapshot['eye'],1);row['focus']=round(snapshot['focus'],1)
                     if attention:
                         result['eye_strain']=round(attention['eye'],1);result['focus']=round(attention['focus'],1)
-                        result['focus_value']=round(caps['focus_cap']*attention['focus']/100,2)
+                        result['focus_value']=round(min(caps['focus_cap'],attention['focus']),2);result['focus']=round(result['focus_value']/caps['focus_cap']*100,1) if caps['focus_cap'] else 0
                         result['trend'][-1].update(focus=result['focus'],eye_strain=result['eye_strain'])
 
         return result

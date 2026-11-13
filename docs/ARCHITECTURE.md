@@ -93,7 +93,7 @@ plugin_runtime 扫描 extensions/plugins/*/plugin.json，读取 _conf_schema.jso
 
 
 ### 职责、真实生活与恢复（2026-11-11）
-`modules/work.py` 管理两级任务与审计；`focus_task_links` 保存 run→task 与当时标题/进度，结算事务同时写活动、积分或金币、任务历史和事件。`focus_reward_policy` 为升级前在途计时保留 legacy 规则；新计时 v2，旧流水不改写。`work_points` 不参与商城余额。
+`modules/work.py` 管理多层任务与审计；`focus_task_links` 保存 run→task 与当时标题/进度，结算事务同时写活动、积分或金币、任务历史和事件。`focus_reward_policy` 为升级前在途计时保留 legacy 规则；新计时 v2，旧流水不改写。`work_points` 不参与商城余额。
 `modules/life.py` 管理 exercise_records / daily_life / life_revisions / housework_records / housework_awards；补记和修改是事务，运动重算当天额度只追加奖励差额。体力/专注/视疲劳读取同一份实际记录，未知输入有明确提示，不启动模型测量。
 `modules/duties.py` 固定七槽 duty_slots，替换只改 role_id；duty_changes 留审计，duty_handoffs 关联 organized_records。记录与交接同事务，完成分类不改原文及确认状态。`duty_tools.py` 每次调用复核职责权限，事实写入走用户确认，原文捕获可快速保存为 proposal。按需能力路由继承槽位插件/Skills；第三方 allowed_roles 与显式禁用保持有效。旧 Kia 整理插件在新版职责库存在时退场，代码与数据不删除。
 `modules/recovery.py` 复用 module_settings 保存恢复截止、情绪有效期和意愿，module_events 保存工作日结算和延后复盘。共享投递与旧 QQ daemon 均在外发之前检查保护；reminder_priority 是独立紧急标记，不改原提醒表。Relations 在记录/消费负事件时复核保护，绝不补扣。Social 的自动发起/追问检查保护；主动请求的聊天仍正常，但带简短恢复上下文。旧 daemon 必须重启才加载新代码。
@@ -147,3 +147,6 @@ Build Sunday Blue.bat → build.ps1 → SundayBlue.spec，SPECPATH 为 spec 所�
 `numeric_inputs`统一数字编辑而不改值类型/范围。`FocusDialogue`沿用RoleProvider后台请求，新增短期日内缓存；它不属于聊天或长期记忆。`Attention.daily_boundary`在事务内以日期主键结转，晚间通知复用提醒outbox；页面只按分钟刷新。私人事实及修订独立保存在`private_wellbeing*`，报告查询显式白名单，不读私人表。
 
 `Reports`读取原有事实/流水形成可重复构建的快照，按类型+起止日唯一、内容摘要去重；评价后台单任务、取消标志、有限预算，写入时校验摘要避免过期响应覆盖新事实。实际计时/发奖仍属于Focus原事务；补结算仅增加可选归属日。UI位于生活子页，不增加主页签。细则及测试见[日常状态与结算](DAILY_EXPERIENCE.md)。
+
+
+2026-11-13补充：work_notes保存备注，Work统一递归汇总/继承截止/祖先权限；不改旧任务主表。attention_capacity保存每日专注消耗，LifeState读取上限，Attention负责余量、恢复及上限内夹取。契约继续使用原challenge_ledger，按所属metric隔离学习/运动账户，challenge_settlement_evidence保存结算证据，Reports只读取实际结算流水。私人控制的表单和恢复卡均读PrivateWellbeing同一滚动窗口。focus_feedback_trace是有界无正文诊断，不参与LLM回复决策。

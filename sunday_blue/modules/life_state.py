@@ -43,7 +43,12 @@ class LifeState:
   with self.db.connect() as c:
    row=c.execute('SELECT * FROM vitality_days WHERE day=?',(day,)).fetchone()
    current=c.execute('SELECT cap FROM vitality_state WHERE id=1').fetchone()[0]
-  return dict(row) if row else dict(day=day,physical_cap=current if day==datetime.now(ZONE).date().isoformat() else 30,focus_cap=100)
+  result=dict(row) if row else dict(day=day,physical_cap=current if day==datetime.now(ZONE).date().isoformat() else 30,focus_cap=100)
+  with self.db.connect() as c:
+   if c.execute("SELECT 1 FROM sqlite_master WHERE name='attention_capacity'").fetchone():
+    spent=c.execute('SELECT spent FROM attention_capacity WHERE day=?',(day,)).fetchone()
+    if spent:result['focus_cap']=max(0,100-spent[0]/2)
+  return result
  def report_cycle(self,now=None):
   now=(now or datetime.now(ZONE)).astimezone(ZONE);boundary=now.replace(hour=9,minute=30,second=0,microsecond=0)
   if now<boundary:boundary-=timedelta(days=1)
