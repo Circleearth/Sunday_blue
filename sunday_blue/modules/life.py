@@ -1,5 +1,6 @@
 """Confirmed life inputs and conservative estimates; append-only reward adjustments."""
 import hashlib,json,math,uuid
+from contextlib import nullcontext
 from datetime import date,timedelta,datetime
 from .database import stamp,day as today
 from .rewards import Rewards
@@ -21,6 +22,7 @@ class Life:
         self.state=LifeState(db)
         with db.connect() as c:
             c.executescript('''CREATE TABLE IF NOT EXISTS exercise_records(id TEXT PRIMARY KEY,kind TEXT,minutes REAL,intensity TEXT,day TEXT,coins INTEGER,revision INTEGER,fingerprint TEXT UNIQUE,created TEXT);
+            CREATE TABLE IF NOT EXISTS daily_finalized(day TEXT PRIMARY KEY,quality REAL,bed_score REAL,wake_score REAL,duration_score REAL,created TEXT);
             CREATE TABLE IF NOT EXISTS daily_life(day TEXT PRIMARY KEY,meal TEXT,sleep_hours REAL,phone_total REAL,phone_fun REAL,screen_hours REAL,energy REAL,note TEXT,revision INTEGER,updated TEXT);
             CREATE TABLE IF NOT EXISTS life_revisions(id INTEGER PRIMARY KEY,source TEXT,before_json TEXT,created TEXT);
             CREATE TABLE IF NOT EXISTS housework_awards(day TEXT,title_key TEXT,coins INTEGER,PRIMARY KEY(day,title_key));
@@ -68,7 +70,7 @@ class Life:
             return row
     def exercises(self):
         with self.db.connect() as c:return [dict(r) for r in c.execute('SELECT e.*,d.muscles FROM exercise_records e LEFT JOIN exercise_details d ON e.id=d.record_id ORDER BY day DESC,created DESC LIMIT 200')]
-    def save_daily(self,day,meal='',sleep_hours=None,phone_total=None,phone_fun=None,screen_hours=None,energy=None,note='',sleep_start=None,sleep_end=None):
+    def save_daily(self,day,meal='',sleep_hours=None,phone_total=None,phone_fun=None,screen_hours=None,energy=None,note='',sleep_start=None,sleep_end=None,_connection=None,_quality=1):
         day=valid_day(day);meal=str(meal).strip();note=str(note).strip()
         if len(meal)>4000 or len(note)>2000:raise ValueError('饮食或备注过长')
         if sleep_start is not None or sleep_end is not None:
@@ -84,8 +86,10 @@ class Life:
         if phone_fun is not None and (phone_total is None or phone_fun>phone_total):raise ValueError('娱乐时长不能超过总体使用时长；请同时填写总体时长')
         if not meal and not note and all(v is None for v in values.values()):raise ValueError('至少填写一项实际记录')
         payload={'day':day,'meal':meal,**values,'note':note}
-        with self.db.connect() as c:
-            c.execute('BEGIN IMMEDIATE');old=c.execute('SELECT * FROM daily_life WHERE day=?',(day,)).fetchone()
+        with (nullcontext(_connection) if _connection is not None else self.db.connect()) as c:
+            if _connection is None:c.execute('BEGIN IMMEDIATE')
+            if c.execute('SELECT 1 FROM daily_finalized WHERE day=?',(day,)).fetchone():raise ValueError('该日上报已确认锁定，只能补报未记录日期')
+            old=c.execute('SELECT * FROM daily_life WHERE day=?',(day,)).fetchone()
             if sleep_start is not None:
                 c.execute('INSERT INTO daily_life_details VALUES(?,?,?) ON CONFLICT(day) DO UPDATE SET sleep_start=excluded.sleep_start,sleep_end=excluded.sleep_end',(day,sleep_start,sleep_end))
             if old and all(old[k]==v for k,v in payload.items()):return dict(old)|{'sleep_start':sleep_start,'sleep_end':sleep_end}
@@ -95,8 +99,22 @@ class Life:
             self._award(c,'life-upload:'+day,1,'如实上传生活数据（不是达标奖励）')
             self.db.emit(c,f'life:{day}:{rev}','life.recorded',{'day':day,'revision':rev})
             from .attention import Attention
-            Attention.apply_sleep(c,day,values['sleep_hours'])
+            Attention.apply_sleep(c,day,values['sleep_hours'],quality=_quality)
+        return payload if _connection is not None else self.daily(day)
+    def finalize_daily(self,day,private,**values):
+        from .private_wellbeing import PrivateWellbeing
+        from .sleep_quality import score_sleep
+        day=valid_day(day)
+        if day>=today():raise ValueError('只能结算已经结束的生活记录日')
+        owner=PrivateWellbeing(self.db);quality=score_sleep(values.get('sleep_start'),values.get('sleep_end'))
+        with self.db.connect() as c:
+            c.execute('BEGIN IMMEDIATE')
+            if c.execute('SELECT 1 FROM daily_life WHERE day=?',(day,)).fetchone():raise ValueError('该日已有上报，只能补报未记录日期')
+            self.save_daily(day,**values,_connection=c,_quality=quality['quality'])
+            owner.save(day,*private,_connection=c)
+            c.execute('INSERT INTO daily_finalized VALUES(?,?,?,?,?,?)',(day,quality['quality'],quality['bed'],quality['wake'],quality['duration'],stamp()))
         return self.daily(day)
+
     def latest_missing_day(self):
         target=date.fromisoformat(today())-timedelta(days=1)
         with self.db.connect() as c:known={r[0] for r in c.execute('SELECT day FROM daily_life WHERE day<?',(today(),))}
@@ -138,6 +156,8 @@ class Life:
         # Missing inputs are unknown: neutral anchors are explicit estimates, not evidence of health.
         physical=70 if subjective is None else subjective
         if sleep is not None:physical+=max(-35,min(10,(sleep-7)*8))
+        with self.db.connect() as c:recovery=c.execute('SELECT quality FROM daily_finalized WHERE day=?',(previous,)).fetchone()
+        if recovery:physical=30+70*recovery[0]
         physical-=min(30,exercise*.12);focus=physical-min(35,(work+study)/15)
         eye=min(100,screen*9) if screen is not None else min(100,(work+study)/60*6)
         with self.db.connect() as c:

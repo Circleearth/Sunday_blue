@@ -3,7 +3,7 @@ import tempfile,unittest
 from pathlib import Path
 from datetime import datetime,timedelta
 from unittest.mock import patch
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication,QMessageBox
 from PySide6.QtCore import QCoreApplication,QEvent
 from sunday_blue.storage import Config,Store
 from sunday_blue.modules.hub import ModuleHub
@@ -25,7 +25,7 @@ class FollowupTests(unittest.TestCase):
   from sunday_blue.module_views.life import LifePage
   page=LifePage(self.h);self.widgets.append(page);self.assertFalse(hasattr(page,'private_enabled'));self.assertFalse(hasattr(page,'private_limit'));self.assertEqual(page.selected_day(),day);self.assertIn('240%',page.private_recovery.text())
   page.bed.load('23:00');page.wake.load('07:00');page.private_count.setValue(1);page.private_minutes.setValue(10)
-  with patch.object(self.h.reports,'daily',return_value=None):page.save_daily()
+  with patch.object(self.h.reports,'daily',return_value=None),patch('PySide6.QtWidgets.QMessageBox.question',return_value=QMessageBox.StandardButton.Yes):page.save_daily()
   self.assertEqual(p.get(day)['count'],1)
  def test_nested_aggregation_due_notes_archive_and_guards(self):
   w=self.h.work;r=w.create('project',due='2026-12-31',notes='保留资料链接');a=w.create('chapter',r);b=w.create('other',r);x=w.create('nested',a);y=w.create('second',a)

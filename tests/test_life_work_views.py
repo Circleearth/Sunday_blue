@@ -3,7 +3,7 @@ from pathlib import Path
 import tempfile,unittest
 from unittest.mock import patch
 from PySide6.QtCore import Qt,QCoreApplication,QEvent
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication,QMessageBox
 from sunday_blue.storage import Config,Store
 from sunday_blue.modules.hub import ModuleHub
 from sunday_blue.module_views.life_work import WorkPage,LifePage,DutiesPage
@@ -13,6 +13,7 @@ ROOT=Path(__file__).resolve().parents[1]
 
 class LifeWorkViewTests(unittest.TestCase):
     def setUp(self):
+        confirm=patch('PySide6.QtWidgets.QMessageBox.question',return_value=QMessageBox.StandardButton.Yes);confirm.start();self.addCleanup(confirm.stop)
         self.temp=tempfile.TemporaryDirectory(dir=ROOT/'tests',prefix='sunday-test-');self.config=Config(self.temp.name)
         self.hub=ModuleHub(self.config,Store(self.config.data),start_timer=False);self.pages=[]
     def tearDown(self):
@@ -37,7 +38,7 @@ class LifeWorkViewTests(unittest.TestCase):
         self.assertEqual(page.bed.value(),'23:00');self.assertEqual(page.wake.value(),'06:30')
         self.hub.life.exercise('快走',20,'moderate');self.hub.changed.emit('life');self.assertEqual(page.exercises.count(),1)
         self.assertEqual(page.trend.count(),7)
-        with patch('sunday_blue.module_views.life_work.QMessageBox.warning') as warning:
+        with patch('sunday_blue.module_views.life_work.QMessageBox.information') as warning:
             page.phone_fun.load(100);page.save_daily();self.assertTrue(warning.called)
         self.assertEqual(self.hub.life.daily(page.selected_day())['phone_fun'],30)
         with patch('sunday_blue.module_views.life_work.QMessageBox.warning') as warning:

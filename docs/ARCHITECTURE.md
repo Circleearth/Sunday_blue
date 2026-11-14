@@ -161,3 +161,7 @@ Build Sunday Blue.bat → build.ps1 → SundayBlue.spec，SPECPATH 为 spec 所�
 - 新 UI 熟悉进度按知识点 0/50/100 等权平均；旧 summary/evidence 与契约继续使用原证据规则，不混淆笔记熟悉度和实际掌握证据。
 - `work_day_notes` 按目标日期保存明日便签，`work_day_note_history` 保留旧版本。确认时以本机当日+1为目标；页面每分钟刷新日期，未确认草稿不覆盖。移除的是工作页恢复控制，非后端恢复保护系统。
 - 验证：`tests/test_learning_notebook.py`；完整回归仍使用 unittest discover。
+
+## 每日确认事务（2026-11-14）
+
+`Life.finalize_daily` 使用单连接事务调用 `save_daily` 与 `PrivateWellbeing.save`；`daily_finalized` 附表保存按生活日期唯一的恢复系数及三个分项。`sleep_quality.py` 是独立纯计算，不访问API。新确认记录由服务层校验禁止后续覆盖；低层 save_daily 保留未锁定旧记录兼容行为，不迁移历史。Attention.apply_sleep 仍保留按日期一次的回执，并接受恢复系数。体力估算按昨天确认系数建立当天基线，沿用运动消耗。UI 显示上报日，selected_day 仍返回前一日，保持报告和私人记录原关联。测试见 test_daily_finalize.py。

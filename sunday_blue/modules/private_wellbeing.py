@@ -1,5 +1,6 @@
 """Private user-reported wellbeing facts; excluded from model reports by default."""
 import json
+from contextlib import nullcontext
 from datetime import date,timedelta
 from .database import stamp
 from .life import number,valid_day
@@ -8,12 +9,14 @@ class PrivateWellbeing:
   self.db=db
   with db.connect() as c:c.executescript('''CREATE TABLE IF NOT EXISTS private_wellbeing(day TEXT PRIMARY KEY,count INTEGER,minutes REAL,discomfort INTEGER,impact INTEGER,updated TEXT);
    CREATE TABLE IF NOT EXISTS private_wellbeing_revisions(id INTEGER PRIMARY KEY,day TEXT,before_json TEXT,created TEXT);''')
- def save(self,day,count,minutes,discomfort=False,impact=False):
+ def save(self,day,count,minutes,discomfort=False,impact=False,_connection=None):
   day=valid_day(day);count=number(count,0,100,'次数');minutes=number(minutes,0,1440,'总分钟')
   if count!=int(count):raise ValueError('次数必须是整数')
   count=int(count)
   if count==0 and minutes>0:raise ValueError('次数为0时总时间应为0')
-  with self.db.connect() as c:
+  with (nullcontext(_connection) if _connection is not None else self.db.connect()) as c:
+   if _connection is None:c.execute('BEGIN IMMEDIATE')
+   if c.execute("SELECT 1 FROM sqlite_master WHERE name='daily_finalized'").fetchone() and c.execute('SELECT 1 FROM daily_finalized WHERE day=?',(day,)).fetchone():raise ValueError('该日上报已确认锁定')
    old=c.execute('SELECT * FROM private_wellbeing WHERE day=?',(day,)).fetchone()
    values=(count,minutes,int(discomfort),int(impact))
    if old and tuple(old[k] for k in ('count','minutes','discomfort','impact'))==values:return

@@ -110,7 +110,7 @@ class Attention:
     current=c.execute('SELECT eye FROM attention_state WHERE id=1').fetchone()[0]
     if current>50:notify(c,'attention-night:'+today,f'22点视疲劳检查：当前估计 {current:.0f}%，建议离屏休息。',True,True,now.isoformat())
  @staticmethod
- def apply_sleep(c,day,hours):
+ def apply_sleep(c,day,hours,quality=1):
   if hours is None or hours<=0 or not c.execute("SELECT 1 FROM sqlite_master WHERE name='attention_state'").fetchone():return
   today=datetime.now(ZONE).date()
   if day not in (today.isoformat(),(today-timedelta(days=1)).isoformat()):return
@@ -118,7 +118,7 @@ class Attention:
   # Conservatively discount already counted rest across the reported night, never double-credit it.
   next_day=(datetime.fromisoformat(day)+timedelta(days=1)).date().isoformat()
   counted=c.execute('SELECT COALESCE(sum(rest_seconds),0)/3600 FROM attention_days WHERE day IN (?,?)',(day,next_day)).fetchone()[0]
-  hours=max(0,min(hours,10)-counted)
+  hours=max(0,min(hours,10)*quality-counted)
   import json
   cfg=c.execute("SELECT value FROM module_settings WHERE key='attention_options'").fetchone();o=json.loads(cfg[0]) if cfg else {}
   spent=c.execute('SELECT spent FROM attention_capacity WHERE day=?',(today.isoformat(),)).fetchone();cap=max(0,100-(spent[0] if spent else 0)/2)

@@ -2,7 +2,7 @@ import tempfile,unittest
 from pathlib import Path
 from datetime import datetime,timedelta
 from unittest.mock import patch
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication,QMessageBox
 from PySide6.QtCore import QCoreApplication,QEvent,QSize,QDate,Qt,QPoint
 from PySide6.QtTest import QTest
 from PySide6.QtGui import QPixmap,QColor
@@ -15,6 +15,7 @@ APP=QApplication.instance() or QApplication([])
 ROOT=Path(__file__).resolve().parents[1]
 class PolishTests(unittest.TestCase):
  def setUp(self):
+  confirm=patch('PySide6.QtWidgets.QMessageBox.question',return_value=QMessageBox.StandardButton.Yes);confirm.start();self.addCleanup(confirm.stop)
   self.tmp=tempfile.TemporaryDirectory(dir=ROOT/'tests',prefix='sunday-polish-');self.cfg=Config(self.tmp.name);self.h=ModuleHub(self.cfg,Store(self.cfg.data),start_timer=False);self.h.focus.set_options({'llm_feedback':False});self.widgets=[]
  def tearDown(self):
   self.h.close()

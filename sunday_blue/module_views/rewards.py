@@ -70,7 +70,11 @@ class RewardsPage(QWidget):
         money=QDoubleSpinBox();money.setRange(0,100000);money.setPrefix('¥ ')
         roles=QComboBox()
         for rid,name,*_ in list_roles(self.hub.root):roles.addItem(name,rid)
-        for label,widget in [('名称',title),('金币价格',cost),('类别',kind),('分钟（时间奖励）',minutes),('金额（预算奖励）',money),('角色（心意）',roles)]:form.addRow(label,widget)
+        for label,widget in [('名称',title),('金币价格',cost),('类别',kind),('分钟（时间奖励）',minutes),('可兑换消费额度（元）',money),('角色（心意）',roles)]:form.addRow(label,widget)
+        explanation=QLabel('例如：花20金币兑换10元奶茶额度。金额会占用月度现实奖励额度（默认100元），不是额外发钱；实际花费仍需确认。仅现实预算奖励使用此项。');explanation.setWordWrap(True);form.addRow(explanation)
+        def update_fields():
+            minutes.setEnabled(kind.currentData()=='leisure');money.setEnabled(kind.currentData()=='budget');roles.setEnabled(kind.currentData()=='gift')
+        kind.currentIndexChanged.connect(update_fields);update_fields()
         save=QPushButton('保存奖励');save.clicked.connect(dialog.accept);form.addRow(save)
         if dialog.exec()==QDialog.DialogCode.Accepted:
             self.invoke(lambda:self.hub.rewards.add(title.text(),cost.value(),kind.currentData(),minutes.value(),round(money.value()*100),roles.currentData() if kind.currentData()=='gift' else None))
