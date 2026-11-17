@@ -19,7 +19,7 @@ class LearningPage(ModulePage):
   for title,kind in [('添加课程','subject'),('添加章节','chapter'),('添加知识点','unit')]:button(title,lambda checked=False,k=kind:self.add(k),row,kind=='subject')
   self.search=QLineEdit();self.search.setPlaceholderText('搜索名称、备注、疑惑或拓展');self.search.setClearButtonEnabled(True);row.addWidget(self.search,1);box.addLayout(row)
   self.summary=label();box.addWidget(self.summary)
-  reviewbar=QHBoxLayout();button('加入复习计划',self.add_review,reviewbar);button('今日复习 / 历史',self.open_reviews,reviewbar);button('错题档案',self.open_errors,reviewbar);button('暂存杂念',self.capture_thought,reviewbar);button('恢复已删除目录',lambda:self.invoke(self.hub.learning.restore_hidden),reviewbar);box.addLayout(reviewbar)
+  reviewbar=QHBoxLayout();button('加入复习计划',self.add_review,reviewbar);button('今日复习 / 历史',self.open_reviews,reviewbar);button('错题档案',self.open_errors,reviewbar);box.addLayout(reviewbar);reviewbar=QHBoxLayout();button('暂存杂念',self.capture_thought,reviewbar);button('灵感收件箱',self.open_inbox,reviewbar);button('恢复已删除目录',lambda:self.invoke(self.hub.learning.restore_hidden),reviewbar);box.addLayout(reviewbar)
   self.split=QSplitter();self.tree=OrderedTree();self.tree.reordered.connect(lambda ids:self.invoke(lambda:self.hub.learning.reorder(ids)));self.tree.setHeaderLabels(['课程 / 章节 / 知识点','熟悉进度','备注']);self.tree.setIndentation(22);self.tree.setAlternatingRowColors(True);self.tree.header().setSectionResizeMode(0,QHeaderView.ResizeMode.Stretch);self.tree.header().setSectionResizeMode(1,QHeaderView.ResizeMode.ResizeToContents);self.tree.header().setSectionResizeMode(2,QHeaderView.ResizeMode.ResizeToContents);self.split.addWidget(self.tree)
   self.tree.setStyleSheet('QTreeWidget::item {padding: 8px 4px;} QTreeWidget::item:selected {background: rgba(100,120,150,45); color: palette(text);} QTreeWidget::branch:selected {background: rgba(100,120,150,45);}');self.tree.header().setStretchLastSection(False);self.split.setChildrenCollapsible(False)
   pane=QWidget();right=QVBoxLayout(pane);self.detail_title=label('选择一个条目','cardTitle');right.addWidget(self.detail_title);self.detail=label();right.addWidget(self.detail)
@@ -34,6 +34,9 @@ class LearningPage(ModulePage):
   button('练习与旧记录',self.legacy_history,right);self.split.addWidget(pane);self.split.setSizes([600,390]);box.addWidget(self.split,1)
   row=QHBoxLayout();button('补报学习时间',self.backfill,row);button('学习当前知识点',self.start,row,True);next_button=button('下一知识点',self.next_unit,row);next_button.setToolTip('只切换笔记条目；正在进行的专注仍属于原知识点。');row.addStretch();box.addLayout(row)
   self.tree.currentItemChanged.connect(lambda *_:self.inspect());self.tree.itemDoubleClicked.connect(lambda *_:self.edit_notes());self.familiarity.activated.connect(self.change_state);self.read_done.clicked.connect(self.chapter);self.search.textChanged.connect(self.filter_items);hub.changed.connect(lambda m:self.refresh() if m in ('learning','focus','modules') else None);self.refresh()
+ def open_inbox(self):
+  from .inbox import show_inbox
+  show_inbox(self)
  def capture_thought(self):
   from datetime import datetime
   body,ok=QInputDialog.getMultiLineText(self,'暂存杂念','原文单独保存并进入记录员→整理员交接，不写入人格记忆。')

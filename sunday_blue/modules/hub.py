@@ -65,6 +65,8 @@ class ModuleHub(QObject):
         self.private_wellbeing=PrivateWellbeing(self.db);self.reports=Reports(self)
         from .focus_dialogue import FocusDialogue
         self.focus_dialogue=FocusDialogue(self)
+        from .inbox_assistant import InboxAssistant
+        self.inbox_assistant=InboxAssistant(self)
         self.social=Social(self.db,config,self.changed.emit);self.jobs={};self._last_event=0
         self.social.can_interrupt=lambda:self.focus.status()['state']!='running' and not self.recovery.protected()
         self.timer=QTimer(self);self.timer.setInterval(5000);self.timer.timeout.connect(self.tick)
@@ -177,6 +179,7 @@ class ModuleHub(QObject):
         if gid in self.jobs:self.jobs[gid].cancel.set()
 
     def tick(self):
+        self.inbox_assistant.pump()
         from .review_plan import ReviewPlan
         ReviewPlan(self.db).remind()
         try:
