@@ -179,7 +179,7 @@ class ModuleHub(QObject):
         if gid in self.jobs:self.jobs[gid].cancel.set()
 
     def tick(self):
-        self.inbox_assistant.pump()
+        # Legacy inbox proposals retained, automatic organization retired.
         from .review_plan import ReviewPlan
         ReviewPlan(self.db).remind()
         try:

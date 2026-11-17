@@ -157,7 +157,7 @@ class CalendarPage(BasePage):
         self.search=QLineEdit();self.search.setPlaceholderText('检索整理记录（留空显示所选日期）');self.search.textChanged.connect(self.refresh);layout.addWidget(self.search)
         self.records=QListWidget();self.records.setWordWrap(True);layout.addWidget(self.records,1)
         row=QHBoxLayout()
-        for title,fn in [('切换当天时间表',self.choose_plan),('归档当日日历',self.archive_day),('写完整日记 / 记录',self.capture),('分类目录',self.new_category),('分类并确认',self.organize),('撤销整理',self.undo)]:
+        for title,fn in [('归档当日日历',self.archive_day),('写完整日记 / 记录',self.capture),('分类目录',self.new_category),('分类并确认',self.organize),('撤销整理',self.undo)]:
             b=QPushButton(title);b.clicked.connect(fn);row.addWidget(b)
         layout.addLayout(row);self.calendar.selectionChanged.connect(self.refresh);self.calendar.currentPageChanged.connect(self.refresh);hub.changed.connect(lambda *_:self.refresh());self.refresh()
     def refresh(self,*args):
@@ -168,8 +168,6 @@ class CalendarPage(BasePage):
         mark=QTextCharFormat();mark.setBackground(QColor(t['accent_soft']));mark.setForeground(QColor(t['text']))
         month=f'{self.calendar.yearShown():04d}-{self.calendar.monthShown():02d}'
         self.calendar.marked=set(self.hub.calendar_days(month));self.calendar.updateCells()
-        from ..modules.day_plan import plan
-        for time,title in plan(self.hub.db,day):self.agenda.addItem('计划 · '+time+' · '+title)
         rows=self.hub.calendar_records(day)
         seconds=sum(r['seconds'] for r in rows);checks=self.hub.planner.checkins(day)
         self.summary.setText(f"{day}\n有效专注 {seconds/3600:.1f} 小时 · 完成 {sum(r['done'] for r in checks)} / {len(checks)} 个打卡 · 当日 +{self.hub.calendar_coins(day)} 金币")

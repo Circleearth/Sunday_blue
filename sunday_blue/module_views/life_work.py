@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt,QDate,QTimer
 from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QFormLayout,QLabel,QPushButton,
     QLineEdit,QPlainTextEdit,QComboBox,QCheckBox,QSpinBox,QDoubleSpinBox,QDateEdit,
     QFrame,QTreeWidget,QTreeWidgetItem,QListWidget,QListWidgetItem,QProgressBar,QTabWidget,
-    QDialog,QDialogButtonBox,QMessageBox,QInputDialog,QScrollArea)
+    QDialog,QDialogButtonBox,QMessageBox,QInputDialog,QScrollArea,QSplitter)
 from ..roles import list_roles
 from ..modules.life_state import MUSCLES
 
@@ -22,7 +22,7 @@ class WorkPage(ModulePage):
         layout=self.layout_header('工作 · 项目档案','时间记录投入，进度记录实际推进。支持嵌套子任务；归档保留历史。')
         row=QHBoxLayout();button('新建任务',lambda:self.edit_task(),row,True);button('添加子任务',self.add_child,row)
         self.archived=QCheckBox('显示已归档');self.archived.toggled.connect(self.refresh);row.addStretch();row.addWidget(self.archived);layout.addLayout(row)
-        self.tree=OrderedTree();self.tree.reordered.connect(lambda ids:self.invoke(lambda:self.hub.work.reorder(ids)));self.tree.setHeaderLabels(['任务','状态','完成进度','投入 / 预计（时间比例）','截止','优先级','备注']);self.tree.setRootIsDecorated(True);self.tree.setAlternatingRowColors(True);layout.addWidget(self.tree,1)
+        self.tree=OrderedTree();self.tree.reordered.connect(lambda ids:self.invoke(lambda:self.hub.work.reorder(ids)));self.tree.setHeaderLabels(['任务','状态','完成进度','投入 / 预计（时间比例）','截止','优先级','备注']);self.tree.setRootIsDecorated(True);self.tree.setAlternatingRowColors(True);self.work_split=QSplitter();self.work_split.addWidget(self.tree);detail=QWidget();detail_box=QVBoxLayout(detail);self.task_heading=QLabel('选择一项工作');self.task_heading.setObjectName('title');self.task_heading.setWordWrap(True);detail_box.addWidget(self.task_heading);self.task_metrics=QLabel();self.task_metrics.setWordWrap(True);detail_box.addWidget(self.task_metrics);self.task_progress=QProgressBar();detail_box.addWidget(self.task_progress);self.task_notes=QPlainTextEdit();self.task_notes.setReadOnly(True);self.task_notes.setPlaceholderText('任务说明与备注会显示在这里');detail_box.addWidget(self.task_notes,1);self.work_split.addWidget(detail);self.work_split.setSizes([330,700]);layout.addWidget(self.work_split,1);self.tree.currentItemChanged.connect(self.inspect_task)
         self.tree.setStyleSheet('QTreeWidget {border: none;} QTreeWidget::item {padding: 12px 6px; border-bottom: 1px solid rgba(128,128,128,45);} QTreeWidget::item:selected {background: rgba(100,120,150,45); color: palette(text); border-left: 3px solid #7189d9;}')
         self.tree.setIndentation(26)
         self.tree.itemDoubleClicked.connect(lambda *_:self.edit_selected())
@@ -38,6 +38,11 @@ class WorkPage(ModulePage):
         self.note_status=QLabel();self.note_status.setObjectName('muted');layout.addWidget(self.note_status);self.tomorrow_note.textChanged.connect(lambda:self.note_status.setText('尚未确认：点击「确认留给明天」后保存。') if self.tomorrow_note.document().isModified() else None)
         self.day_timer=QTimer(self);self.day_timer.setInterval(60000);self.day_timer.timeout.connect(self.refresh_notes);hub.closed.connect(self.day_timer.stop);self.day_timer.start()
         hub.changed.connect(lambda *_:self.refresh());self.refresh()
+    def inspect_task(self,*args):
+        r=self.selected()
+        if not r:
+            self.task_heading.setText('选择一项工作');self.task_metrics.clear();self.task_notes.clear();self.task_progress.setValue(0);return
+        self.task_heading.setText(r['title']);self.task_metrics.setText(f"{STATUS.get(r['status'],r['status'])} · 优先级 {r['priority']} · 截止 {r['due'] or '未设置'}\n已投入 {r['actual_seconds']/60:.1f} 分钟 / 预计 {r['estimate_minutes'] or '未设置'} 分钟");self.task_progress.setValue(round(r['progress']));self.task_progress.setFormat('任务完成 %p%');self.task_notes.setPlainText(r.get('notes',''))
     def refresh_notes(self):
         today=date.today();tomorrow=today+timedelta(days=1);self.today_caption.setText('今天接续 · '+today.isoformat());self.tomorrow_caption.setText('留给明天 · '+tomorrow.isoformat())
         body=self.hub.work.day_note(today.isoformat());self.today_note.setPlainText(body or '今天没有预留备注，直接从任务列表开始。')
@@ -73,6 +78,8 @@ class WorkPage(ModulePage):
         self.tree.expandAll();self.tree.verticalScrollBar().setValue(scroll);self.tree.setColumnWidth(0,280);self.tree.setColumnWidth(2,150);self.tree.setColumnWidth(3,255)
         with self.hub.db.connect() as c:points=c.execute('SELECT COALESCE(sum(amount),0) FROM work_points').fetchone()[0]
         self.achievement.setText(f'工作成就：累计 {points} 积分；每600分提升一级，当前 Lv.{1+points//600}。工作积分独立于学习金币。')
+        for col in range(1,7):self.tree.setColumnHidden(col,True)
+        self.tree.setHeaderLabel('项目与任务');self.tree.setColumnWidth(0,300);self.inspect_task()
         selected_role=self.roles.currentData();self.roles.blockSignals(True);self.roles.clear()
         for rid,name,*_ in list_roles(self.hub.root):self.roles.addItem(name,rid)
         self.roles.setCurrentIndex(max(0,self.roles.findData(selected_role or 'rui')));self.roles.blockSignals(False)

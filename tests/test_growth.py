@@ -80,7 +80,7 @@ class GrowthTests(unittest.TestCase):
   from sunday_blue.modules.workspace import install_workspace
   self.cfg.value['main_page']='reminders';w=MainWindow(self.cfg);hub=install_workspace(w);hub.timer.stop();hub.focus_timer.stop()
   try:
-   self.assertEqual(w.page_stack.count(),9);self.assertEqual(w.page_stack.currentWidget().tabs.currentWidget().__class__.__name__,'RemindersPage')
+   self.assertEqual(w.page_stack.count(),11);self.assertEqual(w.page_stack.currentWidget().tabs.currentWidget().__class__.__name__,'RemindersPage')
    hub.navigate.emit('checkins');self.assertEqual(w.page_stack.currentWidget().tabs.currentWidget().__class__.__name__,'CheckinsPage')
   finally:hub.close();w.tray.exiting=True;w.close();w.tray.icon.hide();w.deleteLater();APP.processEvents()
 
