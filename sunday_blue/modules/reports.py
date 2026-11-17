@@ -73,6 +73,13 @@ class Reports(QObject):
    row=c.execute('SELECT * FROM settlement_reports WHERE id=?',(rid,)).fetchone();return dict(row) if row else None
  def rows(self):
   with self.db.connect() as c:return [dict(r) for r in c.execute('SELECT * FROM settlement_reports ORDER BY end DESC,kind LIMIT 500')]
+ def retry(self,rid):
+  with self.db.connect() as c:
+   r=c.execute('SELECT state FROM settlement_reports WHERE id=?',(rid,)).fetchone()
+   if not r:raise ValueError('报告不存在')
+   if r['state'] in ('running','queued'):raise ValueError('评价正在等待或生成，请稍候')
+   c.execute("UPDATE settlement_reports SET state='queued',updated=? WHERE id=?",(stamp(),rid))
+  self.ready.emit(rid);self.pump()
  def pump(self):
   if self.busy or self.cancel.is_set():return
   with self.db.connect() as c:r=c.execute("SELECT * FROM settlement_reports WHERE state='queued' ORDER BY updated LIMIT 1").fetchone()

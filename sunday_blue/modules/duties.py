@@ -106,7 +106,7 @@ class Duties:
             self.db.emit(c,'duty-extensions:'+uuid.uuid4().hex,'duty.extensions_changed',{'slot':slot,'plugins':value['plugins'],'skills':value['skills']})
         return value
     def capture(self,title,body,request='',files=''):
-        title=str(title).strip();body=str(body).strip();request=str(request).strip();files=str(files).strip()
+        title=str(title).strip();body=str(body);request=str(request).strip();files=str(files).strip()
         if not title or len(title)>120 or not body or len(body)>30000 or len(request)>2000 or len(files)>4000:raise ValueError('记录标题、原文或交接说明长度无效')
         fingerprint=hashlib.sha256(('recorder|'+day()+'|'+body).encode()).hexdigest();rid=uuid.uuid4().hex;hid=uuid.uuid4().hex
         with self.db.connect() as c:

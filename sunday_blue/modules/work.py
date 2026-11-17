@@ -11,6 +11,13 @@ class Work:
     FIELDS={'title','estimate_minutes','due','status','progress','priority','dida_id','notes'}
     STATES={'todo','doing','paused','done'}
 
+    def reorder(self,ids):
+        if len(ids)!=len(set(ids)) or not ids:raise ValueError('顺序无效')
+        with self.db.connect() as c:
+            c.execute('BEGIN IMMEDIATE');rows=[c.execute('SELECT * FROM work_tasks WHERE id=?',(i,)).fetchone() for i in ids]
+            if any(r is None for r in rows) or len({r['parent_id'] for r in rows})!=1:raise ValueError('只能调整同级顺序')
+            c.execute('CREATE TABLE IF NOT EXISTS work_order(id TEXT PRIMARY KEY,position INTEGER)')
+            c.executemany('INSERT INTO work_order VALUES(?,?) ON CONFLICT(id) DO UPDATE SET position=excluded.position',[(key,n) for n,key in enumerate(ids)])
     def __init__(self,db):
         self.db=db
         with db.connect() as conn:
@@ -213,7 +220,9 @@ class Work:
                 times={r[0]:r[1] for r in conn.execute('SELECT l.task_id,COALESCE(sum(a.seconds),0) FROM focus_task_links l JOIN activity_records a ON a.id=l.run_id GROUP BY l.task_id')}
         def total(tid):return times.get(tid,0)+sum(total(k['id']) for k in children.get(tid,[]))
         for tid,r in byid.items():r['actual_seconds']=total(tid)
-        return sorted([r for r in byid.values() if include_archived or not r['archived']],key=lambda r:(r['status']!='done',r['created']))
+        with self.db.connect() as c:
+            c.execute('CREATE TABLE IF NOT EXISTS work_order(id TEXT PRIMARY KEY,position INTEGER)');order=dict(c.execute('SELECT id,position FROM work_order'))
+        return sorted([r for r in byid.values() if include_archived or not r['archived']],key=lambda r:(r['status']!='done',order.get(r['id'],100000),r['created']))
 
     def task(self,tid):
         for row in self.tasks(True):

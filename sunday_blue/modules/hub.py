@@ -177,6 +177,8 @@ class ModuleHub(QObject):
         if gid in self.jobs:self.jobs[gid].cancel.set()
 
     def tick(self):
+        from .review_plan import ReviewPlan
+        ReviewPlan(self.db).remind()
         try:
             self.life.state.settle();self.life.state.report_cycle()
             self.attention.tick(self.focus.status());self.contracts.tick()

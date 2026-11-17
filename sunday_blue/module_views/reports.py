@@ -37,4 +37,4 @@ class ReportsPage(ModulePage):
    if r:body.setPlainText(r['body']);bubble.setText(r['comment'] or ('事实已保存，角色评价正在排队。' if r['state']=='queued' else '正在整理评价…'))
   self.hub.reports.ready.connect(update)
   dlg.finished.connect(lambda *_:self.hub.reports.ready.disconnect(update))
-  actions=QHBoxLayout();box.addLayout(actions);button('复制结算与评价',lambda:QApplication.clipboard().setText(body.toPlainText()+'\n\n角色评价：'+bubble.text()),actions,True);button('关闭',dlg.close,actions);update();dlg.show()
+  actions=QHBoxLayout();box.addLayout(actions);button('复制结算与评价',lambda:QApplication.clipboard().setText(body.toPlainText()+'\n\n角色评价：'+bubble.text()),actions,True);button('重新生成评价',lambda:self.invoke(lambda:self.hub.reports.retry(rid)),actions);button('关闭',dlg.close,actions);update();dlg.show()

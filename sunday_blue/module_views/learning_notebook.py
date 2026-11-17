@@ -1,3 +1,4 @@
+from .ordered_tree import OrderedTree
 """A small learning notebook: hierarchy, familiarity and local notes."""
 from PySide6.QtCore import Qt,QSignalBlocker
 from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QSplitter,QTreeWidget,QTreeWidgetItem,QHeaderView,QLineEdit,QPlainTextEdit,QTabWidget,QComboBox,QCheckBox,QMessageBox,QInputDialog,QProgressBar,QDialog,QPushButton,QDialogButtonBox
@@ -13,12 +14,13 @@ class NotebookDialog(QDialog):
 class LearningPage(ModulePage):
  module='learning'
  def __init__(self,hub,parent=None):
-  super().__init__(parent);self.hub=hub;self.rows=[];box=self.layout_header('学习笔记本','整理课程，记下疑惑，积累自己的理解。章节阅读与知识点熟悉状态分别保留。')
+  super().__init__(parent);self.hub=hub;self.rows=[];box=self.layout_header('学习 · 知识档案','整理课程，记下疑惑，积累自己的理解。章节阅读与知识点熟悉状态分别保留。')
   row=QHBoxLayout()
   for title,kind in [('添加课程','subject'),('添加章节','chapter'),('添加知识点','unit')]:button(title,lambda checked=False,k=kind:self.add(k),row,kind=='subject')
   self.search=QLineEdit();self.search.setPlaceholderText('搜索名称、备注、疑惑或拓展');self.search.setClearButtonEnabled(True);row.addWidget(self.search,1);box.addLayout(row)
   self.summary=label();box.addWidget(self.summary)
-  self.split=QSplitter();self.tree=QTreeWidget();self.tree.setHeaderLabels(['课程 / 章节 / 知识点','熟悉进度','备注']);self.tree.setIndentation(22);self.tree.setAlternatingRowColors(True);self.tree.header().setSectionResizeMode(0,QHeaderView.ResizeMode.Stretch);self.tree.header().setSectionResizeMode(1,QHeaderView.ResizeMode.ResizeToContents);self.tree.header().setSectionResizeMode(2,QHeaderView.ResizeMode.ResizeToContents);self.split.addWidget(self.tree)
+  reviewbar=QHBoxLayout();button('加入复习计划',self.add_review,reviewbar);button('今日复习 / 历史',self.open_reviews,reviewbar);button('错题档案',self.open_errors,reviewbar);button('暂存杂念',self.capture_thought,reviewbar);button('恢复已删除目录',lambda:self.invoke(self.hub.learning.restore_hidden),reviewbar);box.addLayout(reviewbar)
+  self.split=QSplitter();self.tree=OrderedTree();self.tree.reordered.connect(lambda ids:self.invoke(lambda:self.hub.learning.reorder(ids)));self.tree.setHeaderLabels(['课程 / 章节 / 知识点','熟悉进度','备注']);self.tree.setIndentation(22);self.tree.setAlternatingRowColors(True);self.tree.header().setSectionResizeMode(0,QHeaderView.ResizeMode.Stretch);self.tree.header().setSectionResizeMode(1,QHeaderView.ResizeMode.ResizeToContents);self.tree.header().setSectionResizeMode(2,QHeaderView.ResizeMode.ResizeToContents);self.split.addWidget(self.tree)
   self.tree.setStyleSheet('QTreeWidget::item {padding: 8px 4px;} QTreeWidget::item:selected {background: rgba(100,120,150,45); color: palette(text);} QTreeWidget::branch:selected {background: rgba(100,120,150,45);}');self.tree.header().setStretchLastSection(False);self.split.setChildrenCollapsible(False)
   pane=QWidget();right=QVBoxLayout(pane);self.detail_title=label('选择一个条目','cardTitle');right.addWidget(self.detail_title);self.detail=label();right.addWidget(self.detail)
   self.progress=QProgressBar();self.progress.setRange(0,100);right.addWidget(self.progress)
@@ -28,10 +30,35 @@ class LearningPage(ModulePage):
   self.note_tabs=QTabWidget();self.readers={}
   for key,title in [('note','备注 / 小结'),('questions','疑惑'),('extensions','拓展')]:
    text=QPlainTextEdit();text.setReadOnly(True);self.readers[key]=text;self.note_tabs.addTab(text,title)
-  right.addWidget(self.note_tabs,1);row=QHBoxLayout();button('查看 / 编辑笔记',self.edit_notes,row,True);button('重命名',self.rename,row);right.addLayout(row)
+  right.addWidget(self.note_tabs,1);row=QHBoxLayout();button('查看 / 编辑笔记',self.edit_notes,row,True);button('重命名',self.rename,row);button('删除',self.remove_node,row);right.addLayout(row)
   button('练习与旧记录',self.legacy_history,right);self.split.addWidget(pane);self.split.setSizes([600,390]);box.addWidget(self.split,1)
-  row=QHBoxLayout();button('学习当前知识点',self.start,row,True);next_button=button('下一知识点',self.next_unit,row);next_button.setToolTip('只切换笔记条目；正在进行的专注仍属于原知识点。');row.addStretch();box.addLayout(row)
+  row=QHBoxLayout();button('补报学习时间',self.backfill,row);button('学习当前知识点',self.start,row,True);next_button=button('下一知识点',self.next_unit,row);next_button.setToolTip('只切换笔记条目；正在进行的专注仍属于原知识点。');row.addStretch();box.addLayout(row)
   self.tree.currentItemChanged.connect(lambda *_:self.inspect());self.tree.itemDoubleClicked.connect(lambda *_:self.edit_notes());self.familiarity.activated.connect(self.change_state);self.read_done.clicked.connect(self.chapter);self.search.textChanged.connect(self.filter_items);hub.changed.connect(lambda m:self.refresh() if m in ('learning','focus','modules') else None);self.refresh()
+ def capture_thought(self):
+  from datetime import datetime
+  body,ok=QInputDialog.getMultiLineText(self,'暂存杂念','原文单独保存并进入记录员→整理员交接，不写入人格记忆。')
+  if ok and body.strip():
+   self.invoke(lambda:self.hub.duties.capture(datetime.now().strftime('%m-%d %H:%M')+' 学习间隙记录',body,'保留原文；空闲时分类、单独写摘要和待办建议，含糊处向用户确认。'))
+ def remove_node(self):
+  try:r=self.selected()
+  except ValueError:return
+  if QMessageBox.question(self,'移入回收区','删除「'+r['title']+'」及子节点？笔记、历史和专注记录保留。')==QMessageBox.StandardButton.Yes:self.invoke(lambda:self.hub.learning.hide(r['id']))
+ def add_review(self):
+  from ..modules.review_plan import ReviewPlan
+  def action():
+   r=self.selected(True);ReviewPlan(self.hub.db).add(r['id']);QMessageBox.information(self,'已加入','明天开始复习，重复添加不会重置计划。')
+  self.invoke(action)
+ def open_errors(self):
+  from .review_plan import show_errors
+  show_errors(self)
+ def open_reviews(self):
+  from .review_plan import show_reviews
+  show_reviews(self)
+ def backfill(self):
+     from .manual_time import show_backfill
+     try:r=self.selected()
+     except ValueError:return
+     if r:show_backfill(self,'学习',r['id'])
  def selected(self,unit=False):
   item=self.tree.currentItem();r=item.data(0,Qt.ItemDataRole.UserRole) if item else None
   if not r or unit and r['kind']!='unit':raise ValueError('请先选择一个知识点' if unit else '请先选择课程、章节或知识点')
@@ -51,6 +78,7 @@ class LearningPage(ModulePage):
    nid=self.invoke(lambda:self.hub.learning.add(kind,title,parent))
    if nid and nid in self.items:self.tree.setCurrentItem(self.items[nid])
  def refresh(self):
+  scroll=self.tree.verticalScrollBar().value()
   item=self.tree.currentItem();selected=item.data(0,Qt.ItemDataRole.UserRole)['id'] if item else None
   self.rows=self.hub.learning.notebook_rows();self.items={};children={}
   with QSignalBlocker(self.tree):
@@ -69,7 +97,7 @@ class LearningPage(ModulePage):
     if r['kind']=='unit':self.unit_order.append(r['id'])
     visit(r['id'])
   visit(None);units=[r for r in self.rows if r['kind']=='unit'];self.summary.setText(f"{sum(r['kind']=='subject' for r in self.rows)} 门课程 · {len(units)} 个知识点 · 已熟悉 {sum(r['state']=='familiar' for r in units)} 个 · 绑定专注 {sum(r['minutes'] for r in units):.1f} 分钟")
-  self.filter_items();self.inspect()
+  self.filter_items();self.inspect();self.tree.verticalScrollBar().setValue(scroll)
  def filter_items(self,*args):
   query=self.search.text().strip().casefold();byid={r['id']:r for r in self.rows};visible=set()
   matches={r['id'] for r in self.rows if not query or any(query in r[k].casefold() for k in ('title','note','questions','extensions'))}

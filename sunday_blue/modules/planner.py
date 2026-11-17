@@ -95,3 +95,9 @@ class Planner:
         with self.db.connect() as db:
             if not db.execute('SELECT 1 FROM checkins WHERE id=? AND enabled=1',(rid,)).fetchone():raise ValueError('打卡项目不存在')
             db.execute('INSERT OR IGNORE INTO checkin_history VALUES(?,?,?)',(rid,day,stamp()))
+
+    def uncheck(self,rid):
+        with self.db.connect() as c:
+            c.execute('BEGIN IMMEDIATE');c.execute('CREATE TABLE IF NOT EXISTS checkin_deleted(checkin_id TEXT,day TEXT,created TEXT,removed TEXT)')
+            c.execute('INSERT INTO checkin_deleted SELECT checkin_id,day,created,? FROM checkin_history WHERE checkin_id=? AND day=?',(stamp(),rid,date.today().isoformat()))
+            c.execute('DELETE FROM checkin_history WHERE checkin_id=? AND day=?',(rid,date.today().isoformat()))

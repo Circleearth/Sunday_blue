@@ -1,3 +1,4 @@
+from .ordered_tree import OrderedTree
 """Work, daily life and duty-slot views. Domain services own validation and all writes."""
 from datetime import date,timedelta
 import json
@@ -18,17 +19,17 @@ class WorkPage(ModulePage):
     module='work'
     def __init__(self,hub,parent=None):
         super().__init__(parent);self.hub=hub
-        layout=self.layout_header('工作管理','时间记录投入，进度记录实际推进。支持嵌套子任务；归档保留历史。')
+        layout=self.layout_header('工作 · 项目档案','时间记录投入，进度记录实际推进。支持嵌套子任务；归档保留历史。')
         row=QHBoxLayout();button('新建任务',lambda:self.edit_task(),row,True);button('添加子任务',self.add_child,row)
         self.archived=QCheckBox('显示已归档');self.archived.toggled.connect(self.refresh);row.addStretch();row.addWidget(self.archived);layout.addLayout(row)
-        self.tree=QTreeWidget();self.tree.setHeaderLabels(['任务','状态','完成进度','投入 / 预计（时间比例）','截止','优先级']);self.tree.setRootIsDecorated(True);self.tree.setAlternatingRowColors(True);layout.addWidget(self.tree,1)
+        self.tree=OrderedTree();self.tree.reordered.connect(lambda ids:self.invoke(lambda:self.hub.work.reorder(ids)));self.tree.setHeaderLabels(['任务','状态','完成进度','投入 / 预计（时间比例）','截止','优先级','备注']);self.tree.setRootIsDecorated(True);self.tree.setAlternatingRowColors(True);layout.addWidget(self.tree,1)
         self.tree.setStyleSheet('QTreeWidget {border: none;} QTreeWidget::item {padding: 12px 6px; border-bottom: 1px solid rgba(128,128,128,45);} QTreeWidget::item:selected {background: rgba(100,120,150,45); color: palette(text); border-left: 3px solid #7189d9;}')
         self.tree.setIndentation(26)
         self.tree.itemDoubleClicked.connect(lambda *_:self.edit_selected())
-        actions=QHBoxLayout();button('编辑 / 更新进度',self.edit_selected,actions);button('暂缓 / 继续',self.pause_task,actions);button('归档 / 恢复',self.archive_task,actions);button('查看历史',self.show_history,actions);layout.addLayout(actions)
+        actions=QHBoxLayout();button('编辑 / 更新进度',self.edit_selected,actions);button('暂缓 / 继续',self.pause_task,actions);button('归档 / 恢复',self.archive_task,actions);button('查看历史',self.show_history,actions);button('补报工作时间',self.backfill,actions);layout.addLayout(actions)
         focus=QHBoxLayout();focus.addWidget(QLabel('陪伴人格'));self.roles=QComboBox();focus.addWidget(self.roles)
         button('开始所选任务的番茄钟',self.start_selected,focus,True);focus.addStretch();layout.addLayout(focus)
-        self.summary=QLabel();self.summary.setWordWrap(True);layout.addWidget(self.summary)
+        self.achievement=QLabel();layout.addWidget(self.achievement);self.summary=QLabel();self.summary.setWordWrap(True);layout.addWidget(self.summary)
         button('查看今日安排建议',self.suggestions,layout)
         notes=QHBoxLayout();layout.addLayout(notes);left=QVBoxLayout();right=QVBoxLayout();notes.addLayout(left,1);notes.addLayout(right,1)
         self.today_caption=QLabel('今天接续');left.addWidget(self.today_caption);self.today_note=QPlainTextEdit();self.today_note.setReadOnly(True);self.today_note.setMaximumHeight(70);left.addWidget(self.today_note)
@@ -46,14 +47,20 @@ class WorkPage(ModulePage):
         try:
             target=self.hub.work.leave_for_tomorrow(self.tomorrow_note.toPlainText());self.tomorrow_note.document().setModified(False);self.note_status.setText('✓ 已确认，'+target+' 会显示在「今天接续」。');self.refresh_notes();QMessageBox.information(self,'已留给明天','已保存，'+target+' 将显示在「今天接续」。')
         except Exception as exc:QMessageBox.information(self,'备注未保存',str(exc))
+    def backfill(self):
+        from .manual_time import show_backfill
+        try:r=self.selected()
+        except ValueError:return
+        if r:show_backfill(self,'工作',r['id'])
     def selected(self):
         item=self.tree.currentItem();return item.data(0,Qt.ItemDataRole.UserRole) if item else None
     def refresh(self,*args):
         self.refresh_notes()
+        scroll=self.tree.verticalScrollBar().value()
         selected=self.selected();selected_id=selected['id'] if selected else None
         rows=self.hub.work.tasks(self.archived.isChecked());self.tree.clear();items={}
         for row in rows:
-            item=QTreeWidgetItem([row['title']+('（归档）' if row['archived'] else ''),STATUS.get(row['status'],row['status']),'',f"{row['actual_seconds']/60:.1f} / {row['estimate_minutes'] or '未设'} 分钟"+(f" · {row['actual_seconds']/60/row['estimate_minutes']:.0%}" if row['estimate_minutes'] else ''),row['due'] or '未设置',str(row['priority'])])
+            item=QTreeWidgetItem([row['title']+('（归档）' if row['archived'] else ''),STATUS.get(row['status'],row['status']),'',f"{row['actual_seconds']/60:.1f} / {row['estimate_minutes'] or '未设'} 分钟"+(f" · {row['actual_seconds']/60/row['estimate_minutes']:.0%}" if row['estimate_minutes'] else ''),row['due'] or '未设置',str(row['priority']),row.get('notes','')])
             item.setData(0,Qt.ItemDataRole.UserRole,row);items[row['id']]=item
         for row in rows:
             item=items[row['id']];parent_item=items.get(row['parent_id'])
@@ -63,7 +70,9 @@ class WorkPage(ModulePage):
             item=items[row['id']]
             progress=QProgressBar();progress.setRange(0,100);progress.setValue(round(row['progress']));progress.setFormat('完成 %p%');progress.setMaximumHeight(20);self.tree.setItemWidget(item,2,progress)
             if row['id']==selected_id:self.tree.setCurrentItem(item)
-        self.tree.expandAll();self.tree.setColumnWidth(0,280);self.tree.setColumnWidth(2,150);self.tree.setColumnWidth(3,255)
+        self.tree.expandAll();self.tree.verticalScrollBar().setValue(scroll);self.tree.setColumnWidth(0,280);self.tree.setColumnWidth(2,150);self.tree.setColumnWidth(3,255)
+        with self.hub.db.connect() as c:points=c.execute('SELECT COALESCE(sum(amount),0) FROM work_points').fetchone()[0]
+        self.achievement.setText(f'工作成就：累计 {points} 积分；每600分提升一级，当前 Lv.{1+points//600}。工作积分独立于学习金币。')
         selected_role=self.roles.currentData();self.roles.blockSignals(True);self.roles.clear()
         for rid,name,*_ in list_roles(self.hub.root):self.roles.addItem(name,rid)
         self.roles.setCurrentIndex(max(0,self.roles.findData(selected_role or 'rui')));self.roles.blockSignals(False)

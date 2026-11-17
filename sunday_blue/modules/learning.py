@@ -6,9 +6,31 @@ from .life import number
 
 FAMILIARITY={'unseen':('未接触',0),'learning':('学习中',50),'familiar':('已熟悉',100)}
 class Learning:
+ def hide(self,nid):
+  with self.db.connect() as c:
+   c.execute('BEGIN IMMEDIATE');rows=list(c.execute('SELECT id,parent FROM learning_nodes'));ids={nid}
+   while True:
+    expanded=ids|{r['id'] for r in rows if r['parent'] in ids}
+    if expanded==ids:break
+    ids=expanded
+   if not any(r['id']==nid for r in rows):raise ValueError('条目不存在')
+   if c.execute("SELECT 1 FROM sqlite_master WHERE name='focus_runs'").fetchone():
+    for key in ids:
+     if c.execute("SELECT 1 FROM learning_focus_links l JOIN focus_runs f ON f.id=l.run_id WHERE l.unit=? AND f.state IN ('running','paused')",(key,)).fetchone():raise ValueError('请先结束关联的专注')
+   c.executemany('INSERT OR IGNORE INTO learning_hidden VALUES(?)',[(key,) for key in ids])
+ def restore_hidden(self):
+  with self.db.connect() as c:c.execute('DELETE FROM learning_hidden')
+ def reorder(self,ids):
+     if len(ids)!=len(set(ids)) or not ids:raise ValueError('顺序无效')
+     with self.db.connect() as c:
+         c.execute('BEGIN IMMEDIATE');rows=[c.execute('SELECT * FROM learning_nodes WHERE id=?',(i,)).fetchone() for i in ids]
+         if any(r is None for r in rows) or len({r['parent'] for r in rows})!=1:raise ValueError('只能调整同级顺序')
+         c.execute('CREATE TABLE IF NOT EXISTS learning_order(id TEXT PRIMARY KEY,position INTEGER)')
+         c.executemany('INSERT INTO learning_order VALUES(?,?) ON CONFLICT(id) DO UPDATE SET position=excluded.position',[(key,n) for n,key in enumerate(ids)])
  def __init__(self,db):
   self.db=db
   with db.connect() as c:c.executescript('''
+   CREATE TABLE IF NOT EXISTS learning_hidden(id TEXT PRIMARY KEY);
    CREATE TABLE IF NOT EXISTS learning_notebook(node TEXT PRIMARY KEY,note TEXT NOT NULL,questions TEXT NOT NULL,extensions TEXT NOT NULL,state TEXT NOT NULL,updated TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS learning_note_history(id INTEGER PRIMARY KEY,node TEXT,before_json TEXT,created TEXT);
    CREATE TABLE IF NOT EXISTS learning_nodes(id TEXT PRIMARY KEY,parent TEXT,kind TEXT,title TEXT,self_score REAL DEFAULT 0,done INTEGER DEFAULT 0,created TEXT);
@@ -20,14 +42,16 @@ class Learning:
   ''')
  def notebook_rows(self):
   with self.db.connect() as c:
-   rows=[dict(r) for r in c.execute("SELECT n.*,COALESCE(b.note,'') AS note,COALESCE(b.questions,'') AS questions,COALESCE(b.extensions,'') AS extensions,COALESCE(b.state,CASE WHEN m.unit IS NOT NULL THEN 'familiar' ELSE 'unseen' END) AS state FROM learning_nodes n LEFT JOIN learning_notebook b ON b.node=n.id LEFT JOIN learning_mastery m ON m.unit=n.id ORDER BY n.created,n.rowid")]
+   rows=[dict(r) for r in c.execute("SELECT n.*,COALESCE(b.note,'') AS note,COALESCE(b.questions,'') AS questions,COALESCE(b.extensions,'') AS extensions,COALESCE(b.state,CASE WHEN m.unit IS NOT NULL THEN 'familiar' ELSE 'unseen' END) AS state FROM learning_nodes n LEFT JOIN learning_notebook b ON b.node=n.id LEFT JOIN learning_mastery m ON m.unit=n.id WHERE n.id NOT IN (SELECT id FROM learning_hidden) ORDER BY n.created,n.rowid")]
    times={r[0]:r[1] for r in c.execute('SELECT l.unit,sum(a.seconds)/60.0 FROM learning_focus_links l JOIN activity_records a ON a.id=l.run_id GROUP BY l.unit')}
   children={}
   for r in rows:children.setdefault(r['parent'],[]).append(r)
   def units(r):return [r] if r['kind']=='unit' else [u for child in children.get(r['id'],[]) for u in units(child)]
   for r in rows:
    leaves=units(r);r['progress']=sum(FAMILIARITY[u['state']][1] for u in leaves)/len(leaves) if leaves else 0;r['familiar_count']=sum(u['state']=='familiar' for u in leaves);r['unit_count']=len(leaves);r['minutes']=sum(times.get(u['id'],0) for u in leaves)
-  return rows
+  with self.db.connect() as c:
+   c.execute('CREATE TABLE IF NOT EXISTS learning_order(id TEXT PRIMARY KEY,position INTEGER)');order=dict(c.execute('SELECT id,position FROM learning_order'))
+  return sorted(rows,key=lambda r:order.get(r['id'],100000))
  def notebook(self,nid):
   for r in self.notebook_rows():
    if r['id']==nid:return r

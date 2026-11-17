@@ -157,7 +157,7 @@ class CalendarPage(BasePage):
         self.search=QLineEdit();self.search.setPlaceholderText('检索整理记录（留空显示所选日期）');self.search.textChanged.connect(self.refresh);layout.addWidget(self.search)
         self.records=QListWidget();self.records.setWordWrap(True);layout.addWidget(self.records,1)
         row=QHBoxLayout()
-        for title,fn in [('归档当日日历',self.archive_day),('写完整日记 / 记录',self.capture),('分类目录',self.new_category),('分类并确认',self.organize),('撤销整理',self.undo)]:
+        for title,fn in [('切换当天时间表',self.choose_plan),('归档当日日历',self.archive_day),('写完整日记 / 记录',self.capture),('分类目录',self.new_category),('分类并确认',self.organize),('撤销整理',self.undo)]:
             b=QPushButton(title);b.clicked.connect(fn);row.addWidget(b)
         layout.addLayout(row);self.calendar.selectionChanged.connect(self.refresh);self.calendar.currentPageChanged.connect(self.refresh);hub.changed.connect(lambda *_:self.refresh());self.refresh()
     def refresh(self,*args):
@@ -168,6 +168,8 @@ class CalendarPage(BasePage):
         mark=QTextCharFormat();mark.setBackground(QColor(t['accent_soft']));mark.setForeground(QColor(t['text']))
         month=f'{self.calendar.yearShown():04d}-{self.calendar.monthShown():02d}'
         self.calendar.marked=set(self.hub.calendar_days(month));self.calendar.updateCells()
+        from ..modules.day_plan import plan
+        for time,title in plan(self.hub.db,day):self.agenda.addItem('计划 · '+time+' · '+title)
         rows=self.hub.calendar_records(day)
         seconds=sum(r['seconds'] for r in rows);checks=self.hub.planner.checkins(day)
         self.summary.setText(f"{day}\n有效专注 {seconds/3600:.1f} 小时 · 完成 {sum(r['done'] for r in checks)} / {len(checks)} 个打卡 · 当日 +{self.hub.calendar_coins(day)} 金币")
@@ -181,6 +183,10 @@ class CalendarPage(BasePage):
         self.records.clear()
         for r in self.hub.organizer.search(self.search.text(),None if self.search.text() else day):
             item=QListWidgetItem(f"{r['category']} · {r['title']} · {r['status']}\n{r['body'][:500]}");item.setData(Qt.ItemDataRole.UserRole,r);self.records.addItem(item)
+    def choose_plan(self):
+        value,ok=QInputDialog.getItem(self,'当天时间表','计划不代表已完成，不自动发奖',['正常工作日','晚归日','晚归次日'],0,False)
+        if ok:
+            self.hub.db.set('day_plan:'+self.calendar.selectedDate().toString('yyyy-MM-dd'),{'正常工作日':'normal','晚归日':'late','晚归次日':'after'}[value]);self.refresh()
     def archive_day(self):
         import json
         day=self.calendar.selectedDate().toString('yyyy-MM-dd')
@@ -242,7 +248,7 @@ class CheckinsPage(BasePage):
         local_page=QWidget();local_layout=QVBoxLayout(local_page);tabs.addTab(local_page,'本地打卡')
         local_layout.addWidget(QLabel('这里的打卡保存在 Sunday_Blue，不会创建滴答任务。'))
         self.items=QListWidget();local_layout.addWidget(self.items)
-        for title,fn in [('添加打卡',self.add),('确认今天已完成',self.check)]:
+        for title,fn in [('添加打卡',self.add),('确认今天已完成',self.check),('删除今日打卡记录',self.uncheck)]:
             button=QPushButton(title);button.clicked.connect(fn);local_layout.addWidget(button)
         self.remote.itemChanged.connect(self.complete_checked)
         self.query.textChanged.connect(self.refresh);self.scope.currentIndexChanged.connect(self.refresh);self.projects.currentIndexChanged.connect(self.refresh)
@@ -300,3 +306,7 @@ class CheckinsPage(BasePage):
     def check(self):
         item=self.items.currentItem()
         if item:self.invoke(lambda:self.hub.planner.check(item.data(Qt.ItemDataRole.UserRole)['id']))
+
+    def uncheck(self):
+        item=self.items.currentItem()
+        if item and QMessageBox.question(self,'删除今日记录','撤销今日这次打卡？项目及其他日期记录保留。')==QMessageBox.StandardButton.Yes:self.invoke(lambda:self.hub.planner.uncheck(item.data(Qt.ItemDataRole.UserRole)['id']))
