@@ -20,7 +20,7 @@ class RewardsPage(QWidget):
         self.items=QListWidget();self.items.setViewMode(QListWidget.ViewMode.IconMode);self.items.setResizeMode(QListWidget.ResizeMode.Adjust);self.items.setMovement(QListWidget.Movement.Static);self.items.setGridSize(QSize(270,245));self.items.setSpacing(12);body.addWidget(self.items,1)
         self.mascot=EditableImage(hub.root,'shop_mascot',hub.root/'assets/shop/mascot.png',ratio=.6);self.mascot.setMinimumWidth(180);body.addWidget(self.mascot)
         row=QHBoxLayout()
-        for label,callback in [('兑换所选',self.redeem),('商店设置',self.settings)]:
+        for label,callback in [('兑换所选',self.redeem),('修改商品',self.edit_selected),('删除商品',self.remove_selected),('商店设置',self.settings)]:
             button=QPushButton(label);button.clicked.connect(callback);row.addWidget(button)
         layout.addLayout(row);layout.addWidget(QLabel('最近兑换'));self.history=QListWidget();layout.addWidget(self.history,1)
         confirm=QPushButton('确认所选奖励已实际消费');confirm.clicked.connect(self.confirm);layout.addWidget(confirm)
@@ -61,7 +61,16 @@ class RewardsPage(QWidget):
     def invoke(self,fn):
         try:result=fn();self.hub.relations.project();self.refresh();self.hub.changed.emit('rewards');return result
         except Exception as exc:QMessageBox.warning(self,'未完成',str(exc))
-    def add(self):
+    def edit_selected(self):
+        item=self.items.currentItem()
+        if item:self.add(item.data(Qt.ItemDataRole.UserRole))
+    def remove_selected(self):
+        item=self.items.currentItem()
+        if not item:return
+        r=item.data(Qt.ItemDataRole.UserRole)
+        if QMessageBox.question(self,'删除商品','将下架「'+r['title']+'」，已有兑换和账目保留。确认？')==QMessageBox.StandardButton.Yes:self.invoke(lambda:self.hub.rewards.remove(r['id']))
+    def add(self,existing=None):
+        existing=existing if isinstance(existing,dict) else {}
         dialog=QDialog(self);dialog.setWindowTitle('添加现实奖励或心意');form=QFormLayout(dialog)
         title=QLineEdit();cost=QSpinBox();cost.setRange(1,100000);cost.setValue(20)
         kind=QComboBox()
@@ -75,9 +84,11 @@ class RewardsPage(QWidget):
         def update_fields():
             minutes.setEnabled(kind.currentData()=='leisure');money.setEnabled(kind.currentData()=='budget');roles.setEnabled(kind.currentData()=='gift')
         kind.currentIndexChanged.connect(update_fields);update_fields()
+        if existing:
+            title.setText(existing['title']);cost.setValue(existing['cost']);kind.setCurrentIndex(kind.findData(existing['kind']));minutes.setValue(existing['minutes']);money.setValue(existing['cents']/100);roles.setCurrentIndex(roles.findData(existing['role_id']));update_fields()
         save=QPushButton('保存奖励');save.clicked.connect(dialog.accept);form.addRow(save)
         if dialog.exec()==QDialog.DialogCode.Accepted:
-            self.invoke(lambda:self.hub.rewards.add(title.text(),cost.value(),kind.currentData(),minutes.value(),round(money.value()*100),roles.currentData() if kind.currentData()=='gift' else None))
+            self.invoke(lambda:self.hub.rewards.add(title.text(),cost.value(),kind.currentData(),minutes.value(),round(money.value()*100),roles.currentData() if kind.currentData()=='gift' else None,reward_id=existing.get('id')))
     def redeem(self):
         item=self.items.currentItem()
         if not item:return

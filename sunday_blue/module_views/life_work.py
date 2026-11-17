@@ -44,7 +44,7 @@ class WorkPage(ModulePage):
             self.tomorrow_note.setPlainText(self.hub.work.day_note(tomorrow.isoformat()));self.tomorrow_note.document().setModified(False)
     def save_tomorrow(self):
         try:
-            target=self.hub.work.leave_for_tomorrow(self.tomorrow_note.toPlainText());self.tomorrow_note.document().setModified(False);self.note_status.setText('✓ 已确认，'+target+' 会显示在「今天接续」。');self.refresh_notes()
+            target=self.hub.work.leave_for_tomorrow(self.tomorrow_note.toPlainText());self.tomorrow_note.document().setModified(False);self.note_status.setText('✓ 已确认，'+target+' 会显示在「今天接续」。');self.refresh_notes();QMessageBox.information(self,'已留给明天','已保存，'+target+' 将显示在「今天接续」。')
         except Exception as exc:QMessageBox.information(self,'备注未保存',str(exc))
     def selected(self):
         item=self.tree.currentItem();return item.data(0,Qt.ItemDataRole.UserRole) if item else None

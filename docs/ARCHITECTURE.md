@@ -165,3 +165,7 @@ Build Sunday Blue.bat → build.ps1 → SundayBlue.spec，SPECPATH 为 spec 所�
 ## 每日确认事务（2026-11-14）
 
 `Life.finalize_daily` 使用单连接事务调用 `save_daily` 与 `PrivateWellbeing.save`；`daily_finalized` 附表保存按生活日期唯一的恢复系数及三个分项。`sleep_quality.py` 是独立纯计算，不访问API。新确认记录由服务层校验禁止后续覆盖；低层 save_daily 保留未锁定旧记录兼容行为，不迁移历史。Attention.apply_sleep 仍保留按日期一次的回执，并接受恢复系数。体力估算按昨天确认系数建立当天基线，沿用运动消耗。UI 显示上报日，selected_day 仍返回前一日，保持报告和私人记录原关联。测试见 test_daily_finalize.py。
+
+## 2026-11-17 中期优化第一批
+
+商店支持修改与确认下架，reward_hidden 附表保留商品与兑换历史，修改只影响未来兑换。生活页返回今日入口移至顶部，工作明日便签保存后明确弹窗。复习系统、任务树排序、错题导出、时间补报和日历规划等仍待后续实现，本批不宣称完成。

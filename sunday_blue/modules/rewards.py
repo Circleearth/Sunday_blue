@@ -14,6 +14,7 @@ class Rewards:
                 id TEXT PRIMARY KEY, amount INTEGER NOT NULL, reason TEXT, created TEXT);
                 CREATE TABLE IF NOT EXISTS real_budget (
                 id TEXT PRIMARY KEY, cents INTEGER NOT NULL, note TEXT, created TEXT);
+                CREATE TABLE IF NOT EXISTS reward_hidden(id TEXT PRIMARY KEY);
                 CREATE TABLE IF NOT EXISTS rewards (
                 id TEXT PRIMARY KEY,title TEXT,cost INTEGER,kind TEXT,minutes INTEGER,cents INTEGER,role_id TEXT);
                 CREATE TABLE IF NOT EXISTS redemptions (
@@ -23,18 +24,28 @@ class Rewards:
                 db.execute('INSERT OR IGNORE INTO rewards VALUES(?,?,?,?,?,?,?)',r)
 
     def list(self):
-        with self.db.connect() as db: return [dict(r) for r in db.execute('SELECT * FROM rewards ORDER BY cost,title')]
+        with self.db.connect() as db: return [dict(r) for r in db.execute('SELECT * FROM rewards WHERE id NOT IN (SELECT id FROM reward_hidden) ORDER BY cost,title')]
 
-    def add(self,title,cost,kind='leisure',minutes=0,cents=0,role_id=None):
+    def add(self,title,cost,kind='leisure',minutes=0,cents=0,role_id=None,reward_id=None):
         title=str(title).strip();cost=int(cost);minutes=int(minutes);cents=int(cents)
         if not title or len(title)>100 or not 1<=cost<=100000 or kind not in ('leisure','budget','gift'):
             raise ValueError('请填写奖励名称、正整数金币和有效奖励类别。')
         if minutes<0 or cents<0: raise ValueError('时长和金额不能为负。')
         if kind=='budget' and cents<=0: raise ValueError('预算奖励必须填写实际金额。')
         if kind=='gift': require_role(self.db.root,role_id)
-        rid=uuid.uuid4().hex
-        with self.db.connect() as db: db.execute('INSERT INTO rewards VALUES(?,?,?,?,?,?,?)',(rid,title,cost,kind,minutes,cents,role_id))
+        rid=reward_id or uuid.uuid4().hex
+        with self.db.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            if reward_id:
+                if not db.execute('SELECT 1 FROM rewards WHERE id=?',(rid,)).fetchone():raise ValueError('商品不存在')
+                db.execute('UPDATE rewards SET title=?,cost=?,kind=?,minutes=?,cents=?,role_id=? WHERE id=?',(title,cost,kind,minutes,cents,role_id,rid));return rid
+            db.execute('INSERT INTO rewards VALUES(?,?,?,?,?,?,?)',(rid,title,cost,kind,minutes,cents,role_id))
         return rid
+
+    def remove(self,rid):
+        with self.db.connect() as db:
+            if not db.execute('SELECT 1 FROM rewards WHERE id=?',(rid,)).fetchone():raise ValueError('商品不存在')
+            db.execute('INSERT OR IGNORE INTO reward_hidden VALUES(?)',(rid,))
 
     @staticmethod
     def balance(db):
@@ -51,7 +62,7 @@ class Rewards:
             previous=db.execute('SELECT * FROM redemptions WHERE request_id=?',(request_id,)).fetchone()
             if previous:return dict(previous)
             reward=db.execute('SELECT * FROM rewards WHERE id=?',(reward_id,)).fetchone()
-            if not reward: raise ValueError('奖励不存在')
+            if not reward or db.execute('SELECT 1 FROM reward_hidden WHERE id=?',(reward_id,)).fetchone(): raise ValueError('奖励不存在或已下架')
             if reward['kind']=='gift':require_role(self.db.root,reward['role_id'])
             if self.balance(db)<reward['cost']:raise ValueError('金币不足；休息不需要兑换，也不会扣关系。')
             rid=uuid.uuid4().hex

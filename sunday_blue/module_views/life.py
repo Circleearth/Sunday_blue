@@ -15,7 +15,7 @@ class LifePage(ModulePage):
         super().__init__(parent);self.hub=hub;self.setObjectName('lifePage')
         layout=QVBoxLayout(self);layout.setContentsMargins(24,20,24,16);layout.setSpacing(14)
         head=QHBoxLayout();titles=QVBoxLayout();titles.addWidget(label('生活 · 恢复站','title'));self.state_note=label();titles.addWidget(self.state_note);head.addLayout(titles,1)
-        button('补报未记录日期',self.open_missing_daily,head);button('记录运动',lambda:self.exercise_dialog(),head,True);layout.addLayout(head)
+        button('返回今日上报',self.open_daily,head);button('补报未记录日期',self.open_missing_daily,head);button('记录运动',lambda:self.exercise_dialog(),head,True);layout.addLayout(head)
         self.tabs=QTabWidget();self.tabs.setObjectName('lifeTabs');layout.addWidget(self.tabs,1)
         recovery,rec=self.page('恢复站')
         self.cards_row=QBoxLayout(QBoxLayout.Direction.LeftToRight);self.cards_row.setSpacing(12);self.cards={};self.bars={}
@@ -52,7 +52,7 @@ class LifePage(ModulePage):
         meal,ml=card('饮食与备注');self.meal=QPlainTextEdit();self.meal.setPlaceholderText('简单记下吃了什么，不需要精确到每一克');self.meal.setMaximumHeight(100);ml.addWidget(self.meal);self.note=QLineEdit();self.note.setPlaceholderText('其他想记下的事');ml.addWidget(self.note);daily_row.addWidget(meal,1)
         phone,ph=card('手机使用');pf=QFormLayout();self.phone_total=hm_pair();self.phone_fun=hm_pair();pf.addRow('总使用时长',self.phone_total);pf.addRow('其中娱乐',self.phone_fun);ph.addLayout(pf);ph.addWidget(label('未知可留空；娱乐时长包含在总时长内。'));daily_row.addWidget(phone,1);dl.addLayout(daily_row)
         save=QHBoxLayout();self.submit_daily=button('保存上报并生成日结算',self.save_daily,save,True);self.daily_status=label();save.addWidget(self.daily_status,1);dl.addLayout(save)
-        self.saved_panel=QWidget();saved_box=QVBoxLayout(self.saved_panel);self.saved_message=label('已经记下了昨天，今天可以安心继续。','cardTitle');saved_box.addWidget(self.saved_message);button('返回今日上报',self.open_daily,saved_box);button('补充上报以前内容',self.open_missing_daily,saved_box);dl.addWidget(self.saved_panel);self.saved_panel.hide()
+        self.saved_panel=QWidget();saved_box=QVBoxLayout(self.saved_panel);self.saved_message=label('已经记下了昨天，今天可以安心继续。','cardTitle');saved_box.addWidget(self.saved_message);button('补充上报以前内容',self.open_missing_daily,saved_box);dl.addWidget(self.saved_panel);self.saved_panel.hide()
         self.daily_sections=[top,sleep,meal,phone];self.daily_save_row=save
         house,hl=card('顺手完成一件家务');row=QHBoxLayout();self.house_title=QLineEdit();self.house_title.setPlaceholderText('例如整理桌面');row.addWidget(self.house_title);button('今日家务打卡',self.housework,row);hl.addLayout(row);dl.addWidget(house);dl.addStretch()
         exercise,ex=self.page('运动记录');top=QHBoxLayout();button('记录一场运动',lambda:self.exercise_dialog(),top,True);button('修改所选记录',self.edit_exercise,top);top.addStretch();self.exercise_summary=label();top.addWidget(self.exercise_summary);ex.addLayout(top)

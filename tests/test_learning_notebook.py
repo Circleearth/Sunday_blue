@@ -53,4 +53,6 @@ class NotebookTests(unittest.TestCase):
   with self.h.db.connect() as c:self.assertEqual(c.execute('SELECT body FROM work_day_note_history').fetchone()[0],'明天继续报告')
   w.leave_for_tomorrow('今天的接续',today=today-timedelta(days=1));page=WorkPage(self.h);self.widgets.append(page);self.assertIn('今天的接续',page.today_note.toPlainText())
   page.tomorrow_note.insertPlainText('尚未保存');draft=page.tomorrow_note.toPlainText();page.refresh();self.assertEqual(page.tomorrow_note.toPlainText(),draft)
-  titles=[b.text() for b in page.findChildren(QPushButton)];self.assertFalse(any('恢复安排' in t or '下班结算' in t for t in titles));page.save_tomorrow();self.assertEqual(w.day_note(tomorrow),draft)
+  titles=[b.text() for b in page.findChildren(QPushButton)];self.assertFalse(any('恢复安排' in t or '下班结算' in t for t in titles));
+  with patch('PySide6.QtWidgets.QMessageBox.information'):page.save_tomorrow()
+  self.assertEqual(w.day_note(tomorrow),draft)
