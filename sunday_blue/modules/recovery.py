@@ -32,12 +32,12 @@ class Recovery:
         from .work import Work
         work=Work(self.db)
         with self.db.connect() as c:
-            rows=[dict(r) for r in c.execute("SELECT id,label,seconds FROM activity_records WHERE day=? AND category='工作' ORDER BY finished",(day(),))]
+            rows=[dict(r) for r in c.execute("SELECT id,label,seconds FROM activity_by_day WHERE day=? AND category='工作' ORDER BY finished",(day(),))]
             changes=[dict(r) for r in c.execute("SELECT task_id,payload,created FROM work_history WHERE kind='updated' AND created>=?",((__import__('datetime').date.fromisoformat(day())-__import__('datetime').timedelta(days=1)).isoformat(),))]
         # Only actual progress changes today, not all-time completed tasks.
         progress=[]
         for r in changes:
-            if datetime.fromisoformat(r['created']).astimezone().date().isoformat()!=day():continue
+            if day(datetime.fromisoformat(r['created']))!=day():continue
             p=json.loads(r['payload']);after=p.get('after',{})
             if 'progress' in after or after.get('status')=='done':progress.append({'task_id':r['task_id'],'before':p.get('before',{}),'after':after})
         tasks=work.tasks(True);byid={t['id']:t for t in tasks};completed_ids={p['task_id'] for p in progress if p['after'].get('status')=='done'}
@@ -46,7 +46,7 @@ class Recovery:
             while parent in byid:
                 if byid[parent]['status']=='done':completed_ids.add(parent)
                 parent=byid[parent]['parent_id']
-        created=[t['title'] for t in work.tasks(True) if datetime.fromisoformat(t['created']).astimezone().date().isoformat()==day()]
+        created=[t['title'] for t in work.tasks(True) if day(datetime.fromisoformat(t['created']))==day()]
         snapshot={'created':created,'day':day(),'minutes':round(sum(r['seconds'] for r in rows)/60,1),'segments':len(rows),'progress':progress[-20:],
                   'completed':[t['title'] for t in tasks if t['status']=='done' and t['id'] in completed_ids]}
         key=hashlib.sha256(json.dumps([day(),[r['id'] for r in rows],progress,created],sort_keys=True).encode()).hexdigest()

@@ -64,7 +64,7 @@ class FollowupTests(unittest.TestCase):
  def test_exercise_daily_not_total_and_separate_ledger_report(self):
   c=self.h.contracts;now=datetime.now(ZONE);yesterday=(now-timedelta(days=1)).date().isoformat();today=now.date().isoformat()
   rid=c.sign('每天运动','exercise_daily',30,(now+timedelta(days=1)).isoformat())
-  with self.h.db.connect() as db:db.execute('UPDATE challenge_contracts SET signed=?,deadline=? WHERE id=?',((now-timedelta(days=1)).replace(hour=0).isoformat(),now.replace(hour=23,minute=59,second=59).isoformat(),rid))
+  with self.h.db.connect() as db:db.execute('UPDATE challenge_contracts SET signed=?,deadline=? WHERE id=?',((now-timedelta(days=1)).replace(hour=4,minute=0,second=0).isoformat(),now.replace(hour=23,minute=59,second=59).isoformat(),rid))
   self.h.life.exercise('快走',90,'light',day=yesterday);c.tick();row=next(r for r in c.rows() if r['id']==rid);self.assertEqual(row['status'],'active');self.assertEqual(row['progress'],0)
   self.h.life.exercise('散步',30,'light',day=today);c.tick();self.assertEqual(c.balance('exercise'),110);self.assertEqual(c.balance('study'),100)
   c.tick();self.assertEqual(c.balance('exercise'),110)

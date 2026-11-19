@@ -6,11 +6,19 @@ from ..module_views import create_pages
 
 def install_workspace(window):
     hub=window.module_hub=ModuleHub(window.config,window.store,window)
+    from ..image_layouts import set_office_mode
+    set_office_mode(window.config.root,hub.db.get('office_mode',False))
     entries=[('chat','聊天',window.chat_page)]+create_pages(hub,window)
     for key,title,page in entries[1:]:window.page_stack.addWidget(page)
     buttons=QButtonGroup(window);buttons.setExclusive(True);window.module_navigation=buttons
     positions={key:index for index,(key,_,_) in enumerate(entries)}
     def select(key):
+        if key=='exercise':
+            select('life')
+            if window.page_stack.currentIndex()==positions['life']:window.page_stack.currentWidget().exercise_dialog()
+            return
+        if key=='study_help':
+            window.page_stack.widget(positions['moment']).help_study();return
         if key in ('calendar','reminders','checkins','plan'):
             window.page_stack.widget(positions['schedule']).select(key);key='schedule'
         current=window.page_stack.currentWidget();target=positions[key]
@@ -23,10 +31,24 @@ def install_workspace(window):
     for index,(key,title,page) in enumerate(entries):
         button=QPushButton(title);button.setCheckable(True);button.setObjectName('ghost');buttons.addButton(button,index)
         window.module_nav.addWidget(button);button.clicked.connect(lambda checked=False,k=key:select(k))
-    hub.navigate.connect(lambda key:select(key) if key in positions or key in ('calendar','reminders','checkins','plan') else None)
+    hub.navigate.connect(lambda key:select(key) if key in positions or key in ('exercise','study_help','calendar','reminders','checkins','plan') else None)
+    if hasattr(window,'plan_strip'):
+        from ..module_views.moment import current_plan
+        from datetime import datetime
+        from PySide6.QtCore import QTimer
+        def show_plan():
+            title=current_plan(hub.db,datetime.now())
+            window.plan_strip.setText('当前计划   '+title+'   ›')
+            window.plan_strip.setVisible(title!='自由安排')
+        window.plan_strip.clicked.connect(lambda:select('plan'))
+        window.plan_timer=QTimer(window)
+        window.plan_timer.timeout.connect(show_plan)
+        window.plan_timer.start(30000)
+        hub.closed.connect(window.plan_timer.stop)
+        show_plan()
     from ..module_views.attention_controls import rest_guide
     hub.rest_requested.connect(lambda:rest_guide(window))
-    default=window.config.value.get('main_page','focus')
+    default=window.config.value.get('main_page','moment')
     if default=='relations':
         default='chat'
         from PySide6.QtCore import QTimer

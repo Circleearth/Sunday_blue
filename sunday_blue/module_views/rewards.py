@@ -20,7 +20,7 @@ class RewardsPage(QWidget):
         self.items=QListWidget();self.items.setViewMode(QListWidget.ViewMode.IconMode);self.items.setResizeMode(QListWidget.ResizeMode.Adjust);self.items.setMovement(QListWidget.Movement.Static);self.items.setGridSize(QSize(270,245));self.items.setSpacing(12);body.addWidget(self.items,1)
         self.mascot=EditableImage(hub.root,'shop_mascot',hub.root/'assets/shop/mascot.png',ratio=.6);self.mascot.setMinimumWidth(180);body.addWidget(self.mascot)
         row=QHBoxLayout()
-        for label,callback in [('兑换所选',self.redeem),('修改商品',self.edit_selected),('删除商品',self.remove_selected),('商店设置',self.settings)]:
+        for label,callback in [('兑换所选',self.redeem),('修改商品',self.edit_selected),('删除商品',self.remove_selected),('我的时间券',self.open_passes),('商店设置',self.settings)]:
             button=QPushButton(label);button.clicked.connect(callback);row.addWidget(button)
         layout.addLayout(row);layout.addWidget(QLabel('最近兑换'));self.history=QListWidget();layout.addWidget(self.history,1)
         confirm=QPushButton('确认所选奖励已实际消费');confirm.clicked.connect(self.confirm);layout.addWidget(confirm)
@@ -53,6 +53,57 @@ class RewardsPage(QWidget):
             elif r['kind']=='extra':detail=' · 额外 1 次'
             elif r['kind']=='budget':detail=f" · ¥{r['cents']/100:.2f}"
             item=QListWidgetItem(f"{r['title']} · {status} · {r['cost']} 金币{detail}");item.setData(Qt.ItemDataRole.UserRole,r);self.history.addItem(item)
+    def open_passes(self):
+        import time
+        from PySide6.QtCore import QTimer
+        dlg=QDialog(self)
+        dlg.setWindowTitle('我的娱乐与兴趣时间')
+        box=QVBoxLayout(dlg)
+        rows=QListWidget()
+        box.addWidget(rows)
+        start=QPushButton('使用所选时间券')
+        box.addWidget(start)
+        passes=self.hub.rewards.passes()
+        for p in passes:rows.addItem(p['title'])
+        rows.setCurrentRow(0)
+        legacy=QPushButton('补领以前尚未使用的时间')
+        box.addWidget(legacy)
+        def claim():
+            old=self.hub.rewards.unclaimed_time()
+            labels=[r['created'][:10]+'   '+r['title']+'   '+r['id'][:8] for r in old]
+            if not old:return
+            choice,ok=QInputDialog.getItem(dlg,'历史兑换','选择仍有剩余时间的一笔',labels,0,False)
+            if not ok:return
+            minutes,ok=QInputDialog.getInt(dlg,'核对剩余时间','此前未记录实际使用情况。请填写尚未使用的分钟数。',20,1,10000)
+            if ok:
+                self.hub.rewards.claim_old_pass(old[labels.index(choice)]['id'],minutes)
+                passes[:]=self.hub.rewards.passes()
+                rows.blockSignals(True);rows.clear()
+                for p in passes:rows.addItem(p['title'])
+                rows.setCurrentRow(0);rows.blockSignals(False)
+                legacy.setVisible(bool(self.hub.rewards.unclaimed_time()))
+                refresh()
+        legacy.setVisible(bool(self.hub.rewards.unclaimed_time()))
+        legacy.clicked.connect(claim)
+        def refresh(*args):
+            for i,p in enumerate(passes):
+                remaining=max(0,round(p['ends']-time.time())) if p['ends'] else p['seconds']
+                state=('剩余' if remaining else '已用完') if p['ends'] else '待使用'
+                rows.item(i).setText(f"{p['title']}   {state}   {remaining//60:02}:{remaining%60:02}")
+            start.setEnabled(rows.currentRow()>=0 and passes[rows.currentRow()]['ends'] is None)
+        def use():
+            try:self.hub.rewards.use_pass(passes[rows.currentRow()]['id'])
+            except ValueError as exc:QMessageBox.information(dlg,'时间券',str(exc))
+            passes[:]=self.hub.rewards.passes()
+            refresh()
+        start.clicked.connect(use)
+        rows.currentRowChanged.connect(refresh)
+        timer=QTimer(dlg)
+        timer.timeout.connect(refresh)
+        timer.start(1000)
+        refresh()
+        dlg.exec()
+
     def buy_item(self,item):
         self.items.setCurrentItem(item);self.redeem()
     def settings(self):

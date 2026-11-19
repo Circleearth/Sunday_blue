@@ -25,7 +25,7 @@ class TitleBar(QFrame):
     def mouseDoubleClickEvent(self,event):
         if event.button()==Qt.MouseButton.LeftButton:
             w=self.window()
-            w.showNormal() if w.isMaximized() else w.showMaximized()
+            w.maximize()
 
 class Composer(QPlainTextEdit):
     send = Signal()
@@ -51,6 +51,8 @@ class Portrait(QFrame):
 
     def set_role(self,role):
         self.role=role
+        from .image_layouts import _office_roots
+        self.setHidden(str(self.root) in _office_roots)
         self.art_cfg=selection(self.root,'portrait:'+role);fallback=self.root/'assets/roles'/role/'portrait.png';self.pix=QPixmap(self.art_cfg.get('path',str(fallback)))
         if self.pix.isNull():self.pix=QPixmap(str(fallback))
         self.tint=QColor(next(r[3] for r in list_roles(self.root) if r[0]==role))

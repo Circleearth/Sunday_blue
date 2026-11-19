@@ -29,7 +29,7 @@ def summary(db,slots,target):
     if slots & {'director','study'}:
         with db.connect() as c:
             if c.execute("SELECT 1 FROM sqlite_master WHERE name='activity_records'").fetchone():
-                result['focus']=[dict(r) for r in c.execute("SELECT category,label,seconds,day FROM activity_records WHERE day=? AND (? OR category='学习') ORDER BY finished DESC LIMIT 100",(target,'director' in slots))]
+                result['focus']=[dict(r) for r in c.execute("SELECT category,label,seconds,day FROM activity_by_day WHERE day=? AND (? OR category='学习') ORDER BY finished DESC LIMIT 100",(target,'director' in slots))]
     if slots & {'director','study'}:
         with db.connect() as c:has_learning=bool(c.execute("SELECT 1 FROM sqlite_master WHERE name='learning_nodes'").fetchone())
         if has_learning:

@@ -12,7 +12,7 @@ DEFAULT_ROLES = (
     ('red', 'Red', '运动 · 训练管理', '#ee8e96'),
     ('ewa', 'Ewa', '饮食 · 营养规划', '#deb889'),
     ('luna', 'Luna', '睡眠 · 安静陪伴', '#b4a0e5'),
-    ('loluns', 'Loluns', '学习 · 成长计划', '#8dcbbb'),
+    ('loluns', 'Holo', '学习 · 成长计划', '#8dcbbb'),
     ('kia', 'Kia', '记录 · 提取与归档', '#c3bcaa'),
     ('mia', 'Mia', '日常 · 陪伴与交流', '#96c4d3'),
     ('ticktick', 'TickTick', '任务 · 日程执行', '#cbb779'),
@@ -41,6 +41,8 @@ class RoleRegistry:
                     or not isinstance(r['name'], str) or not r['name'].strip()
                     or not re.fullmatch(r'#[0-9a-fA-F]{6}', r['color'])):
                 raise ValueError('角色注册文件含无效或重复身份。')
+            if r['id']=='loluns' and r['name']=='Loluns':
+                r['name']='Holo'
             seen.add(r['id'])
         return data
 

@@ -70,7 +70,7 @@ class Life:
             return row
     def exercises(self):
         with self.db.connect() as c:return [dict(r) for r in c.execute('SELECT e.*,d.muscles FROM exercise_records e LEFT JOIN exercise_details d ON e.id=d.record_id ORDER BY day DESC,created DESC LIMIT 200')]
-    def save_daily(self,day,meal='',sleep_hours=None,phone_total=None,phone_fun=None,screen_hours=None,energy=None,note='',sleep_start=None,sleep_end=None,_connection=None,_quality=1):
+    def save_daily(self,day,meal='',sleep_hours=None,phone_total=None,phone_fun=None,screen_hours=None,energy=None,note='',sleep_start=None,sleep_end=None,_connection=None,_quality=1,_revise=False):
         day=valid_day(day);meal=str(meal).strip();note=str(note).strip()
         if len(meal)>4000 or len(note)>2000:raise ValueError('饮食或备注过长')
         if sleep_start is not None or sleep_end is not None:
@@ -92,26 +92,32 @@ class Life:
             old=c.execute('SELECT * FROM daily_life WHERE day=?',(day,)).fetchone()
             if sleep_start is not None:
                 c.execute('INSERT INTO daily_life_details VALUES(?,?,?) ON CONFLICT(day) DO UPDATE SET sleep_start=excluded.sleep_start,sleep_end=excluded.sleep_end',(day,sleep_start,sleep_end))
-            if old and all(old[k]==v for k,v in payload.items()):return dict(old)|{'sleep_start':sleep_start,'sleep_end':sleep_end}
+            if old and not _revise and all(old[k]==v for k,v in payload.items()):return dict(old)|{'sleep_start':sleep_start,'sleep_end':sleep_end}
             rev=old['revision']+1 if old else 1
             if old:c.execute('INSERT INTO life_revisions(source,before_json,created) VALUES(?,?,?)',('daily:'+day,json.dumps(dict(old),ensure_ascii=False),stamp()))
             c.execute('INSERT INTO daily_life VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(day) DO UPDATE SET meal=excluded.meal,sleep_hours=excluded.sleep_hours,phone_total=excluded.phone_total,phone_fun=excluded.phone_fun,screen_hours=excluded.screen_hours,energy=excluded.energy,note=excluded.note,revision=excluded.revision,updated=excluded.updated',tuple(payload.values())+(rev,stamp()))
             self._award(c,'life-upload:'+day,1,'如实上传生活数据（不是达标奖励）')
             self.db.emit(c,f'life:{day}:{rev}','life.recorded',{'day':day,'revision':rev})
             from .attention import Attention
-            Attention.apply_sleep(c,day,values['sleep_hours'],quality=_quality)
+            Attention.apply_sleep(c,day,values['sleep_hours'],quality=_quality,revise=_revise)
         return payload if _connection is not None else self.daily(day)
-    def finalize_daily(self,day,private,**values):
+    def finalize_daily(self,day,private,*,revision=None,**values):
         from .private_wellbeing import PrivateWellbeing
         from .sleep_quality import score_sleep
         day=valid_day(day)
         if day>=today():raise ValueError('只能结算已经结束的生活记录日')
-        owner=PrivateWellbeing(self.db);quality=score_sleep(values.get('sleep_start'),values.get('sleep_end'))
+        owner=PrivateWellbeing(self.db)
+        quality=score_sleep(values.get('sleep_start'),values.get('sleep_end')) if values.get('sleep_start') or values.get('sleep_end') else dict.fromkeys(('quality','bed','wake','duration'))
         with self.db.connect() as c:
             c.execute('BEGIN IMMEDIATE')
-            if c.execute('SELECT 1 FROM daily_life WHERE day=?',(day,)).fetchone():raise ValueError('该日已有上报，只能补报未记录日期')
-            self.save_daily(day,**values,_connection=c,_quality=quality['quality'])
-            owner.save(day,*private,_connection=c)
+            old=c.execute('SELECT revision FROM daily_life WHERE day=?',(day,)).fetchone()
+            if old and old[0]!=revision:raise ValueError('该日已有上报，请重新打开并选择修订')
+            if revision is not None:
+                if not old:raise ValueError('请重新加载上报记录')
+                c.execute('DELETE FROM daily_finalized WHERE day=?',(day,))
+                if not values.get('sleep_start'):c.execute('DELETE FROM daily_life_details WHERE day=?',(day,))
+            self.save_daily(day,**values,_connection=c,_quality=quality['quality'],_revise=revision is not None)
+            if private is not None:owner.save(day,*private,_connection=c)
             c.execute('INSERT INTO daily_finalized VALUES(?,?,?,?,?,?)',(day,quality['quality'],quality['bed'],quality['wake'],quality['duration'],stamp()))
         return self.daily(day)
 
@@ -149,7 +155,7 @@ class Life:
         prior=self.daily(previous);daily=prior or self.daily(day);work=study=0.0
         with self.db.connect() as c:
             if c.execute("SELECT 1 FROM sqlite_master WHERE name='activity_records'").fetchone():
-                rows=c.execute('SELECT category,sum(seconds)/60 AS minutes FROM activity_records WHERE day=? GROUP BY category',(day,)).fetchall()
+                rows=c.execute('SELECT category,sum(seconds)/60 AS minutes FROM activity_by_day WHERE day=? GROUP BY category',(day,)).fetchall()
                 work=sum(r['minutes'] for r in rows if r['category']=='工作');study=sum(r['minutes'] for r in rows if r['category']=='学习')
             exercise=c.execute('SELECT COALESCE(sum(minutes),0) FROM exercise_records WHERE day=?',(day,)).fetchone()[0]
         sleep=daily.get('sleep_hours');screen=daily.get('phone_total')/60 if daily.get('phone_total') is not None else daily.get('screen_hours');subjective=daily.get('energy')
@@ -157,7 +163,7 @@ class Life:
         physical=70 if subjective is None else subjective
         if sleep is not None:physical+=max(-35,min(10,(sleep-7)*8))
         with self.db.connect() as c:recovery=c.execute('SELECT quality FROM daily_finalized WHERE day=?',(previous,)).fetchone()
-        if recovery:physical=30+70*recovery[0]
+        if recovery and recovery[0] is not None:physical=30+70*recovery[0]
         physical-=min(30,exercise*.12);focus=physical-min(35,(work+study)/15)
         eye=min(100,screen*9) if screen is not None else min(100,(work+study)/60*6)
         with self.db.connect() as c:

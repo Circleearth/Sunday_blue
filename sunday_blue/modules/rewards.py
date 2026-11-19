@@ -20,6 +20,7 @@ class Rewards:
                 CREATE TABLE IF NOT EXISTS redemptions (
                 id TEXT PRIMARY KEY,request_id TEXT UNIQUE,reward_id TEXT,title TEXT,cost INTEGER,
                 kind TEXT,status TEXT,role_id TEXT,cents INTEGER,created TEXT);''')
+            db.execute('CREATE TABLE IF NOT EXISTS leisure_passes(id TEXT PRIMARY KEY,seconds INTEGER NOT NULL,ends REAL)')
             for r in [('extra-count','额外的次数',20,'extra',0,0,None),('rest20','娱乐 20 分钟',20,'leisure',20,0,None),('hobby30','兴趣时间 30 分钟',30,'leisure',30,0,None)]:
                 db.execute('INSERT OR IGNORE INTO rewards VALUES(?,?,?,?,?,?,?)',r)
 
@@ -35,6 +36,7 @@ class Rewards:
         if reward_id=='extra-count':kind='extra';minutes=cents=0;role_id=None
         if not title or len(title)>100 or not 1<=cost<=100000 or (kind not in ('leisure','budget','gift') and not (kind=='extra' and reward_id=='extra-count')):
             raise ValueError('请填写奖励名称、正整数金币和有效奖励类别。')
+        if kind=='leisure' and minutes<=0:raise ValueError('时间奖励需要填写可使用的分钟数。')
         if minutes<0 or cents<0: raise ValueError('时长和金额不能为负。')
         if kind=='budget' and cents<=0: raise ValueError('预算奖励必须填写实际金额。')
         if kind=='gift': require_role(self.db.root,role_id)
@@ -75,6 +77,8 @@ class Rewards:
             db.execute('INSERT INTO coin_ledger VALUES(?,?,?,?)',(rid,-reward['cost'],'redeem:'+reward_id,stamp()))
             db.execute('INSERT INTO redemptions VALUES(?,?,?,?,?,?,?,?,?,?)',(rid,request_id,reward_id,reward['title'],reward['cost'],
                 reward['kind'],'pending' if reward['kind']=='budget' else 'redeemed',reward['role_id'],reward['cents'],stamp()))
+            if reward['kind']=='leisure' and reward['minutes']>0:
+                db.execute('INSERT INTO leisure_passes VALUES(?,?,NULL)',(rid,60*reward['minutes']))
             result=dict(db.execute('SELECT * FROM redemptions WHERE id=?',(rid,)).fetchone())
             self.db.emit(db,'redeem:'+rid,'rewards.redeemed',result)
             return result
@@ -101,6 +105,34 @@ class Rewards:
             balance=db.execute('SELECT COALESCE(sum(cents),0) FROM real_budget').fetchone()[0]
             if balance+cents<0:raise ValueError('预算余额不能为负。')
             db.execute('INSERT INTO real_budget VALUES(?,?,?,?)',(request_id,cents,note[:200],stamp()))
+
+    def unclaimed_time(self):
+        with self.db.connect() as c:
+            return [dict(r) for r in c.execute("SELECT id,title,created FROM redemptions WHERE kind='leisure' AND id NOT IN (SELECT id FROM leisure_passes) ORDER BY created DESC")]
+
+    def claim_old_pass(self,rid,minutes):
+        if not isinstance(minutes,int) or not 1<=minutes<=10000:raise ValueError('请核对尚未使用的分钟数')
+        with self.db.connect() as c:
+            c.execute('BEGIN IMMEDIATE')
+            if not c.execute("SELECT 1 FROM redemptions WHERE id=? AND kind='leisure'",(rid,)).fetchone():raise ValueError('没有对应的时间兑换记录')
+            c.execute('INSERT OR IGNORE INTO leisure_passes VALUES(?,?,NULL)',(rid,minutes*60))
+
+    def passes(self):
+        with self.db.connect() as c:
+            return [dict(row) for row in c.execute("SELECT p.*,r.title FROM leisure_passes p JOIN redemptions r ON r.id=p.id ORDER BY r.created DESC")]
+
+    def use_pass(self, rid, now=None):
+        import time
+        now=time.time() if now is None else now
+        with self.db.connect() as c:
+            c.execute('BEGIN IMMEDIATE')
+            row=c.execute('SELECT * FROM leisure_passes WHERE id=?',(rid,)).fetchone()
+            if not row:raise ValueError('时间券不存在')
+            if row['ends'] is not None:return row['ends']
+            if c.execute('SELECT 1 FROM leisure_passes WHERE ends>?',(now,)).fetchone():raise ValueError('请先用完当前时间券')
+            end=now+row['seconds']
+            c.execute('UPDATE leisure_passes SET ends=? WHERE id=?',(end,rid))
+            return end
 
     def history(self):
         with self.db.connect() as db: return [dict(r) for r in db.execute('SELECT * FROM redemptions ORDER BY created DESC,rowid DESC LIMIT 30')]

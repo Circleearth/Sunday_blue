@@ -1,6 +1,6 @@
 """Small shared transaction boundary and durable events; no role-owned deletion."""
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import json
 from pathlib import Path
 import sqlite3
@@ -10,9 +10,22 @@ def stamp():
     return datetime.now(timezone.utc).isoformat(timespec='seconds')
 
 
-def day():
-    return datetime.now().astimezone().date().isoformat()
+def day(at=None):
+    local=(at or datetime.now().astimezone()).astimezone(timezone(timedelta(hours=8)))
+    return (local-timedelta(hours=4)).date().isoformat()
 
+
+def next_boundary(at):
+    local=at.astimezone(timezone(timedelta(hours=8)))
+    boundary=local.replace(hour=4,minute=0,second=0,microsecond=0)
+    return boundary if local<boundary else boundary+timedelta(days=1)
+
+def record_interval(conn, run_id, start, end):
+    while start < end:
+        stop=min(end,next_boundary(start))
+        seconds=(stop-start).total_seconds()
+        conn.execute('INSERT INTO focus_day_slices VALUES(?,?,?) ON CONFLICT(run_id,day) DO UPDATE SET seconds=seconds+excluded.seconds',(run_id,day(start),seconds))
+        start=stop
 
 class ModuleDB:
     def __init__(self, root):

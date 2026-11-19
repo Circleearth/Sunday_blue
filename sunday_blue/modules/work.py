@@ -144,6 +144,7 @@ class Work:
             if tid in trail:raise ValueError('任务层级存在循环')
             r=byid[tid];kids=children.get(tid,[])
             for k in kids:visit(k['id'],trail+(tid,))
+            kids=[k for k in kids if not k['archived'] or r['archived']]
             if kids:
                 r['progress']=cls._weighted_progress([byid[k['id']] for k in kids])
                 if r['progress']==100:r['status']='done'
@@ -163,7 +164,7 @@ class Work:
             with self.db.connect() as conn:
                 conn.execute('BEGIN IMMEDIATE');old=self._get(conn,tid)
                 if old['archived']:raise ValueError('请先恢复归档任务再编辑')
-                aggregate_rows,_=self._aggregate([dict(r) for r in conn.execute('SELECT * FROM work_tasks')]);children=[r for r in aggregate_rows.values() if r['parent_id']==tid]
+                aggregate_rows,_=self._aggregate([dict(r) for r in conn.execute('SELECT * FROM work_tasks')]);children=[r for r in aggregate_rows.values() if r['parent_id']==tid and not r['archived']]
                 if children:
                     aggregate=self._weighted_progress(children)
                     if 'progress' in values and values['progress']!=aggregate:raise ValueError('父任务进度由子任务汇总，请更新子任务进度')
@@ -197,14 +198,43 @@ class Work:
         except sqlite3.IntegrityError:raise ValueError('该滴答任务标识已关联另一项任务') from None
         return self.task(tid)
 
+    def trash(self,tid):
+        with self.db.connect() as c:
+            c.execute('BEGIN IMMEDIATE')
+            task=self._get(c,tid)
+            if task['archived']:raise ValueError('请先恢复已归档任务')
+            rows=c.execute('WITH RECURSIVE tree(id) AS (SELECT ? UNION SELECT w.id FROM work_tasks w JOIN tree ON w.parent_id=tree.id) SELECT w.id FROM work_tasks w JOIN tree ON tree.id=w.id WHERE archived=0',(tid,)).fetchall()
+            ids=[r[0] for r in rows]
+            if self._busy(c,ids):raise ValueError('请先结束关联的番茄钟')
+            c.execute('CREATE TABLE IF NOT EXISTS work_trash(root TEXT PRIMARY KEY,ids TEXT)')
+            c.execute('INSERT INTO work_trash VALUES(?,?)',(tid,json.dumps(ids)))
+            c.executemany('UPDATE work_tasks SET archived=1 WHERE id=?',[(i,) for i in ids])
+            self._record(c,tid,'removed',{'count':len(ids)})
+
+    def undo_trash(self):
+        with self.db.connect() as c:
+            c.execute('BEGIN IMMEDIATE')
+            if not self._exists(c,'work_trash'):raise ValueError('没有可撤销的删除')
+            row=c.execute('SELECT * FROM work_trash ORDER BY rowid DESC LIMIT 1').fetchone()
+            if not row:raise ValueError('没有可撤销的删除')
+            parent=self._get(c,row['root'])['parent_id']
+            if parent and self._get(c,parent)['archived']:raise ValueError('请先恢复父任务')
+            c.executemany('UPDATE work_tasks SET archived=0 WHERE id=?',[(i,) for i in json.loads(row['ids'])])
+            c.execute('DELETE FROM work_trash WHERE root=?',(row['root'],))
+            self._record(c,row['root'],'restored',{})
+
     def archive(self,tid,archived=True):
         if not isinstance(archived,bool):raise ValueError('归档状态必须为布尔值')
         with self.db.connect() as conn:
             conn.execute('BEGIN IMMEDIATE');old=self._get(conn,tid)
+            if not archived and self._exists(conn,'work_trash'):
+                removed={i for row in conn.execute('SELECT ids FROM work_trash') for i in json.loads(row[0])}
+                if tid in removed:raise ValueError('请通过撤销删除恢复任务')
             if not archived and old['parent_id'] and self._get(conn,old['parent_id'])['archived']:raise ValueError('请先恢复父任务')
             ids=[r[0] for r in conn.execute('WITH RECURSIVE subtree(id) AS (SELECT ? UNION SELECT w.id FROM work_tasks w JOIN subtree s ON w.parent_id=s.id) SELECT id FROM subtree',(tid,))]
             if archived and self._busy(conn,ids):raise ValueError('任务仍有正在进行或暂停的番茄钟，请先结束本轮')
             for key in ids:
+                if not archived and self._exists(conn,'work_trash') and key in removed:continue
                 current=self._get(conn,key)
                 if bool(current['archived'])!=archived:
                     conn.execute('UPDATE work_tasks SET archived=?,updated=? WHERE id=?',(int(archived),stamp(),key))
@@ -234,7 +264,7 @@ class Work:
             return [dict(r)|{'payload':json.loads(r['payload'])} for r in conn.execute('SELECT * FROM work_history WHERE (? IS NULL OR task_id=?) ORDER BY created DESC,rowid DESC LIMIT 100',(id,id))]
 
     def suggest(self):
-        rows=self.tasks(True);parents={r['parent_id'] for r in rows if r['parent_id']};byid={r['id']:r for r in rows}
+        rows=self.tasks(True);parents={r['parent_id'] for r in rows if r['parent_id'] and not r['archived']};byid={r['id']:r for r in rows}
         ready=[r for r in rows if not r['archived'] and r['id'] not in parents and r['status'] in ('todo','doing') and r['progress']<100 and (not r['parent_id'] or not byid[r['parent_id']]['archived'] and byid[r['parent_id']]['status'] not in ('done','paused'))]
         def allowed(r):
             parent=r['parent_id']
@@ -255,5 +285,5 @@ class Work:
             parent=cls._get(conn,parent_id)
             if parent['archived'] or parent['status'] in ('done','paused'):raise ValueError('上级任务已完成、暂缓或归档')
             parent_id=parent['parent_id']
-        if conn.execute('SELECT 1 FROM work_tasks WHERE parent_id=?',(task_id,)).fetchone():raise ValueError('请绑定具体子任务，父任务仅汇总进度')
+        if conn.execute('SELECT 1 FROM work_tasks WHERE parent_id=? AND archived=0',(task_id,)).fetchone():raise ValueError('请绑定具体子任务，父任务仅汇总进度')
         return row

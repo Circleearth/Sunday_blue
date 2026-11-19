@@ -37,8 +37,9 @@ class LifeTimer:
     c.execute('UPDATE life_timers SET elapsed=elapsed+? WHERE id=?',(delta,state['id']))
     end=datetime.now().astimezone();start=end-timedelta(seconds=delta)
     while start<end:
-     midnight=(start+timedelta(days=1)).replace(hour=0,minute=0,second=0,microsecond=0);stop=min(end,midnight);seconds=(stop-start).total_seconds()
-     c.execute('INSERT INTO life_timer_days VALUES(?,?,?,0) ON CONFLICT(run_id,day) DO UPDATE SET seconds=seconds+excluded.seconds',(state['id'],start.date().isoformat(),seconds));start=stop
+     from .database import next_boundary
+     midnight=next_boundary(start);stop=min(end,midnight);seconds=(stop-start).total_seconds()
+     c.execute('INSERT INTO life_timer_days VALUES(?,?,?,0) ON CONFLICT(run_id,day) DO UPDATE SET seconds=seconds+excluded.seconds',(state['id'],day(start),seconds));start=stop
  def pause(self):
   self.checkpoint()
   with self.db.connect() as c:c.execute("UPDATE life_timers SET state='paused' WHERE state='running'")

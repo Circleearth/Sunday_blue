@@ -1,5 +1,6 @@
 """Additive capacity snapshots, daily reporting cycles and conservative recovery hints."""
 from datetime import datetime,date,timedelta,timezone
+from .database import day as living_day
 import json
 
 ZONE=timezone(timedelta(hours=8))
@@ -25,7 +26,7 @@ class LifeState:
   change=(coins-previous)*.12/(1+(cap-30)/30)**1.5 if coins>previous else -gain*(previous-coins)/max(previous,1)
   c.execute('UPDATE vitality_state SET cap=? WHERE id=1',(max(30,cap+change),))
   c.execute('INSERT INTO exercise_growth VALUES(?,?,?) ON CONFLICT(record_id) DO UPDATE SET coins=excluded.coins,gain=excluded.gain',(rid,coins,max(0,gain+change)))
-  c.execute('UPDATE vitality_days SET physical_cap=? WHERE day=?',(max(30,cap+change),datetime.now(ZONE).date().isoformat()))
+  c.execute('UPDATE vitality_days SET physical_cap=? WHERE day=?',(max(30,cap+change),living_day()))
  def settle(self,now=None):
   now=now or datetime.now(ZONE);now=now.astimezone(ZONE)
   boundary=now.replace(hour=9,minute=30,second=0,microsecond=0)
@@ -38,12 +39,12 @@ class LifeState:
     if not recent:cap=max(30,cap-(cap-30)*.008)
     c.execute('INSERT OR IGNORE INTO vitality_days VALUES(?,?,100)',(start.isoformat(),cap));start+=timedelta(days=1)
    if not row['last_settled'] or row['last_settled']<target.isoformat():c.execute('UPDATE vitality_state SET cap=?,last_settled=? WHERE id=1',(cap,target.isoformat()))
-  return self.caps(now.date().isoformat())
+  return self.caps(living_day(now))
  def caps(self,day):
   with self.db.connect() as c:
    row=c.execute('SELECT * FROM vitality_days WHERE day=?',(day,)).fetchone()
    current=c.execute('SELECT cap FROM vitality_state WHERE id=1').fetchone()[0]
-  result=dict(row) if row else dict(day=day,physical_cap=current if day==datetime.now(ZONE).date().isoformat() else 30,focus_cap=100)
+  result=dict(row) if row else dict(day=day,physical_cap=current if day==living_day() else 30,focus_cap=100)
   with self.db.connect() as c:
    if c.execute("SELECT 1 FROM sqlite_master WHERE name='attention_capacity'").fetchone():
     spent=c.execute('SELECT spent FROM attention_capacity WHERE day=?',(day,)).fetchone()
@@ -56,6 +57,9 @@ class LifeState:
   with self.db.connect() as c:
    c.execute('BEGIN IMMEDIATE')
    c.execute("UPDATE reminder_occurrences SET qq_status='missed' WHERE schedule_id='life-report' AND id!=? AND qq_status IN ('pending','failed')",(key,))
+   if c.execute("SELECT 1 FROM sqlite_master WHERE name='daily_life'").fetchone() and c.execute('SELECT 1 FROM daily_life WHERE day=?',(source,)).fetchone():
+    c.execute("UPDATE reminder_occurrences SET qq_status='missed' WHERE id=? AND qq_status IN ('pending','failed')",(key,))
+    return
    c.execute("INSERT OR IGNORE INTO reminder_occurrences VALUES(?,?,?,?,?,?)",(key,'life-report',boundary.isoformat(),f'生活上报：请补记 {source} 的睡眠、饮食与手机使用；今日状态属于 {boundary.date()}。','off','pending'))
    # Only confirmed pre-send failures can be retried. Uncertain sends stay visible for review.
    c.execute("UPDATE reminder_occurrences SET qq_status='pending' WHERE id=? AND qq_status='failed' AND NOT EXISTS(SELECT 1 FROM reminder_delivery_details d WHERE d.occurrence_id=? AND d.updated>?)",(key,key,(now-timedelta(minutes=5)).astimezone(timezone.utc).isoformat(timespec='seconds')))

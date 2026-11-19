@@ -2,7 +2,7 @@
 import calendar,hashlib,json,threading
 from datetime import date,datetime,timedelta
 from PySide6.QtCore import QObject,Signal
-from .database import stamp
+from .database import stamp,day as living_day
 from .life_state import ZONE
 from ..models import RoleProvider
 from ..personas import read_persona
@@ -25,13 +25,13 @@ class Reports(QObject):
    c.executescript('''CREATE TABLE IF NOT EXISTS settlement_reports(id TEXT PRIMARY KEY,kind TEXT,start TEXT,end TEXT,digest TEXT,body TEXT,comment TEXT,state TEXT,updated TEXT);''');c.execute("UPDATE settlement_reports SET state='queued' WHERE state='running'")
  def snapshot(self,start,end):
   with self.db.connect() as c:
-   records=[dict(r) for r in c.execute('SELECT category,label,seconds,day,id FROM activity_records WHERE day>=? AND day<? ORDER BY day',(start,end))]
+   records=[dict(r) for r in c.execute('SELECT category,label,seconds,day,id FROM activity_by_day WHERE day>=? AND day<? ORDER BY day',(start,end))]
    life=[dict(r) for r in c.execute('SELECT day,sleep_hours,meal,phone_total,phone_fun FROM daily_life WHERE day>=? AND day<? ORDER BY day',(start,end))]
    exercise=[dict(r) for r in c.execute('SELECT day,kind,minutes FROM exercise_records WHERE day>=? AND day<?',(start,end))]
    coins=c.execute("SELECT COALESCE(sum(amount),0) FROM coin_ledger WHERE reason IN (SELECT 'focus:'||id FROM activity_records WHERE day>=? AND day<?) OR reason IN (SELECT 'study-first:'||day FROM activity_records WHERE day>=? AND day<?)",(start,end,start,end)).fetchone()[0]
    other_coins=c.execute("SELECT COALESCE(sum(amount),0) FROM coin_ledger WHERE reason IN (SELECT 'exercise:'||id FROM exercise_records WHERE day>=? AND day<?) OR reason IN (SELECT 'housework:'||id FROM housework_records WHERE day>=? AND day<?) OR id IN (SELECT 'life-upload:'||day FROM daily_life WHERE day>=? AND day<?)",(start,end,start,end,start,end)).fetchone()[0]
    points=c.execute("SELECT COALESCE(sum(amount),0) FROM work_points WHERE id IN (SELECT 'work:'||id FROM activity_records WHERE day>=? AND day<?)",(start,end)).fetchone()[0]
-   contracts=[dict(r) for r in c.execute("SELECT t.title,t.metric,t.status,l.amount,date(l.created,'+8 hours') AS day FROM challenge_ledger l JOIN challenge_contracts t ON t.id=l.contract_id WHERE date(l.created,'+8 hours')>=? AND date(l.created,'+8 hours')<?",(start,end))]
+   contracts=[dict(r) for r in c.execute("SELECT t.title,t.metric,t.status,l.amount,date(l.created,'+4 hours') AS day FROM challenge_ledger l JOIN challenge_contracts t ON t.id=l.contract_id WHERE date(l.created,'+4 hours')>=? AND date(l.created,'+4 hours')<?",(start,end))]
    progress=[dict(r) for r in c.execute('SELECT l.title,a.day,l.progress_start,t.progress FROM focus_task_links l JOIN activity_records a ON a.id=l.run_id LEFT JOIN work_tasks t ON t.id=l.task_id WHERE a.day>=? AND a.day<?',(start,end))]
   totals={k:round(sum(r['seconds']/60 for r in records if r['category']==k),1) for k in ('工作','学习','家务')}
   payload={'contracts':contracts,'start_inclusive':start,'end_exclusive':end,'minutes':totals,'focus_coins':coins,'life_coins':other_coins,'total_activity_coins':coins+other_coins,'work_points':points,'records':records[-60:],'daily':life[-366:],'exercise':exercise[-60:],'tasks_current_progress_not_historical':progress[-30:],'record_count':len(records),'private_records':'excluded'}
@@ -56,13 +56,13 @@ class Reports(QObject):
   self.ready.emit(rid);return rid
  def daily(self,day):
   target=date.fromisoformat(day)
-  if target>=datetime.now(ZONE).date():raise ValueError('完整日结算仅针对已经结束的日期')
+  if target>=date.fromisoformat(living_day()):raise ValueError('完整日结算仅针对已经结束的日期')
   state=self.hub.focus.status()
-  if state['state']!='idle' and datetime.fromisoformat(state['started']).astimezone(ZONE).date()==target:
+  if state['state']!='idle' and living_day(datetime.fromisoformat(state['started']))==day:
    self.hub.db.set('focus_loop',{});self.hub.focus.finish(record_day=day)
   rid=self.prepare('day',day,(target+timedelta(days=1)).isoformat());self.last_check=None;self.due();self.pump();return rid
  def due(self,today=None):
-  today=today or datetime.now(ZONE).date()
+  today=today or date.fromisoformat(living_day())
   if getattr(self,'last_check',None)==today:return
   self.last_check=today
   for kind in ('week','month','year'):

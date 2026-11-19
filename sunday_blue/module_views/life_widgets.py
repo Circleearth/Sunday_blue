@@ -64,7 +64,7 @@ class MuscleMap(QWidget):
         self.setAccessibleName('正面与背面肌群恢复图；也可使用下方部位按钮选择')
     def reload_art(self):self.pixmap=framed(self.root,'recovery_body',asset_spec(self.root,'recovery_body')['file'],QSize(440,330));self.update()
     def art_changed(self,root,key):
-        if root==str(self.root) and key=='recovery_body':self.reload_art()
+        if root==str(self.root) and key in ('recovery_body','office'):self.reload_art()
     def _build(self):
         def polygon(points):
             p=QPainterPath(QPointF(*points[0]))

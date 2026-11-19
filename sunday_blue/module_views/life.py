@@ -9,6 +9,10 @@ from ..art_assets import ArtworkSlot,asset_details,asset_spec
 from ..image_layouts import edit_image
 from ..numeric_inputs import NumberSpin as QSpinBox, DecimalSpin as QDoubleSpinBox
 
+def living_date():
+    from ..modules.database import day
+    return QDate.fromString(day(),'yyyy-MM-dd')
+
 class LifePage(ModulePage):
     module='life'
     def __init__(self,hub,parent=None):
@@ -46,13 +50,13 @@ class LifePage(ModulePage):
         rec.addWidget(label('恢复颜色沿用现有逐日规则；强度与时长显示在详情中。所有状态仅供行为参考，不作为医学判断。'));rec.addStretch()
         daily,dl=self.page('生活上报');self.daily_index=1
         top,form_box=card('今日上报 · 昨日生活与最近一晚睡眠');form=QFormLayout();form.setSpacing(12);form_box.addLayout(form)
-        self.day=QDateEdit(QDate.currentDate());self.day.setCalendarPopup(True);self.day.setMaximumDate(QDate.currentDate());form.addRow('上报日期（生活内容属于前一天）',self.day);dl.addWidget(top)
-        sleep,sl=card('睡眠与恢复');sf=QFormLayout();sf.setSpacing(12);self.bed=clock_pair();self.wake=clock_pair();sf.addRow('入睡时间 *',self.bed);sf.addRow('起床时间 *',self.wake);sl.addLayout(sf);sl.addWidget(label('起床早于入睡时按跨日计算。两个时间均为必填。'));dl.addWidget(sleep)
+        self.day=QDateEdit(living_date());self.day.setCalendarPopup(True);self.day.setMaximumDate(living_date());form.addRow('上报日期（生活内容属于前一天）',self.day);dl.addWidget(top)
+        sleep,sl=card('睡眠与恢复');sf=QFormLayout();sf.setSpacing(12);self.bed=clock_pair();self.wake=clock_pair();sf.addRow('入睡时间',self.bed);sf.addRow('起床时间',self.wake);sl.addLayout(sf);sl.addWidget(label('睡眠按完整一晚记录。时间未知时可同时留空。'));dl.addWidget(sleep)
         daily_row=QBoxLayout(QBoxLayout.Direction.LeftToRight);daily_row.setSpacing(12);self.daily_row=daily_row
         meal,ml=card('饮食与备注');self.meal=QPlainTextEdit();self.meal.setPlaceholderText('简单记下吃了什么，不需要精确到每一克');self.meal.setMaximumHeight(100);ml.addWidget(self.meal);self.note=QLineEdit();self.note.setPlaceholderText('其他想记下的事');ml.addWidget(self.note);daily_row.addWidget(meal,1)
         phone,ph=card('手机使用');pf=QFormLayout();self.phone_total=hm_pair();self.phone_fun=hm_pair();pf.addRow('总使用时长',self.phone_total);pf.addRow('其中娱乐',self.phone_fun);ph.addLayout(pf);ph.addWidget(label('未知可留空；娱乐时长包含在总时长内。'));daily_row.addWidget(phone,1);dl.addLayout(daily_row)
         save=QHBoxLayout();self.submit_daily=button('保存上报并生成日结算',self.save_daily,save,True);self.daily_status=label();save.addWidget(self.daily_status,1);dl.addLayout(save)
-        self.saved_panel=QWidget();saved_box=QVBoxLayout(self.saved_panel);self.saved_message=label('已经记下了昨天，今天可以安心继续。','cardTitle');saved_box.addWidget(self.saved_message);button('补充上报以前内容',self.open_missing_daily,saved_box);dl.addWidget(self.saved_panel);self.saved_panel.hide()
+        self.saved_panel=QWidget();saved_box=QVBoxLayout(self.saved_panel);self.saved_message=label('已经记下了昨天，今天可以安心继续。','cardTitle');saved_box.addWidget(self.saved_message);button('修订这次上报',self.revise_daily,saved_box);button('补充上报以前内容',self.open_missing_daily,saved_box);dl.addWidget(self.saved_panel);self.saved_panel.hide()
         self.daily_sections=[top,sleep,meal,phone];self.daily_save_row=save
         house,hl=card('顺手完成一件家务');row=QHBoxLayout();self.house_title=QLineEdit();self.house_title.setPlaceholderText('例如整理桌面');row.addWidget(self.house_title);button('今日家务打卡',self.housework,row);hl.addLayout(row);dl.addWidget(house);dl.addStretch()
         exercise,ex=self.page('运动记录');top=QHBoxLayout();button('记录一场运动',lambda:self.exercise_dialog(),top,True);button('修改所选记录',self.edit_exercise,top);top.addStretch();self.exercise_summary=label();top.addWidget(self.exercise_summary);ex.addLayout(top)
@@ -68,29 +72,32 @@ class LifePage(ModulePage):
         self.trend=TrendChart();tl.addWidget(self.trend);tl.addWidget(label('按现有记录重新估计；不是医学测量，也不是历史状态快照。悬停查看每日数值。'));his.addWidget(trend)
         self.trend_summary=label();his.addWidget(self.trend_summary);self.daily_history=QListWidget();self.daily_history.setMinimumHeight(160);self.daily_history.itemDoubleClicked.connect(self.open_history_day);his.addWidget(self.daily_history);his.addStretch()
         private,pr=card('私人健康记录 · 仅本机保存')
-        self.private_count=spin(0,100);self.private_minutes=spin(0,1440,'分钟');self.private_discomfort=QCheckBox('有疼痛或其他不适');self.private_impact=QCheckBox('影响睡眠、工作或日常生活')
+        self.private_count=spin(0,100);self.private_count.setMinimum(-1);self.private_count.setSpecialValueText('未填写');self.private_minutes=spin(0,1440,'分钟');self.private_discomfort=QCheckBox('有疼痛或其他不适');self.private_impact=QCheckBox('影响睡眠、工作或日常生活')
         pf=QFormLayout();pf.addRow('所选记录日次数',self.private_count);pf.addRow('总时间',self.private_minutes);pf.addRow(self.private_discomfort);pf.addRow(self.private_impact);pr.addLayout(pf);self.private_status=label();pr.addWidget(self.private_status);dl.insertWidget(3,private);self.daily_sections.append(private)
         from .reports import ReportsPage
         self.reports_page=ReportsPage(hub,self);self.tabs.addTab(self.reports_page,'结算报告')
         self.day.dateChanged.connect(self.load_daily);hub.changed.connect(self.on_changed)
         self.clock=QTimer(self);self.clock.setInterval(1000);self.clock.timeout.connect(self.clock_refresh);self.clock.start();hub.closed.connect(self.clock.stop)
         self.state_refresh=QTimer(self);self.state_refresh.setInterval(60000);self.state_refresh.timeout.connect(self.refresh_energy);self.state_refresh.timeout.connect(self.sync_report_date);self.state_refresh.start();hub.closed.connect(self.state_refresh.stop)
-        self.report_today=QDate.currentDate();self.tabs.currentChanged.connect(self.sync_report_date);self.selected_part='胸';self.load_daily();self.refresh()
+        self.report_today=living_date();self.tabs.currentChanged.connect(self.sync_report_date);self.selected_part='胸';self.load_daily();self.refresh()
     def page(self,title):
         page=QWidget();box=QVBoxLayout(page);box.setContentsMargins(4,16,4,8);box.setSpacing(14);scroll=QScrollArea();scroll.setWidgetResizable(True);scroll.setWidget(page);self.tabs.addTab(scroll,title);return page,box
     def set_daily_saved(self,saved):
         for w in self.daily_sections:w.setVisible(not saved)
         self.submit_daily.setVisible(not saved);self.saved_panel.setVisible(saved)
         if saved:
-            text='✓ '+self.selected_day()+' 已上报并锁定；可以补报其他未记录日期。'
+            text='✓ '+self.selected_day()+' 已上报。'
             with self.hub.db.connect() as c:quality=c.execute('SELECT quality FROM daily_finalized WHERE day=?',(self.selected_day(),)).fetchone()
-            if quality:text+=f'\n睡眠作息恢复系数 {quality[0]:.0%}（时长50% · 入睡30% · 起床20%）；仅作游戏状态参考。'
+            if quality and quality[0] is not None:text+=f'\n睡眠作息恢复系数 {quality[0]:.0%}（时长50% · 入睡30% · 起床20%）；仅作游戏状态参考。'
             self.saved_message.setText(text)
+    def revise_daily(self):
+        self.editing_revision=self.hub.life.daily(self.selected_day())['revision']
+        self.set_daily_saved(False)
     def open_missing_daily(self):
         target=QDate.fromString(self.hub.life.latest_missing_day(),'yyyy-MM-dd')
         self.day.setDate(target.addDays(1));self.set_daily_saved(False);self.tabs.setCurrentIndex(self.daily_index)
     def open_daily(self):
-        self.day.setDate(QDate.currentDate());self.load_daily();self.tabs.setCurrentIndex(self.daily_index)
+        self.day.setDate(living_date());self.load_daily();self.tabs.setCurrentIndex(self.daily_index)
     def open_history_day(self,item):
         self.day.setDate(QDate.fromString(item.data(Qt.ItemDataRole.UserRole),'yyyy-MM-dd').addDays(1));self.tabs.setCurrentIndex(self.daily_index)
     def resizeEvent(self,event):
@@ -107,36 +114,40 @@ class LifePage(ModulePage):
     def attention_mode(self,mode):
         self.hub.attention.configure({'mode':mode});self.refresh_energy()
     def sync_report_date(self,*args):
-        current=QDate.currentDate()
+        current=living_date()
         if current!=self.report_today:
             self.report_today=current;self.day.setMaximumDate(current);self.day.setDate(current);self.load_daily()
     def selected_day(self):return self.day.date().addDays(-1).toString('yyyy-MM-dd')
     def load_daily(self,*args):
+        self.editing_revision=None
         row=self.hub.life.daily(self.selected_day()) or {};self.meal.setPlainText(row.get('meal') or '');self.note.setText(row.get('note') or '')
         self.bed.load(row.get('sleep_start'));self.wake.load(row.get('sleep_end'))
         self.phone_total.load(row.get('phone_total'));self.phone_fun.load(row.get('phone_fun'))
-        private=self.hub.private_wellbeing.get(self.selected_day());self.private_count.setValue(private.get('count',0));self.private_minutes.setValue(private.get('minutes',0));self.private_discomfort.setChecked(bool(private.get('discomfort')));self.private_impact.setChecked(bool(private.get('impact')))
+        private=self.hub.private_wellbeing.get(self.selected_day());self.private_count.setValue(private.get('count',-1));self.private_minutes.setValue(private.get('minutes',0));self.private_discomfort.setChecked(bool(private.get('discomfort')));self.private_impact.setChecked(bool(private.get('impact')))
         self.refresh_private();self.set_daily_saved(bool(row))
         self.daily_status.setText(('旧睡眠时长 '+str(row['sleep_hours'])+' 小时；填写新起止时间前保留。') if row.get('sleep_hours') is not None and not row.get('sleep_start') else '上报资料属于 '+self.selected_day())
     def refresh_private(self):
         r=self.hub.private_wellbeing.status(self.selected_day());self.private_status.setText(f"近7天 {r['week_count']} 次 / {r['week_minutes']:g} 分钟 · 近30天 {r['month_count']} 次\n"+r['note']);self.private_status.setStyleSheet('border-left:4px solid '+RECOVERY_COLORS[r['level']]+';padding-left:8px;')
     def save_daily(self):
-        if self.bed.value() is None:QMessageBox.warning(self,'缺少数据','睡觉时间必填，请补上再上报。');return
-        if self.wake.value() is None:QMessageBox.warning(self,'缺少数据','起床时间必填，请补上再上报。');return
+        if (self.bed.value() is None)!=(self.wake.value() is None):
+            QMessageBox.warning(self,'请核对睡眠','入睡与起床时间可同时留空，也可成对填写。');return
+        if self.hub.life.daily(self.selected_day()) and getattr(self,'editing_revision',None) is None:
+            QMessageBox.information(self,'已上报','请先选择修订这次上报。');return
+        if self.private_count.value()<0 and (self.private_minutes.value() or self.private_discomfort.isChecked() or self.private_impact.isChecked()):
+            QMessageBox.warning(self,'请核对私人记录','填写时长或反馈后，请补充次数。');return
         if self.private_count.value()==0 and self.private_minutes.value()>0:
             QMessageBox.warning(self,"请核对私人记录","次数为0时总时间应为0。");return
-        if self.hub.life.daily(self.selected_day()):
-            QMessageBox.information(self,'已上报','该日已上报，只能补报未记录日期。');return
-        if QMessageBox.question(self,'确认每日上报','将保存 '+self.selected_day()+' 的生活记录和最近一晚睡眠，并结算恢复与奖励。确认后不能修改，只能补报其他日期。是否继续？',QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No,QMessageBox.StandardButton.No)!=QMessageBox.StandardButton.Yes:return
-        old={}
+        revision=getattr(self,'editing_revision',None)
+        if QMessageBox.question(self,'确认每日上报',self.selected_day()+' 的生活记录将用于结算。确认保存？')!=QMessageBox.StandardButton.Yes:return
+        old=self.hub.life.daily(self.selected_day()) or {}
         values=dict(meal=self.meal.toPlainText(),phone_total=self.phone_total.value(),phone_fun=self.phone_fun.value(),note=self.note.text(),
-            screen_hours=old.get('screen_hours'),energy=old.get('energy'),sleep_hours=old.get('sleep_hours'),
+            screen_hours=old.get('screen_hours'),energy=old.get('energy'),sleep_hours=None if old.get('sleep_start') else old.get('sleep_hours'),
             sleep_start=self.bed.value(),sleep_end=self.wake.value())
-        result=self.invoke(lambda:self.hub.life.finalize_daily(self.selected_day(),(self.private_count.value(),self.private_minutes.value(),self.private_discomfort.isChecked(),self.private_impact.isChecked()),**values))
+        result=self.invoke(lambda:self.hub.life.finalize_daily(self.selected_day(),None if self.private_count.value()<0 else (self.private_count.value(),self.private_minutes.value(),self.private_discomfort.isChecked(),self.private_impact.isChecked()),revision=revision,**values))
         if result is not None:
             self.refresh_private();self.refresh_energy()
             self.daily_status.setText(f"已保存 {self.selected_day()} · 睡眠 {result.get('sleep_hours','未知')} 小时；上传奖励不重复。")
-            if self.selected_day()<QDate.currentDate().toString('yyyy-MM-dd'):
+            if self.selected_day()<living_date().toString('yyyy-MM-dd'):
                 rid=self.invoke(lambda:self.hub.reports.daily(self.selected_day()))
                 if rid:self.hub.report_open.emit(rid)
             self.set_daily_saved(True)
@@ -148,7 +159,7 @@ class LifePage(ModulePage):
         if item:self.exercise_dialog(item.data(Qt.ItemDataRole.UserRole))
     def exercise_dialog(self,row=None):
         row=row or {};dlg,form,error,buttons=form_dialog(self,'运动记录')
-        day=QDateEdit(QDate.fromString(row['day'],'yyyy-MM-dd') if row else QDate.currentDate());day.setCalendarPopup(True);day.setMaximumDate(QDate.currentDate())
+        day=QDateEdit(QDate.fromString(row['day'],'yyyy-MM-dd') if row else living_date());day.setCalendarPopup(True);day.setMaximumDate(living_date())
         kind=QComboBox();kind.setEditable(True);kind.addItems(['快走','慢跑','羽毛球','足球','骑行','力量训练','其他']);kind.setCurrentText(row.get('kind','快走'))
         minutes=spin(row.get('minutes',20),180,' 分钟');intensity=QComboBox()
         for key,label in INTENSITY.items():intensity.addItem(label,key)
@@ -182,7 +193,7 @@ class LifePage(ModulePage):
         self.private_recovery.setText(f"近7天 {count} 次    基础 {base} 次    额外 {extra} 次"+(f"    ⚠ 超出 {count-base-extra} 次" if count>base+extra else ""))
         self.private_recovery.setToolTip(f"控制比例 {private['ratio']:.0%}")
         self.private_recovery.setStyleSheet('border-bottom:6px solid '+RECOVERY_COLORS[private['level']]+';padding:8px;')
-        today=QDate.currentDate().toString('yyyy-MM-dd');r=self.hub.life.energy(today)
+        today=living_date().toString('yyyy-MM-dd');r=self.hub.life.energy(today)
         self.cards['physical'].set_state(round(r['physical_value'],1),round(r['physical_cap'],1),r['physical'],'低于 40% 时，优先恢复再安排活动。')
         a=self.hub.attention.status();self.attention_status.setText(f"用眼估算 {a['eye']:.1f}% · 当日残留底线 {a['eye_floor']:.1f}% · {a['source']} · 休息只恢复视疲劳与专注")
         self.cards['focus'].set_state(round(r['focus_value'],1),r['focus_cap'],r['focus'],'留意连续投入后的余量，适时切换节奏。')

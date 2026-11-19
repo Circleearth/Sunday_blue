@@ -140,7 +140,8 @@ class Learning:
   self._mastered(uid)
  def review(self,uid,passed,note=''):
   from .life_state import ZONE
-  day=datetime.now(ZONE).date().isoformat()
+  from .database import day as living_day
+  day=living_day()
   with self.db.connect() as c:
    c.execute('BEGIN IMMEDIATE');self._unit(c,uid)
    if c.execute('SELECT 1 FROM learning_reviews WHERE unit=? AND day=?',(uid,day)).fetchone():raise ValueError('今天已记录复习结果，明天再检验；练习不受限制')
@@ -155,6 +156,7 @@ class Learning:
    prior=c.execute('SELECT unit FROM learning_focus_links WHERE run_id=?',(run_id,)).fetchone()
    if prior and prior['unit']!=uid:raise ValueError('本轮已绑定其他知识点，请结束后切换')
    c.execute('INSERT OR IGNORE INTO learning_focus_links VALUES(?,?)',(run_id,uid))
+  self.db.set('last_study_unit',uid)
  def chapter_done(self,nid,done):
   with self.db.connect() as c:c.execute("UPDATE learning_nodes SET done=? WHERE id=? AND kind='chapter'",(int(done),nid))
  def summary(self):

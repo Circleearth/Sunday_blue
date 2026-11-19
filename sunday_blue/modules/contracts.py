@@ -1,7 +1,7 @@
 """Immutable signed challenges, evidence-based progress and capped virtual-only settlement."""
 import json,uuid
 from datetime import datetime,timezone,timedelta
-from .database import stamp
+from .database import stamp,day as living_day
 from .life import number
 from .notices import notify
 METRICS={'study_minutes':'有效学习分钟','mastery':'新达到掌握的知识点','reviews':'通过复习次数','correct':'做题正确数','exercise_daily':'每日足额运动分钟','manual':'自主目标（逐次确认事实）'}
@@ -43,7 +43,7 @@ class Contracts:
    saved=c.execute('SELECT payload FROM challenge_settlement_evidence WHERE contract_id=?',(r['id'],)).fetchone()
    if saved:return json.loads(saved[0])['daily']
   from .life_state import ZONE
-  first=datetime.fromisoformat(r['signed']).astimezone(ZONE).date();last=datetime.fromisoformat(r['deadline']).astimezone(ZONE).date()
+  first=datetime.fromisoformat(living_day(datetime.fromisoformat(r['signed']))).date();last=datetime.fromisoformat(living_day(datetime.fromisoformat(r['deadline'])-timedelta(microseconds=1))).date()
   records={x['day']:x['minutes'] for x in c.execute('SELECT day,sum(minutes) AS minutes FROM exercise_records WHERE day>=? AND day<=? AND rowid>? GROUP BY day',(first.isoformat(),last.isoformat(),json.loads(r['terms']).get('baseline_row',0)))}
   return [{'day':(first+timedelta(days=n)).isoformat(),'minutes':records.get((first+timedelta(days=n)).isoformat(),0)} for n in range((last-first).days+1)]
  def progress(self,c,r):
@@ -116,5 +116,5 @@ class Contracts:
     if datetime.fromisoformat(r['deadline'])<=now:
      c.execute("UPDATE challenge_contracts SET status='review' WHERE id=?",(r['id'],));notify(c,'contract-due:'+r['id'],r['title']+' 已到期，记录未显示达标。请先核对；不会因缺少记录自动扣分。',True)
     elif now.astimezone(ZONE).hour >= (9 if now.astimezone(ZONE).date()>datetime.fromisoformat(r['signed']).astimezone(ZONE).date() else 18):
-     current=self.progress(c,r) if r['metric']!='exercise_daily' else next((d['minutes'] for d in self.exercise_days(c,r) if d['day']==now.astimezone(ZONE).date().isoformat()),0)
+     current=self.progress(c,r) if r['metric']!='exercise_daily' else next((d['minutes'] for d in self.exercise_days(c,r) if d['day']==living_day(now)),0)
      notify(c,'contract-daily:'+r['id']+':'+now.astimezone(ZONE).date().isoformat(),r['title']+f" · 当前 {current:g}/{r['target']:g}；截止 "+datetime.fromisoformat(r['deadline']).astimezone(ZONE).strftime('%m-%d %H:%M'),True,when=now.astimezone(timezone.utc).isoformat())

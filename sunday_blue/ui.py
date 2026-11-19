@@ -21,6 +21,13 @@ from .tray import Tray
 # Re-export names for existing imports/tests; implementation lives in ui_components.
 from .ui_components import text_label, button, TitleBar, Composer, Portrait, Bubble
 
+class PageStack(QStackedWidget):
+    def hasHeightForWidth(self):
+        return False
+
+    def heightForWidth(self,width):
+        return -1
+
 class MainWindow(QWidget):
     """Main window: sidebar sessions, chat view, character panel, role rail.
 
@@ -83,7 +90,12 @@ class MainWindow(QWidget):
         for title,fn,obj in [('—',self.showMinimized,'ghost'),('□',self.maximize,'ghost'),('×',self.close,'close')]:
             b=button(title,fn,obj); b.setFixedSize(34,32); bar.addWidget(b)
         main.addWidget(top)
-        self.page_stack=QStackedWidget();self.chat_page=QWidget();self.page_stack.addWidget(self.chat_page);main.addWidget(self.page_stack,1)
+        self.plan_strip=QPushButton()
+        self.plan_strip.setObjectName('ghost')
+        self.plan_strip.setMaximumHeight(25)
+        self.plan_strip.hide()
+        main.addWidget(self.plan_strip)
+        self.page_stack=PageStack();self.chat_page=QWidget();self.page_stack.addWidget(self.chat_page);main.addWidget(self.page_stack,1)
         body=QHBoxLayout(self.chat_page);body.setContentsMargins(0,0,0,0);body.setSpacing(0)
         self._sidebar(body); self._chat(body); self._character(body); self._rail(body)
         foot=QHBoxLayout(); foot.setContentsMargins(16,3,3,3)
@@ -648,7 +660,7 @@ class MainWindow(QWidget):
     def resizeEvent(self,event):
         super().resizeEvent(event)
         if hasattr(self,'chat_scroll'):QTimer.singleShot(0,self.resize_bubbles)
-        if hasattr(self,'follow_button'):QTimer.singleShot(0,lambda:self._place_follow_button() if self.follow_button.isVisible() else None)
+        if hasattr(self,'follow_button'):QTimer.singleShot(0,self,lambda:self._place_follow_button() if self.follow_button.isVisible() else None)
 
     def resize_bubbles(self):
         for bubble in self.chat_bubbles:bubble.set_available_width(self._chat_width())

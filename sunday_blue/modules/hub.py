@@ -96,7 +96,9 @@ class ModuleHub(QObject):
         options=self.focus.options()
         self.db.set('focus_loop',{'category':category,'label':label,'role_id':role_id,
             'task_id':task_id,'remaining':options['max_rounds'],'enabled':options['auto_loop'] and phase=='focus'})
-        return self.focus.start(category,label,role_id,phase,duration,task_id=task_id)
+        result=self.focus.start(category,label,role_id,phase,duration,task_id=task_id)
+        if phase=='focus':self.db.set('last_start:'+category,{'label':label,'task_id':task_id})
+        return result
 
     def _continue_focus(self,result):
         chain=self.db.get('focus_loop',{})
@@ -248,13 +250,13 @@ class ModuleHub(QObject):
             self.feedback.emit(role,'有一条会议后的关心，已放到私聊。')
 
     def calendar_days(self,month):
-        with self.db.connect() as db:return [r[0] for r in db.execute('SELECT DISTINCT day FROM activity_records WHERE day LIKE ?',(month+'%',))]
+        with self.db.connect() as db:return [r[0] for r in db.execute('SELECT DISTINCT day FROM activity_by_day WHERE day LIKE ?',(month+'%',))]
 
     def calendar_coins(self,day):
         with self.db.connect() as db:return db.execute("SELECT COALESCE(sum(c.amount),0) FROM coin_ledger c JOIN activity_records a ON c.reason='focus:'||a.id WHERE a.day=?",(day,)).fetchone()[0]
 
     def calendar_records(self,day):
-        with self.db.connect() as db:return [dict(r) for r in db.execute('SELECT * FROM activity_records WHERE day=? ORDER BY started',(day,))]
+        with self.db.connect() as db:return [dict(r) for r in db.execute('SELECT * FROM activity_by_day WHERE day=? ORDER BY started',(day,))]
 
     def diagnostics(self):
         with self.db.connect() as db:

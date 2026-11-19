@@ -2,7 +2,7 @@
 import sys,time
 from datetime import datetime,timedelta
 from .life_state import ZONE
-from .database import stamp
+from .database import stamp,day,next_boundary
 from .life import number
 from .notices import notify
 MODES={'auto':'自动（日间累积 / 夜间按活动）','screen':'持续用眼（阅读 / 视频）','paper':'纸面学习（仍用眼）','rest':'离屏休息','paused':'暂停估算'}
@@ -52,8 +52,8 @@ class Attention:
   self.db.set('attention_options',o);self.anchor=self.clock();self._seconds=0
  def status(self):
   with self.db.connect() as c:r=dict(c.execute('SELECT * FROM attention_state WHERE id=1').fetchone())
-  with self.db.connect() as c:spent=c.execute('SELECT spent FROM attention_capacity WHERE day=?',(datetime.now(ZONE).date().isoformat(),)).fetchone()
-  with self.db.connect() as c:load=c.execute('SELECT minutes FROM eye_daily_load WHERE day=?',(datetime.now(ZONE).date().isoformat(),)).fetchone()
+  with self.db.connect() as c:spent=c.execute('SELECT spent FROM attention_capacity WHERE day=?',(day(),)).fetchone()
+  with self.db.connect() as c:load=c.execute('SELECT minutes FROM eye_daily_load WHERE day=?',(day(),)).fetchone()
   return r|{'eye_floor':min(20,(load[0] if load else 0)*.02),'focus_cap':max(0,100-(spent[0] if spent else 0)/2),'source':self.last_mode,'mode':self.options()['mode']}
  def tick(self,focus=None,active=None,now=None):
   self.new_alert=0
@@ -65,17 +65,20 @@ class Attention:
   seconds=self._seconds;self._seconds=0;now=now or datetime.now(ZONE);o=self.options();mode=o['mode'];active=input_active() if active is None else active
   focus=focus or {};working=focus.get('state')=='running' and focus.get('phase','focus')=='focus'
   clock=now.astimezone(ZONE).strftime('%H:%M');night=clock>=o['night_start'] or clock<o['night_end'] if o['night_start']>o['night_end'] else o['night_start']<=clock<o['night_end']
-  if mode=='auto':mode='screen' if active or working or '09:00'<=clock<'22:00' else 'rest' if active is False and (night or focus.get('state')=='running' and not working) else 'paused'
+  uncertain=mode=='auto' and not active and '09:00'<=clock<'22:00'
+  if mode=='auto':mode='screen' if active or '09:00'<=clock<'22:00' else 'rest' if active is False and (night or focus.get('state')=='running' and not working) else 'paused'
   # Mouse/keyboard use contradicts an explicit rest interval: never recover while interacting.
   elif mode=='rest' and active:mode='screen'
   self.last_mode={'screen':'正在用眼','paper':'纸面学习（仍用眼）','rest':'有效离屏休息','paused':'未计入 / 等待明确活动'}[mode]
+  if uncertain:self.last_mode='日间弱估计 · 未观察到近期输入'
   if mode=='paused':return
   with self.db.connect() as c:
    c.execute('BEGIN IMMEDIATE');r=c.execute('SELECT * FROM attention_state WHERE id=1').fetchone();eye=r['eye'];power=r['focus'];minutes=seconds/60;scale={'low':.7,'medium':1,'high':1.4}[o['intensity']]
+   if uncertain:minutes*=.25
    if mode=='screen':eye+=minutes*(o['eye_rate']*scale+(o['focus_eye_bonus'] if working and focus.get('category') in ('工作','学习') else 0));power-=minutes*o['focus_rate']*scale
    elif mode=='paper':eye+=minutes*o['eye_rate']*.7;power-=minutes*o['focus_rate']
    else:eye-=minutes*o['rest_eye'];power+=minutes*o['rest_focus']
-   consumed=max(0,r['focus']-max(0,power));daykey=now.astimezone(ZONE).date().isoformat()
+   consumed=max(0,r['focus']-max(0,power));daykey=day(now)
    c.execute('INSERT INTO attention_capacity VALUES(?,?) ON CONFLICT(day) DO UPDATE SET spent=spent+excluded.spent',(daykey,consumed))
    spent=c.execute('SELECT spent FROM attention_capacity WHERE day=?',(daykey,)).fetchone()[0];cap=max(0,100-spent/2)
    if working and focus.get('category') in ('工作','学习') and mode in ('screen','paper'):
@@ -92,8 +95,8 @@ class Attention:
    # Attribute observed slices around midnight without duplicating a source interval.
    start=now-timedelta(seconds=seconds)
    while start<now:
-    end=min(now,(start+timedelta(days=1)).replace(hour=0,minute=0,second=0,microsecond=0));span=(end-start).total_seconds();column={'screen':'screen_seconds','rest':'rest_seconds','paper':'paper_seconds'}[mode]
-    c.execute('INSERT OR IGNORE INTO attention_days(day) VALUES(?)',(start.astimezone(ZONE).date().isoformat(),));c.execute(f'UPDATE attention_days SET {column}={column}+?,eye=?,focus=? WHERE day=?',(span,eye,power,start.astimezone(ZONE).date().isoformat()));start=end
+    end=min(now,next_boundary(start));span=(end-start).total_seconds();column={'screen':'screen_seconds','rest':'rest_seconds','paper':'paper_seconds'}[mode]
+    c.execute('INSERT OR IGNORE INTO attention_days(day) VALUES(?)',(day(start),));c.execute(f'UPDATE attention_days SET {column}={column}+?,eye=?,focus=? WHERE day=?',(span,eye,power,day(start)));start=end
  def daily_boundary(self,now=None):
   now=(now or datetime.now(ZONE)).astimezone(ZONE);today=now.date().isoformat()
   with self.db.connect() as c:
@@ -110,20 +113,38 @@ class Attention:
     current=c.execute('SELECT eye FROM attention_state WHERE id=1').fetchone()[0]
     if current>50:notify(c,'attention-night:'+today,f'22点视疲劳检查：当前估计 {current:.0f}%，建议离屏休息。',True,True,now.isoformat())
  @staticmethod
- def apply_sleep(c,day,hours,quality=1):
-  if hours is None or hours<=0 or not c.execute("SELECT 1 FROM sqlite_master WHERE name='attention_state'").fetchone():return
-  today=datetime.now(ZONE).date()
+ def apply_sleep(c,day,hours,quality=1,revise=False):
+  if not c.execute("SELECT 1 FROM sqlite_master WHERE name='attention_state'").fetchone():return
+  from .database import day as living_day
+  today=datetime.fromisoformat(living_day()).date()
   if day not in (today.isoformat(),(today-timedelta(days=1)).isoformat()):return
-  if c.execute('SELECT 1 FROM attention_sleep WHERE day=?',(day,)).fetchone():return
+  prior=c.execute('SELECT hours FROM attention_sleep WHERE day=?',(day,)).fetchone()
+  if prior and not revise:return
+  if hours is None and not prior:return
   # Conservatively discount already counted rest across the reported night, never double-credit it.
   next_day=(datetime.fromisoformat(day)+timedelta(days=1)).date().isoformat()
   counted=c.execute('SELECT COALESCE(sum(rest_seconds),0)/3600 FROM attention_days WHERE day IN (?,?)',(day,next_day)).fetchone()[0]
-  hours=max(0,min(hours,10)*quality-counted)
+  hours=max(0,min(hours or 0,10)*(quality or 0)-counted)
+  delta=hours-(prior[0] if prior else 0)
+  if abs(delta)<.0001:return
   import json
   cfg=c.execute("SELECT value FROM module_settings WHERE key='attention_options'").fetchone();o=json.loads(cfg[0]) if cfg else {}
   spent=c.execute('SELECT spent FROM attention_capacity WHERE day=?',(today.isoformat(),)).fetchone();cap=max(0,100-(spent[0] if spent else 0)/2)
   load=c.execute('SELECT minutes FROM eye_daily_load WHERE day=?',(today.isoformat(),)).fetchone();floor=min(20,(load[0] if load else 0)*.02)
-  c.execute('INSERT INTO attention_sleep VALUES(?,?)',(day,hours));c.execute('UPDATE attention_state SET eye=max(?,eye-?),focus=min(?,focus+?),updated=? WHERE id=1',(floor,hours*o.get('sleep_eye',7),cap,hours*o.get('sleep_focus',6),stamp()))
+  c.execute('CREATE TABLE IF NOT EXISTS sleep_applied_credit(day TEXT PRIMARY KEY,eye REAL,focus REAL)')
+  credit=c.execute('SELECT eye,focus FROM sleep_applied_credit WHERE day=?',(day,)).fetchone()
+  old_eye,old_focus=c.execute('SELECT eye,focus FROM attention_state WHERE id=1').fetchone()
+  eye_change=delta*o.get('sleep_eye',7)
+  focus_change=delta*o.get('sleep_focus',6)
+  if delta<0:
+   # Older records only captured estimated hours. Reverse only proven applied credit.
+   eye_change=max(eye_change,-(credit[0] if credit else 0))
+   focus_change=max(focus_change,-(credit[1] if credit else 0))
+  eye=max(floor,min(100,old_eye-eye_change))
+  focus=max(0,min(cap,old_focus+focus_change))
+  c.execute('INSERT OR REPLACE INTO attention_sleep VALUES(?,?)',(day,hours))
+  c.execute('INSERT INTO sleep_applied_credit VALUES(?,?,?) ON CONFLICT(day) DO UPDATE SET eye=max(0,eye+excluded.eye),focus=max(0,focus+excluded.focus)',(day,old_eye-eye,focus-old_focus))
+  c.execute('UPDATE attention_state SET eye=?,focus=?,updated=? WHERE id=1',(eye,focus,stamp()))
  def sleep(self,day,hours):
   with self.db.connect() as c:c.execute('BEGIN IMMEDIATE');self.apply_sleep(c,day,hours)
  def days(self):

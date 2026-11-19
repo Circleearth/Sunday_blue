@@ -6,6 +6,12 @@ from PySide6.QtGui import QPixmap,QPainter,QColor
 from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QPushButton,QDialog,QFileDialog,QSlider,QLabel,QMessageBox
 class ArtEvents(QObject):changed=Signal(str,str)
 EVENTS=ArtEvents()
+_office_roots=set()
+def set_office_mode(root,on):
+ key=str(root)
+ if on:_office_roots.add(key)
+ else:_office_roots.discard(key)
+ EVENTS.changed.emit(key,'office')
 def selection(root,key):
  try:return json.loads((Path(root)/'data/image_layouts.json').read_text(encoding='utf-8')).get(key,{})
  except (OSError,ValueError):return {}
@@ -21,6 +27,7 @@ def paint_image(p,rect,pix,cfg):
  target=QRectF(rect.center().x()-w/2+cfg.get('x',0)*rect.width(),rect.center().y()-h/2+cfg.get('y',0)*rect.height(),w,h)
  p.save();p.setClipRect(rect);p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform);p.drawPixmap(target,pix,QRectF(pix.rect()));p.restore()
 def framed(root,key,fallback,size):
+ if str(root) in _office_roots:return QPixmap()
  cfg=selection(root,key);pix=QPixmap(cfg.get('path',str(fallback)))
  if pix.isNull():pix=QPixmap(str(fallback))
  if pix.isNull():return pix
@@ -60,8 +67,9 @@ def edit_image(parent,root,key,fallback,ratio=1):
  dlg.exec()
 class EditableImage(QWidget):
  def __init__(self,root,key,fallback,title='选择图片 / 调整',ratio=1,parent=None):
-  super().__init__(parent);self.root=root;self.key=key;self.fallback=fallback;self.ratio=ratio;self.setMinimumHeight(70);layout=QVBoxLayout(self);layout.setContentsMargins(4,4,4,4);layout.addStretch();b=QPushButton(title);b.clicked.connect(self.edit);layout.addWidget(b,0,Qt.AlignmentFlag.AlignRight);EVENTS.changed.connect(self.changed);self.reload()
+  super().__init__(parent);self.root=root;self.key=key;self.fallback=fallback;self.ratio=ratio;self.setMinimumHeight(70);layout=QVBoxLayout(self);layout.setContentsMargins(4,4,4,4);layout.addStretch();b=QPushButton(title);b.clicked.connect(self.edit);layout.addWidget(b,0,Qt.AlignmentFlag.AlignRight);EVENTS.changed.connect(self.changed);self.reload();self.setHidden(str(root) in _office_roots)
  def changed(self,root,key):
+  if root==str(self.root) and key=='office':self.setVisible(root not in _office_roots)
   if root==str(self.root) and key==self.key:self.reload()
  def reload(self):
   self.cfg=selection(self.root,self.key);self.pix=QPixmap(self.cfg.get('path',str(self.fallback)))

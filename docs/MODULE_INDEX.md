@@ -192,3 +192,11 @@
 - 工作成果：Recovery.end_work / Hub.end_work；按当天创建/变更历史取事实，不从所有已完成任务猜测今天成果。
 - 休息及自然日限制：Attention.eye_daily_load / attention_capacity；重启不得清空日账。生活上报状态与最近缺日报：LifePage / Life.latest_missing_day。
 - 验证：test_experience_polish.py，另跑全套回归；图片测试使用合成图片，不访问用户外部图片。
+
+
+## 此刻与日常切换
+
+- `module_views/moment.py` 负责当前计划、工作学习接续、收尾与恢复交互。`modules/work_audio.py` 管理工作时段静音，`modules/phone_link.py` 接收 Android 提醒。
+- `modules/database.py` 的 `day` 和 `next_boundary` 定义 04:00 生活日。`activity_by_day` 按实际观察区间展示新记录，旧记录保留原始日期。日历提醒的钟点、每周计划和契约截止时刻仍用当地时间。
+- 工作积分游戏在独立的 `hamlet/` 包内。游戏读取累计工作积分，自己的收支与存档保存在独立配置键。主程序美术与游戏美术的分类见 `docs/ART_DIRECTION.md`。
+- 跨模块验收用例在 `tests/test_daily_transitions.py`，覆盖生活日、日历、上报修订、启动工作、撤销删除、兑换计时、局域网接收和工作时段静音。

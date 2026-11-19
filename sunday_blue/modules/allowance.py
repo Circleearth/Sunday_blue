@@ -40,7 +40,8 @@ class Allowance:
             policy=dict(db.execute('SELECT * FROM allowance_policy WHERE effective<=? ORDER BY effective DESC LIMIT 1',(current,)).fetchone())
             rows=[]
             if db.execute("SELECT 1 FROM sqlite_master WHERE name='activity_records'").fetchone():
-                rows=db.execute('SELECT day,seconds FROM activity_records WHERE day LIKE ?',(last.strftime('%Y-%m')+'%',)).fetchall()
+                source='activity_by_day' if db.execute("SELECT 1 FROM sqlite_master WHERE name='activity_by_day'").fetchone() else 'activity_records'
+                rows=db.execute(f'SELECT day,seconds FROM {source} WHERE day LIKE ?',(last.strftime('%Y-%m')+'%',)).fetchall()
             hours=sum(r['seconds'] for r in rows)/3600;days=len({r['day'] for r in rows});total=calendar.monthrange(last.year,last.month)[1]
             changed=bool(db.execute('SELECT 1 FROM allowance_policy WHERE changed_month=?',(current,)).fetchone())
             scheduled=db.execute('SELECT cents FROM allowance_policy WHERE effective=?',(month_after(current),)).fetchone()

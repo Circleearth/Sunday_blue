@@ -1,10 +1,10 @@
 """Pause-safe focus clock. A committed finish owns both its record and coins."""
-from datetime import date, timedelta
+from datetime import date,datetime,timezone,timedelta
 import json
 import threading
 import time
 import uuid
-from .database import day, stamp
+from .database import day, stamp, record_interval
 from .rewards import Rewards
 from ..roles import require_role
 from .focus_preferences import PHASES, options, save_options
@@ -25,6 +25,10 @@ class Focus:
                 CREATE UNIQUE INDEX IF NOT EXISTS one_focus_run ON focus_runs((1)) WHERE state IN ('running','paused');
                 CREATE TABLE IF NOT EXISTS activity_records (
                 id TEXT PRIMARY KEY,category TEXT,label TEXT,role_id TEXT,seconds REAL,day TEXT,started TEXT,finished TEXT);
+                CREATE TABLE IF NOT EXISTS focus_day_slices(run_id TEXT,day TEXT,seconds REAL,PRIMARY KEY(run_id,day));
+                CREATE VIEW IF NOT EXISTS activity_by_day AS
+                SELECT a.id,a.category,a.label,a.role_id,s.seconds,s.day,a.started,a.finished FROM activity_records a JOIN focus_day_slices s ON s.run_id=a.id
+                UNION ALL SELECT a.* FROM activity_records a WHERE NOT EXISTS(SELECT 1 FROM focus_day_slices s WHERE s.run_id=a.id);
                 CREATE TABLE IF NOT EXISTS focus_timers (
                 run_id TEXT PRIMARY KEY,phase TEXT,duration REAL,long_every INTEGER,end_reason TEXT);
                 CREATE TABLE IF NOT EXISTS focus_task_links(run_id TEXT PRIMARY KEY,task_id TEXT,title TEXT,progress_start REAL);
@@ -80,6 +84,9 @@ class Focus:
                 if asleep:
                     db.execute("UPDATE focus_runs SET state='paused' WHERE id=?",(row['id'],))
                 else:
+                    if delta>0:
+                        end=datetime.now(timezone.utc)
+                        record_interval(db,row['id'],end-timedelta(seconds=delta),end)
                     db.execute('UPDATE focus_runs SET elapsed=elapsed+? WHERE id=?',(delta,row['id']))
             self.anchor=None if asleep else current
             if asleep:self.changed('focus','检测到休眠或长时间停顿，计时已暂停；离线时间未计入。')
@@ -146,8 +153,7 @@ class Focus:
                 raise ValueError('没有可以结算的专注。')
             settlement_day=record_day or day()
             if record_day:
-                from datetime import datetime
-                if not datetime.fromisoformat(row['started']).astimezone().date().isoformat()<=record_day<=day():raise ValueError('补结算日期不在计时范围内')
+                if not day(datetime.fromisoformat(row['started']))<=record_day<=day():raise ValueError('补结算日期不在计时范围内')
                 date.fromisoformat(record_day)
             seconds=row['elapsed'];valid=seconds>120 and row['phase']=='focus';record=None;coins=0;points=0;bonus=0;personal=False;task_info={}
             timed_complete=bool(row['duration'] and seconds>=row['duration'])
@@ -155,6 +161,11 @@ class Focus:
                 db.execute('BEGIN IMMEDIATE')
                 stored=db.execute('SELECT state,settlement FROM focus_runs WHERE id=?',(row['id'],)).fetchone()
                 if stored['state']=='finished':return json.loads(stored['settlement'])
+                slices=db.execute('SELECT COALESCE(sum(seconds),0) FROM focus_day_slices WHERE run_id=?',(row['id'],)).fetchone()[0]
+                # A resumed old session can contain earlier elapsed time without dated slices.
+                if valid and seconds-slices>.01 and slices:
+                    db.execute('INSERT INTO focus_day_slices VALUES(?,?,?) ON CONFLICT(run_id,day) DO UPDATE SET seconds=seconds+excluded.seconds',(row['id'],day(datetime.fromisoformat(row['started'])),seconds-slices))
+                if not valid:db.execute('DELETE FROM focus_day_slices WHERE run_id=?',(row['id'],))
                 if valid:
                     previous=db.execute('SELECT COALESCE(max(seconds),0) FROM activity_records').fetchone()[0]
                     record={k:row[k] for k in ('id','category','label','role_id','started')}
@@ -204,14 +215,15 @@ class Focus:
 
     def _stats(self,db):
         today=day();week=(date.fromisoformat(today)-timedelta(days=6)).isoformat()
-        rows=db.execute('SELECT day,seconds FROM activity_records ORDER BY day DESC').fetchall()
+        rows=db.execute('SELECT day,seconds FROM activity_by_day ORDER BY day DESC').fetchall()
         days={r['day'] for r in rows};cursor=date.fromisoformat(today)
         if today not in days:cursor-=timedelta(days=1)
         streak=0
         while cursor.isoformat() in days:streak+=1;cursor-=timedelta(days=1)
+        total,best=db.execute('SELECT count(*),COALESCE(max(seconds),0) FROM activity_records').fetchone()
         return dict(today_seconds=sum(r['seconds'] for r in rows if r['day']==today),today_count=sum(r['day']==today for r in rows),
-                    week_seconds=sum(r['seconds'] for r in rows if r['day']>=week),best_seconds=max((r['seconds'] for r in rows),default=0),
-                    streak=streak,balance=Rewards.balance(db),milestones=[f'累计完成 {n} 次' for n in (1,5,10,25,50,100) if len(rows)>=n])
+                    week_seconds=sum(r['seconds'] for r in rows if r['day']>=week),best_seconds=best,
+                    streak=streak,balance=Rewards.balance(db),milestones=[f'累计完成 {n} 次' for n in (1,5,10,25,50,100) if total>=n])
 
     def stats(self):
         with self.db.connect() as db:return self._stats(db)
