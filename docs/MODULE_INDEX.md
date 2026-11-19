@@ -6,6 +6,7 @@
 
 | 需求 | 优先读取 | 必要测试 |
 |---|---|---|
+| 工作/学习拖动、同级排序、跨父级归属 | `module_views/ordered_tree.py`、`modules/tree_moves.py` | `test_tree_moves.py` |
 | 独立周计划 / 本地随手记 | `module_views/weekly_plan.py`、`module_views/personal_notes.py`、`modules/personal_notes.py` | `test_personal_notes.py`、`test_module_views.py` |
 | 原文收件箱 / 后台整理 / 确认建任务 | `modules/inbox_assistant.py`、`module_views/inbox.py`、`modules/duties.py` | `test_inbox_assistant.py` |
 | 上报日期、确认锁定、睡眠恢复 | `module_views/life.py`、`modules/life.py`、`modules/sleep_quality.py`、`modules/attention.py` | `test_daily_finalize.py`、`test_life_work_views.py` |

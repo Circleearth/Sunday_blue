@@ -34,6 +34,7 @@ class RewardsPage(QWidget):
         for r in self.hub.rewards.list():
             if r['kind']=='gift':
                 suffix=f" · 送给 {names.get(r['role_id'],'未知角色')}"
+            elif r['kind']=='extra':suffix=' · 七天内额外 1 次'
             elif r['kind']=='budget':
                 suffix=f" · ¥{r['cents']/100:.2f}（实际消费需确认）"
             else:
@@ -49,6 +50,7 @@ class RewardsPage(QWidget):
             status='待确认实际消费' if r['status']=='pending' else '已确认消费' if r['status']=='confirmed' else '已兑换'
             detail=''
             if r['kind']=='gift':detail=f" · 送给 {names.get(r['role_id'],'未知角色')}"
+            elif r['kind']=='extra':detail=' · 额外 1 次'
             elif r['kind']=='budget':detail=f" · ¥{r['cents']/100:.2f}"
             item=QListWidgetItem(f"{r['title']} · {status} · {r['cost']} 金币{detail}");item.setData(Qt.ItemDataRole.UserRole,r);self.history.addItem(item)
     def buy_item(self,item):
@@ -84,6 +86,7 @@ class RewardsPage(QWidget):
         def update_fields():
             minutes.setEnabled(kind.currentData()=='leisure');money.setEnabled(kind.currentData()=='budget');roles.setEnabled(kind.currentData()=='gift')
         kind.currentIndexChanged.connect(update_fields);update_fields()
+        if existing and existing['kind']=='extra':kind.addItem('额外次数','extra');kind.setEnabled(False)
         if existing:
             title.setText(existing['title']);cost.setValue(existing['cost']);kind.setCurrentIndex(kind.findData(existing['kind']));minutes.setValue(existing['minutes']);money.setValue(existing['cents']/100);roles.setCurrentIndex(roles.findData(existing['role_id']));update_fields()
         save=QPushButton('保存奖励');save.clicked.connect(dialog.accept);form.addRow(save)

@@ -222,7 +222,7 @@ class Work:
         for tid,r in byid.items():r['actual_seconds']=total(tid)
         with self.db.connect() as c:
             c.execute('CREATE TABLE IF NOT EXISTS work_order(id TEXT PRIMARY KEY,position INTEGER)');order=dict(c.execute('SELECT id,position FROM work_order'))
-        return sorted([r for r in byid.values() if include_archived or not r['archived']],key=lambda r:(r['status']!='done',order.get(r['id'],100000),r['created']))
+        return sorted([r for r in byid.values() if include_archived or not r['archived']],key=lambda r:(order.get(r['id'],100000),r['status']!='done',r['created']))
 
     def task(self,tid):
         for row in self.tasks(True):

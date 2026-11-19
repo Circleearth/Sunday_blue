@@ -27,7 +27,7 @@ class ContractsPage(ModulePage):
    status={'active':'进行中','review':'到期待核对','success':'已达成','failed':'已核对未达成','cancelled':'已解约'}[r['status']]
    item=QListWidgetItem(f"{r['title']}　·　{status}\n{METRICS[r['metric']]}：{r['progress']:g} / {r['target']:g}　｜　截止 {datetime.fromisoformat(r['deadline']).astimezone(ZONE):%m-%d %H:%M}\n奖励 {r['reward']} 契约积分 / 最多扣 {r['penalty']} 积分")
    if r['exercise_days']:
-    days=r['exercise_days'];item.setText(item.text()+f"\n运动积分账户 · 达标 {sum(d['minutes']>=r['target'] for d in days)}/{len(days)} 天，每天需 {r['target']:g} 分钟");item.setToolTip('\n'.join(f"{d['day']}：{d['minutes']:g} 分钟" for d in days))
+    days=r['exercise_days'];today_minutes=next((v['minutes'] for v in days if v['day']==datetime.now(ZONE).date().isoformat()),0);item.setText(item.text()+f"\n今日运动 {today_minutes:g}/{r['target']:g} 分钟 · 达标 {sum(d['minutes']>=r['target'] for d in days)}/{len(days)} 天，每天需 {r['target']:g} 分钟");item.setToolTip('\n'.join(f"{d['day']}：{d['minutes']:g} 分钟" for d in days))
    else:item.setToolTip(r['terms'])
    item.setData(Qt.ItemDataRole.UserRole,r);self.items.addItem(item)
    if r['id']==rid:self.items.setCurrentItem(item)
@@ -67,6 +67,7 @@ class SchedulePage(QWidget):
   super().__init__(parent)
   from .planner import CalendarPage,RemindersPage,CheckinsPage
   box=QVBoxLayout(self);box.setContentsMargins(0,8,0,0);self.tabs=QTabWidget();box.addWidget(self.tabs);self.pages={}
-  for key,title,cls in [('calendar','日历',CalendarPage),('reminders','提醒',RemindersPage),('checkins','打卡',CheckinsPage)]:
+  from .weekly_plan import WeeklyPlanPage
+  for key,title,cls in [('calendar','日历',CalendarPage),('reminders','提醒',RemindersPage),('checkins','打卡',CheckinsPage),('plan','计划',WeeklyPlanPage)]:
    page=cls(hub);self.pages[key]=page;self.tabs.addTab(page,title)
  def select(self,key):self.tabs.setCurrentWidget(self.pages[key])

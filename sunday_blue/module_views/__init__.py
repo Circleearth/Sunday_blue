@@ -8,5 +8,5 @@ def create_pages(hub,parent=None):
     from .personal_notes import PersonalNotesPage
     from .weekly_plan import WeeklyPlanPage
     from .growth import GrowthPage,SchedulePage
-    return [('plan','计划',WeeklyPlanPage(hub,parent)),('notes','随手记',PersonalNotesPage(hub,parent)),('focus','专注',FocusPage(hub,parent)),('work','工作',WorkPage(hub,parent)),('life','生活',LifePage(hub,parent)),('documents','资料',MarkdownPage(hub,parent)),('social','会议',SocialPage(hub,parent)),
+    return [('notes','随手记',PersonalNotesPage(hub,parent)),('focus','专注',FocusPage(hub,parent)),('work','工作',WorkPage(hub,parent)),('life','生活',LifePage(hub,parent)),('documents','资料',MarkdownPage(hub,parent)),('social','会议',SocialPage(hub,parent)),
             ('rewards','商店',RewardsPage(hub,parent)),('growth','成长',GrowthPage(hub,parent)),('schedule','日程',SchedulePage(hub,parent))]

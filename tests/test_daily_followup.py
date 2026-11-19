@@ -23,7 +23,7 @@ class FollowupTests(unittest.TestCase):
   for count,level in [(0,'green'),(2,'green'),(3,'yellow'),(5,'orange'),(7,'orange'),(8,'red'),(12,'red')]:
    p.save(day,count,count*5);state=p.status();self.assertEqual(state['level'],level);self.assertEqual(state['ratio'],count/5)
   from sunday_blue.module_views.life import LifePage
-  page=LifePage(self.h);self.widgets.append(page);self.assertFalse(hasattr(page,'private_enabled'));self.assertFalse(hasattr(page,'private_limit'));self.assertEqual(page.selected_day(),day);self.assertIn('240%',page.private_recovery.text())
+  page=LifePage(self.h);self.widgets.append(page);self.assertFalse(hasattr(page,'private_enabled'));self.assertFalse(hasattr(page,'private_limit'));self.assertEqual(page.selected_day(),day);self.assertIn('240%',page.private_recovery.toolTip())
   page.bed.load('23:00');page.wake.load('07:00');page.private_count.setValue(1);page.private_minutes.setValue(10)
   with patch.object(self.h.reports,'daily',return_value=None),patch('PySide6.QtWidgets.QMessageBox.question',return_value=QMessageBox.StandardButton.Yes):page.save_daily()
   self.assertEqual(p.get(day)['count'],1)
@@ -48,7 +48,7 @@ class FollowupTests(unittest.TestCase):
  def test_work_tree_completed_nested_widgets_and_missing_estimate_weights(self):
   from sunday_blue.module_views.life_work import WorkPage
   w=self.h.work;r=w.create('project');a=w.create('done',r,estimate_minutes=30);b=w.create('unknown',r);w.update(a,status='done');self.assertEqual(w.task(r)['progress'],50)
-  page=WorkPage(self.h);self.widgets.append(page);page.show();APP.processEvents();root=page.tree.topLevelItem(0);self.assertEqual(root.child(0).text(0),'done');self.assertIsNotNone(page.tree.itemWidget(root.child(0),2))
+  page=WorkPage(self.h);self.widgets.append(page);page.show();APP.processEvents();root=page.tree.topLevelItem(0);self.assertEqual(root.child(0).text(0),'✓  done');page.tree.setCurrentItem(root.child(0));self.assertEqual(page.task_progress.value(),100)
  def test_capacity_loss_rest_half_and_restart(self):
   clock=[0];a=Attention(self.h.db,lambda:clock[0]);now=datetime.now(ZONE);a.daily_boundary(now);a.configure({'mode':'screen','focus_rate':1})
   with self.h.db.connect() as c:c.execute('UPDATE attention_state SET focus=100')

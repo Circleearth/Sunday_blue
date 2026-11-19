@@ -185,6 +185,8 @@ class ModuleHub(QObject):
         try:
             self.life.state.settle();self.life.state.report_cycle()
             self.attention.tick(self.focus.status());self.contracts.tick()
+            from .database import day
+            if getattr(self,'_contracts_day',None)!=day():self._contracts_day=day();self.changed.emit('contracts')
             self.reports.due();self.reports.pump()
             if self.attention.new_alert==2:self.rest_requested.emit()
             a=self.attention.status();display=(round(a['eye']),round(a['focus']),a['source'])

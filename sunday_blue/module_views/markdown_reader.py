@@ -11,6 +11,13 @@ from ..numeric_inputs import NumberSpin as QSpinBox, DecimalSpin as QDoubleSpinB
 
 class SafeMarkdown(QTextBrowser):
     def __init__(self,library,parent=None):super().__init__(parent);self.library=library
+    zoom_steps=Signal(int)
+    def wheelEvent(self,event):
+        if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            delta=event.angleDelta().y() or event.pixelDelta().y()
+            if delta:self.zoom_steps.emit(1 if delta>0 else -1)
+            event.accept();return
+        super().wheelEvent(event)
     def loadResource(self,kind,url):
         # Only explicitly selected library images; no remote/file escape/embedded network content.
         try:
@@ -49,9 +56,9 @@ class MarkdownPage(QWidget):
         self.save_button=QPushButton('保存');self.save_button.setObjectName('primary');self.save_button.clicked.connect(lambda:self.save_document());toolbar.addWidget(self.save_button)
         self.revisions_button=QPushButton('修订记录');self.revisions_button.clicked.connect(self.show_revisions);toolbar.addWidget(self.revisions_button)
         self.find=QLineEdit();self.find.setPlaceholderText('文内查找');self.find.returnPressed.connect(self.find_next);toolbar.addWidget(self.find,1)
-        self.size=QSpinBox();self.size.setRange(12,28);self.size.setValue(16);self.size.setSuffix(' px');self.size.valueChanged.connect(self.apply_size);toolbar.addWidget(self.size);cl.addLayout(toolbar)
-        self.views=QTabWidget();self.reader=SafeMarkdown(self.library);self.reader.setOpenLinks(False);self.reader.anchorClicked.connect(self.link);self.source=QPlainTextEdit();self.source.setReadOnly(False);self.source.setEnabled(False);self.views.addTab(self.reader,'阅读');self.views.addTab(self.source,'编辑 Markdown');cl.addWidget(self.views,1);split.addWidget(center)
-        right=QWidget();rl=QVBoxLayout(right);rl.setContentsMargins(8,0,0,0);rl.addWidget(QLabel('文档目录'));self.outline=QListWidget();self.outline.itemClicked.connect(self.jump);rl.addWidget(self.outline);split.addWidget(right);split.setSizes([240,700,180]);split.setStretchFactor(1,1)
+        self.size=QSpinBox();self.size.setRange(12,44);self.size.setValue(16);self.size.setSuffix(' px');self.size.valueChanged.connect(self.apply_size);toolbar.addWidget(self.size);cl.addLayout(toolbar)
+        self.views=QTabWidget();self.reader=SafeMarkdown(self.library);self.reader.zoom_steps.connect(lambda step:self.size.setValue(self.size.value()+step));self.reader.setOpenLinks(False);self.reader.anchorClicked.connect(self.link);self.source=QPlainTextEdit();self.source.setReadOnly(False);self.source.setEnabled(False);self.views.addTab(self.reader,'阅读');self.views.addTab(self.source,'编辑 Markdown');cl.addWidget(self.views,1);split.addWidget(center)
+        right=QWidget();rl=QVBoxLayout(right);rl.setContentsMargins(8,0,0,0);rl.addWidget(QLabel('文档目录'));self.outline=QListWidget();self.outline.itemClicked.connect(self.jump);rl.addWidget(self.outline);split.addWidget(right);self.outline_pane=right;split.setSizes([240,700,180]);split.setStretchFactor(1,1)
         self.status=QLabel('按原目录阅读；选择文件夹不会改变角色的文件权限。');self.status.setWordWrap(True);outer.addWidget(self.status)
         self.searched.connect(self.search_finished);hub.closed.connect(self.cancel.set);self.apply_size()
         self.save_completed.connect(self.save_finished);self.revisions_ready.connect(self.show_revision_result);self.source.textChanged.connect(self.edited);self.views.currentChanged.connect(self.preview_draft)
@@ -114,9 +121,15 @@ class MarkdownPage(QWidget):
         from .document_revisions import RevisionDialog
         dialog=RevisionDialog(rows,DocumentChanges(self.hub.db),self);dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose);dialog.show()
         self.hub.changed.emit('documents')
+    def minimumSizeHint(self):
+        from PySide6.QtCore import QSize
+        return QSize(420,320)
+    def resizeEvent(self,event):
+        super().resizeEvent(event)
+        if hasattr(self,'outline_pane'):self.outline_pane.setVisible(self.width()>=980)
     def apply_size(self,*args):
         self.reader.document().setDefaultStyleSheet(f'body {{font-size:{self.size.value()}px;line-height:1.65}} pre {{white-space:pre-wrap}}')
-        font=self.reader.font();font.setPixelSize(self.size.value());self.reader.setFont(font)
+        font=self.reader.font();font.setPixelSize(self.size.value());self.reader.setFont(font);self.reader.document().setDefaultFont(font);self.source.setFont(font);self.reader.setStyleSheet(f'font-size:{self.size.value()}px');self.source.setStyleSheet(f'font-size:{self.size.value()}px')
     def choose_root(self):
         path=QFileDialog.getExistingDirectory(self,'选择 Markdown 资料文件夹',self.library.preferences().get('root',''))
         if path:self.set_root(path)

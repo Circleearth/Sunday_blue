@@ -50,6 +50,19 @@ class GrowthTests(unittest.TestCase):
   rid=self.c.sign('学习','correct',10,self.deadline());now=datetime.now(ZONE).replace(hour=19);self.c.tick(now);self.c.tick(now)
   with self.h.db.connect() as db:
    notices=list(db.execute("SELECT * FROM reminder_occurrences WHERE id LIKE 'contract-%'"));self.assertEqual(len(notices),2);self.assertTrue(all(r['qq_status']=='pending' and r['local_status']=='pending' for r in notices))
+ def test_next_day_contract_reminder_and_extra_count(self):
+  rid=self.c.sign('学习','correct',10,self.deadline())
+  tomorrow=(datetime.now(ZONE)+timedelta(days=1)).replace(hour=9)
+  self.c.tick(tomorrow);self.c.tick(tomorrow)
+  with self.h.db.connect() as db:
+   key=f'contract-daily:{rid}:{tomorrow.date()}'
+   self.assertEqual(db.execute("SELECT count(*) FROM reminder_occurrences WHERE id=? AND qq_status='pending' AND local_status='pending'",(key,)).fetchone()[0],1)
+   db.execute("INSERT INTO coin_ledger VALUES('seed',50,'seed','2020-01-01')")
+  rewards=self.h.rewards
+  rewards.redeem('extra-count','order');rewards.redeem('extra-count','order')
+  self.assertEqual(rewards.extra_count(),1);self.assertEqual(rewards.balances()['coins'],30)
+  with self.h.db.connect() as db:db.execute("UPDATE redemptions SET created=datetime('now','-7 days')")
+  self.assertEqual(rewards.extra_count(),0)
  def test_night_use_rest_and_offline_do_not_confuse_physical(self):
   clock=[0];a=Attention(self.h.db,clock=lambda:clock[0]);night=datetime.now(ZONE).replace(hour=23)
   with self.h.db.connect() as db:db.execute('UPDATE attention_state SET eye=40,focus=60')
@@ -80,7 +93,7 @@ class GrowthTests(unittest.TestCase):
   from sunday_blue.modules.workspace import install_workspace
   self.cfg.value['main_page']='reminders';w=MainWindow(self.cfg);hub=install_workspace(w);hub.timer.stop();hub.focus_timer.stop()
   try:
-   self.assertEqual(w.page_stack.count(),11);self.assertEqual(w.page_stack.currentWidget().tabs.currentWidget().__class__.__name__,'RemindersPage')
+   self.assertEqual(w.page_stack.count(),10);self.assertEqual(w.page_stack.currentWidget().tabs.currentWidget().__class__.__name__,'RemindersPage')
    hub.navigate.emit('checkins');self.assertEqual(w.page_stack.currentWidget().tabs.currentWidget().__class__.__name__,'CheckinsPage')
   finally:hub.close();w.tray.exiting=True;w.close();w.tray.icon.hide();w.deleteLater();APP.processEvents()
 

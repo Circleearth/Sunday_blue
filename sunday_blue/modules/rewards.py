@@ -20,15 +20,20 @@ class Rewards:
                 CREATE TABLE IF NOT EXISTS redemptions (
                 id TEXT PRIMARY KEY,request_id TEXT UNIQUE,reward_id TEXT,title TEXT,cost INTEGER,
                 kind TEXT,status TEXT,role_id TEXT,cents INTEGER,created TEXT);''')
-            for r in [('rest20','娱乐 20 分钟',20,'leisure',20,0,None),('hobby30','兴趣时间 30 分钟',30,'leisure',30,0,None)]:
+            for r in [('extra-count','额外的次数',20,'extra',0,0,None),('rest20','娱乐 20 分钟',20,'leisure',20,0,None),('hobby30','兴趣时间 30 分钟',30,'leisure',30,0,None)]:
                 db.execute('INSERT OR IGNORE INTO rewards VALUES(?,?,?,?,?,?,?)',r)
+
+    def extra_count(self):
+        with self.db.connect() as c:
+            return c.execute("SELECT count(*) FROM redemptions WHERE kind='extra' AND date(created,'+8 hours') BETWEEN date('now','+8 hours','-6 days') AND date('now','+8 hours')").fetchone()[0]
 
     def list(self):
         with self.db.connect() as db: return [dict(r) for r in db.execute('SELECT * FROM rewards WHERE id NOT IN (SELECT id FROM reward_hidden) ORDER BY cost,title')]
 
     def add(self,title,cost,kind='leisure',minutes=0,cents=0,role_id=None,reward_id=None):
         title=str(title).strip();cost=int(cost);minutes=int(minutes);cents=int(cents)
-        if not title or len(title)>100 or not 1<=cost<=100000 or kind not in ('leisure','budget','gift'):
+        if reward_id=='extra-count':kind='extra';minutes=cents=0;role_id=None
+        if not title or len(title)>100 or not 1<=cost<=100000 or (kind not in ('leisure','budget','gift') and not (kind=='extra' and reward_id=='extra-count')):
             raise ValueError('请填写奖励名称、正整数金币和有效奖励类别。')
         if minutes<0 or cents<0: raise ValueError('时长和金额不能为负。')
         if kind=='budget' and cents<=0: raise ValueError('预算奖励必须填写实际金额。')

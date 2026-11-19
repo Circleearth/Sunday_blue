@@ -115,5 +115,6 @@ class Contracts:
     if self.progress(c,r)>=r['target']:self._settle(c,r,'success');continue
     if datetime.fromisoformat(r['deadline'])<=now:
      c.execute("UPDATE challenge_contracts SET status='review' WHERE id=?",(r['id'],));notify(c,'contract-due:'+r['id'],r['title']+' 已到期，记录未显示达标。请先核对；不会因缺少记录自动扣分。',True)
-    elif now.astimezone(ZONE).hour>=18:
-     notify(c,'contract-daily:'+r['id']+':'+now.astimezone(ZONE).date().isoformat(),r['title']+f" · 当前 {self.progress(c,r):g}/{r['target']:g}；截止 "+datetime.fromisoformat(r['deadline']).astimezone(ZONE).strftime('%m-%d %H:%M'),True)
+    elif now.astimezone(ZONE).hour >= (9 if now.astimezone(ZONE).date()>datetime.fromisoformat(r['signed']).astimezone(ZONE).date() else 18):
+     current=self.progress(c,r) if r['metric']!='exercise_daily' else next((d['minutes'] for d in self.exercise_days(c,r) if d['day']==now.astimezone(ZONE).date().isoformat()),0)
+     notify(c,'contract-daily:'+r['id']+':'+now.astimezone(ZONE).date().isoformat(),r['title']+f" · 当前 {current:g}/{r['target']:g}；截止 "+datetime.fromisoformat(r['deadline']).astimezone(ZONE).strftime('%m-%d %H:%M'),True,when=now.astimezone(timezone.utc).isoformat())

@@ -103,7 +103,7 @@ class LifePage(ModulePage):
         r=next((r for r in self.muscle_rows if r['part']==part),None)
         if r:self.muscle_detail.setText(r['detail'])
     def on_changed(self,module):
-        if module in ('life','focus','work','recovery','attention'):self.refresh()
+        if module in ('life','focus','work','recovery','attention','rewards'):self.refresh()
     def attention_mode(self,mode):
         self.hub.attention.configure({'mode':mode});self.refresh_energy()
     def sync_report_date(self,*args):
@@ -176,7 +176,12 @@ class LifePage(ModulePage):
         form.addRow('体力影响强度',physical);form.addRow('专注力影响强度',focus);rest=QCheckBox('这次是恢复性休息（增加恢复估计，而非扣减）');form.addRow(rest)
         buttons.accepted.connect(lambda:self.save_dialog(dlg,error,lambda:self.hub.life_timer.finish(minutes.value()*60,physical.currentData(),focus.currentData(),rest.isChecked())));dlg.exec()
     def refresh_energy(self):
-        private=self.hub.private_wellbeing.status();self.private_recovery.setText(f"近7天 {private['week_count']} 次 · 日均 {private['daily_average']:.2f} 次\n控制比例 {private['ratio']:.0%}（近7天次数 ÷ {private['limit']}）\n"+private['note']);self.private_recovery.setStyleSheet('border-left:4px solid '+RECOVERY_COLORS[private['level']]+';padding-left:8px;')
+        private=self.hub.private_wellbeing.status()
+        extra=self.hub.rewards.extra_count()
+        count,base=private['week_count'],private['limit']
+        self.private_recovery.setText(f"近7天 {count} 次    基础 {base} 次    额外 {extra} 次"+(f"    ⚠ 超出 {count-base-extra} 次" if count>base+extra else ""))
+        self.private_recovery.setToolTip(f"控制比例 {private['ratio']:.0%}")
+        self.private_recovery.setStyleSheet('border-bottom:6px solid '+RECOVERY_COLORS[private['level']]+';padding:8px;')
         today=QDate.currentDate().toString('yyyy-MM-dd');r=self.hub.life.energy(today)
         self.cards['physical'].set_state(round(r['physical_value'],1),round(r['physical_cap'],1),r['physical'],'低于 40% 时，优先恢复再安排活动。')
         a=self.hub.attention.status();self.attention_status.setText(f"用眼估算 {a['eye']:.1f}% · 当日残留底线 {a['eye_floor']:.1f}% · {a['source']} · 休息只恢复视疲劳与专注")

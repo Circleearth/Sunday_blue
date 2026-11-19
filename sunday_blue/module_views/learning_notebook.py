@@ -1,4 +1,4 @@
-from .ordered_tree import OrderedTree
+from .ordered_tree import OrderedTree,choose_parent
 """A small learning notebook: hierarchy, familiarity and local notes."""
 from PySide6.QtCore import Qt,QSignalBlocker
 from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QSplitter,QTreeWidget,QTreeWidgetItem,QHeaderView,QLineEdit,QPlainTextEdit,QTabWidget,QComboBox,QCheckBox,QMessageBox,QInputDialog,QProgressBar,QDialog,QPushButton,QDialogButtonBox,QToolButton,QMenu
@@ -23,9 +23,10 @@ class LearningPage(ModulePage):
   for title,fn in [('加入复习计划',self.add_review),('今日复习与历史',self.open_reviews),('错题档案',self.open_errors),('打开随手记',lambda:self.hub.navigate.emit('notes')),('恢复已删除目录',lambda:self.invoke(self.hub.learning.restore_hidden))]:menu.addAction(title,fn)
   tools.setMenu(menu);row.addWidget(tools)
 
-  self.split=QSplitter();self.tree=OrderedTree();self.tree.reordered.connect(lambda ids:self.invoke(lambda:self.hub.learning.reorder(ids)));self.tree.setHeaderLabels(['课程 / 章节 / 知识点','熟悉进度','备注']);self.tree.setIndentation(22);self.tree.setAlternatingRowColors(True);self.tree.header().setSectionResizeMode(0,QHeaderView.ResizeMode.Stretch);self.tree.header().setSectionResizeMode(1,QHeaderView.ResizeMode.ResizeToContents);self.tree.header().setSectionResizeMode(2,QHeaderView.ResizeMode.ResizeToContents);self.split.addWidget(self.tree)
+  self.split=QSplitter();self.tree=OrderedTree();self.tree.setProperty('treeDomain','learning');self.tree.move_requested.connect(self.move_node);self.tree.choose_parent.connect(lambda key:choose_parent(self,'learning',key));self.tree.setHeaderLabels(['课程 / 章节 / 知识点','熟悉进度','备注']);self.tree.setIndentation(22);self.tree.setAlternatingRowColors(True);self.tree.header().setSectionResizeMode(0,QHeaderView.ResizeMode.Stretch);self.tree.header().setSectionResizeMode(1,QHeaderView.ResizeMode.ResizeToContents);self.tree.header().setSectionResizeMode(2,QHeaderView.ResizeMode.ResizeToContents);self.split.addWidget(self.tree)
   self.tree.setStyleSheet('QTreeWidget::item {padding: 8px 4px;} QTreeWidget::item:selected {background: rgba(100,120,150,45); color: palette(text);} QTreeWidget::branch:selected {background: rgba(100,120,150,45);}');self.tree.header().setStretchLastSection(False);self.split.setChildrenCollapsible(False)
-  pane=QWidget();right=QVBoxLayout(pane);self.detail_title=label('选择一个条目','cardTitle');right.addWidget(self.detail_title);self.detail=label();right.addWidget(self.detail)
+  from PySide6.QtWidgets import QFrame
+  pane=QFrame();pane.setObjectName('card');right=QVBoxLayout(pane);right.setContentsMargins(20,16,20,16);self.detail_title=label('选择一个条目','title');right.addWidget(self.detail_title);self.detail=label();right.addWidget(self.detail)
   self.progress=QProgressBar();self.progress.setRange(0,100);right.addWidget(self.progress)
   controls=QHBoxLayout();controls.addWidget(label('熟悉状态'));self.familiarity=QComboBox()
   for key,(name,_) in FAMILIARITY.items():self.familiarity.addItem(name,key)
@@ -57,6 +58,12 @@ class LearningPage(ModulePage):
      try:r=self.selected()
      except ValueError:return
      if r:show_backfill(self,'学习',r['id'])
+ def move_node(self,key,parent,before):
+     from ..modules.tree_moves import move
+     try:
+         move(self.hub.db,'learning',key,parent,before)
+         self.refresh()
+     except ValueError as exc:QMessageBox.information(self,'未移动',str(exc))
  def selected(self,unit=False):
   item=self.tree.currentItem();r=item.data(0,Qt.ItemDataRole.UserRole) if item else None
   if not r or unit and r['kind']!='unit':raise ValueError('请先选择一个知识点' if unit else '请先选择课程、章节或知识点')
@@ -83,7 +90,7 @@ class LearningPage(ModulePage):
    self.tree.clear()
    for r in self.rows:
     state=FAMILIARITY[r['state']][0] if r['kind']=='unit' else f"{r['progress']:.0f}% · 熟悉 {r['familiar_count']}/{r['unit_count']}"+((' · 已读完' if r['done'] else '') if r['kind']=='chapter' else '')
-    item=QTreeWidgetItem([r['title'],state,'有笔记' if any(r[k] for k in ('note','questions','extensions')) else '']);item.setData(0,Qt.ItemDataRole.UserRole,r);self.items[r['id']]=item;children.setdefault(r['parent'],[]).append(r)
+    item=QTreeWidgetItem([({'subject':'▣  ','chapter':'▸  ','unit':'✓  ' if r['state']=='familiar' else '○  '}[r['kind']])+r['title'],state,'有笔记' if any(r[k] for k in ('note','questions','extensions')) else '']);item.setData(0,Qt.ItemDataRole.UserRole,r);self.items[r['id']]=item;children.setdefault(r['parent'],[]).append(r)
    for r in self.rows:
     parent=self.items.get(r['parent']);parent.addChild(self.items[r['id']]) if parent else self.tree.addTopLevelItem(self.items[r['id']])
    self.tree.expandAll()

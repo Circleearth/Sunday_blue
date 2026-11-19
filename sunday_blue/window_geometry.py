@@ -22,6 +22,7 @@ def constrain_maximize(message,minimum=None,scale=1):
     if not user.GetMonitorInfoW(monitor,ctypes.byref(info)):return False
     bounds=MINMAXINFO.from_address(msg.lParam);bounds.maxPosition.x=info.work.left-info.monitor.left;bounds.maxPosition.y=info.work.top-info.monitor.top
     bounds.maxSize.x=info.work.right-info.work.left;bounds.maxSize.y=info.work.bottom-info.work.top
+    bounds.maxTrack.x=bounds.maxSize.x;bounds.maxTrack.y=bounds.maxSize.y
     if minimum is not None:
         bounds.minTrack.x=min(bounds.maxSize.x,round(minimum.width()*scale));bounds.minTrack.y=min(bounds.maxSize.y,round(minimum.height()*scale))
     return True
