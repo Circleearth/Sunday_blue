@@ -1,28 +1,10 @@
 """Current plan, continuation and transitions across existing desktop modules."""
-from datetime import datetime, timedelta
-import re
+from datetime import datetime
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (QCheckBox,QComboBox,QDialog,QDialogButtonBox,QHBoxLayout,QInputDialog,
     QLabel,QMessageBox,QPlainTextEdit,QPushButton,QVBoxLayout,QWidget)
-from ..modules.day_plan import plan
+from ..modules.day_plan import current_plan
 from .module_forms import button
-
-def current_plan(db, now):
-    for offset in (0,1):
-        day = now.date()-timedelta(days=offset)
-        mode = db.get('day_plan:'+day.isoformat(),'normal')
-        slot = {'late':7,'after':8}.get(mode,day.weekday())
-        raw = db.get('weekly_plan:'+str(slot),None)
-        rows = plan(db,day.isoformat()) if raw is None else [line.split(' · ',1) for line in raw.splitlines()]
-        for row in rows:
-            if len(row)!=2:continue
-            match = re.fullmatch(r'(\d\d:\d\d)\s*[–—~-]\s*(?:次日)?(\d\d:\d\d)',row[0].strip())
-            if not match:continue
-            try:start,end=[datetime.combine(day,datetime.strptime(t,'%H:%M').time()) for t in match.groups()]
-            except ValueError:continue
-            if end<=start:end+=timedelta(days=1)
-            if start<=now<end:return row[1]
-    return '自由安排'
 
 class MomentPage(QWidget):
     def __init__(self,hub,parent=None):

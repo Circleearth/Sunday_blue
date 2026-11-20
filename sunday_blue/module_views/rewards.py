@@ -30,22 +30,27 @@ class RewardsPage(QWidget):
         quota=self.hub.rewards.allowance.status()
         self.balance.setText(self.balance.text()+f"  ·  现实奖励可兑换 ¥{quota['available_cents']/100:.2f}（含结转）")
         names=dict((r[0],r[1]) for r in list_roles(self.hub.root))
-        previous=self.items.currentRow();self.items.clear()
-        for r in self.hub.rewards.list():
-            if r['kind']=='gift':
-                suffix=f" · 送给 {names.get(r['role_id'],'未知角色')}"
-            elif r['kind']=='extra':suffix=' · 七天内额外 1 次'
-            elif r['kind']=='budget':
-                suffix=f" · ¥{r['cents']/100:.2f}（实际消费需确认）"
-            else:
-                suffix=f" · {r['minutes']} 分钟"
-            item=QListWidgetItem(f"{r['title']} · {r['cost']} 金币{suffix}");item.setData(Qt.ItemDataRole.UserRole,r);item.setSizeHint(QSize(250,225));self.items.addItem(item)
-            card=QFrame();card.setObjectName('card');box=QVBoxLayout(card);box.setSpacing(10)
-            art=EditableImage(self.hub.root,'shop_item:'+r['id'],self.hub.root/'assets/shop'/(r['id']+'.png'),ratio=2.5);art.setFixedHeight(92)
-            box.addWidget(art);name=QLabel(r['title']);name.setWordWrap(True);name.setObjectName('cardTitle');box.addWidget(name)
-            price=QLabel(str(r['cost'])+' 金币'+suffix);price.setWordWrap(True);box.addWidget(price)
-            buy=QPushButton('兑换');buy.clicked.connect(lambda checked=False,i=item:self.buy_item(i));box.addWidget(buy);self.items.setItemWidget(item,card)
-        self.items.setCurrentRow(max(0,previous));self.history.clear()
+        products=self.hub.rewards.list()
+        catalog=(products,names)
+        if getattr(self,'_catalog',None)!=catalog:
+            self._catalog=catalog
+            previous=self.items.currentRow();self.items.clear()
+            for r in products:
+                if r['kind']=='gift':
+                    suffix=f" · 送给 {names.get(r['role_id'],'未知角色')}"
+                elif r['kind']=='extra':suffix=' · 七天内额外 1 次'
+                elif r['kind']=='budget':
+                    suffix=f" · ¥{r['cents']/100:.2f}（实际消费需确认）"
+                else:
+                    suffix=f" · {r['minutes']} 分钟"
+                item=QListWidgetItem(f"{r['title']} · {r['cost']} 金币{suffix}");item.setData(Qt.ItemDataRole.UserRole,r);item.setSizeHint(QSize(250,225));self.items.addItem(item)
+                card=QFrame();card.setObjectName('card');box=QVBoxLayout(card);box.setSpacing(10)
+                art=EditableImage(self.hub.root,'shop_item:'+r['id'],self.hub.root/'assets/shop'/(r['id']+'.png'),ratio=2.5);art.setFixedHeight(92)
+                box.addWidget(art);name=QLabel(r['title']);name.setWordWrap(True);name.setObjectName('cardTitle');box.addWidget(name)
+                price=QLabel(str(r['cost'])+' 金币'+suffix);price.setWordWrap(True);box.addWidget(price)
+                buy=QPushButton('兑换');buy.clicked.connect(lambda checked=False,i=item:self.buy_item(i));box.addWidget(buy);self.items.setItemWidget(item,card)
+            self.items.setCurrentRow(max(0,previous))
+        self.history.clear()
         for r in self.hub.rewards.history():
             status='待确认实际消费' if r['status']=='pending' else '已确认消费' if r['status']=='confirmed' else '已兑换'
             detail=''

@@ -11,7 +11,7 @@ from sunday_blue.modules.hub import ModuleHub
 from sunday_blue.modules.life_state import ZONE
 from sunday_blue.modules.work_audio import synchronize
 from sunday_blue.module_views.moment import MomentPage,current_plan
-from sunday_blue.hamlet.page import VillageWindow
+from sunday_blue.hamlet.world import Village
 from sunday_blue.storage import Config,Store
 
 app=QApplication.instance() or QApplication([])
@@ -65,6 +65,32 @@ class Transitions(unittest.TestCase):
             with self.h.db.connect() as c:self.assertEqual(c.execute("SELECT count(*) FROM reminder_occurrences WHERE id LIKE 'phone-break:%'").fetchone()[0],1)
         finally:link.stop()
 
+    def test_background_refresh_and_plan_rows(self):
+        from sunday_blue.image_layouts import EditableImage,set_office_mode
+        from sunday_blue.module_views.rewards import RewardsPage
+        from sunday_blue.module_views.weekly_plan import WeeklyPlanPage
+        image=EditableImage(self.h.root,'test',self.h.root/'missing.png')
+        self.widgets.append(image)
+        self.assertFalse(image.isVisible())
+        set_office_mode(self.h.root,True)
+        set_office_mode(self.h.root,False)
+        self.assertFalse(image.isVisible())
+        shop=RewardsPage(self.h)
+        self.widgets.append(shop)
+        card=shop.items.itemWidget(shop.items.item(0))
+        self.h.changed.emit('attention')
+        self.assertIs(shop.items.itemWidget(shop.items.item(0)),card)
+        self.h.db.set('weekly_plan:0','09:00–10:00 · 阅读\n临时安排')
+        page=WeeklyPlanPage(self.h)
+        self.widgets.append(page)
+        page.days.setCurrentRow(0)
+        self.assertEqual(page.table.item(1,1).text(),'临时安排')
+        page.table.item(0,1).setText('学习')
+        page.days.setCurrentRow(1)
+        self.assertEqual(current_plan(self.h.db,datetime(2026,11,16,9,30)),'学习')
+        page.days.setCurrentRow(0)
+        self.assertEqual(page.table.item(0,1).text(),'学习')
+
     def test_optional_sleep_correction_and_one_reward(self):
         target=(datetime.now(ZONE)-timedelta(days=2)).date().isoformat()
         life=self.h.life
@@ -88,9 +114,10 @@ class Transitions(unittest.TestCase):
         self.h.focus.finish()
         self.h.db.set('weekly_plan:0','23:30–次日01:00 · 阅读')
         self.assertEqual(current_plan(self.h.db,datetime(2026,11,17,0,30)),'阅读')
-        game=VillageWindow(self.h);self.widgets.append(game)
-        next(b for b in game.findChildren(QPushButton) if b.text()=='进入下一层').click()
-        self.assertEqual(game.world.view()['floor'],2)
+        clock=[1000];game=Village(self.h.db,lambda:clock[0])
+        game.transact('start','delve','1'*32)
+        clock[0]+=38*600
+        self.assertEqual(game.transact()['state']['floor'],2)
         endpoint=Mock()
         for hour in (8,11,18,19):synchronize(self.h.db,datetime(2026,11,16,hour),endpoint)
         self.assertEqual([call.args[0] for call in endpoint.SetMute.call_args_list],[1,0])

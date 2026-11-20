@@ -913,5 +913,6 @@ class MainWindow(QWidget):
         self.config.value['last_role']=self.role
         self.config.value['active_sessions']=self.current_by_role
         self.config.save()
+        if hasattr(self,'tray'):self.tray.watch.stop();self.tray.icon.hide()
         if hasattr(self,'module_hub'):self.module_hub.close()
         event.accept()

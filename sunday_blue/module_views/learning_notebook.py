@@ -20,7 +20,7 @@ class LearningPage(ModulePage):
   self.search=QLineEdit();self.search.setPlaceholderText('搜索名称、备注、疑惑或拓展');self.search.setClearButtonEnabled(True);row.addWidget(self.search,1);box.addLayout(row)
   self.summary=label();box.addWidget(self.summary)
   tools=QToolButton();tools.setText('学习工具 ▾');tools.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup);menu=QMenu(tools)
-  for title,fn in [('加入复习计划',self.add_review),('今日复习与历史',self.open_reviews),('错题档案',self.open_errors),('打开随手记',lambda:self.hub.navigate.emit('notes')),('恢复已删除目录',lambda:self.invoke(self.hub.learning.restore_hidden))]:menu.addAction(title,fn)
+  for title,fn in [('加入复习计划',self.add_review),('打开随手记',lambda:self.hub.navigate.emit('notes')),('恢复已删除目录',lambda:self.invoke(self.hub.learning.restore_hidden))]:menu.addAction(title,fn)
   tools.setMenu(menu);row.addWidget(tools)
 
   self.split=QSplitter();self.tree=OrderedTree();self.tree.setProperty('treeDomain','learning');self.tree.move_requested.connect(self.move_node);self.tree.choose_parent.connect(lambda key:choose_parent(self,'learning',key));self.tree.setHeaderLabels(['课程 / 章节 / 知识点','熟悉进度','备注']);self.tree.setIndentation(22);self.tree.setAlternatingRowColors(True);self.tree.header().setSectionResizeMode(0,QHeaderView.ResizeMode.Stretch);self.tree.header().setSectionResizeMode(1,QHeaderView.ResizeMode.ResizeToContents);self.tree.header().setSectionResizeMode(2,QHeaderView.ResizeMode.ResizeToContents);self.split.addWidget(self.tree)
@@ -47,12 +47,6 @@ class LearningPage(ModulePage):
   def action():
    r=self.selected(True);ReviewPlan(self.hub.db).add(r['id']);QMessageBox.information(self,'已加入','明天开始复习，重复添加不会重置计划。')
   self.invoke(action)
- def open_errors(self):
-  from .review_plan import show_errors
-  show_errors(self)
- def open_reviews(self):
-  from .review_plan import show_reviews
-  show_reviews(self)
  def backfill(self):
      from .manual_time import show_backfill
      try:r=self.selected()

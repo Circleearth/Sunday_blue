@@ -61,7 +61,10 @@ class ContractsPage(ModulePage):
 
 class GrowthPage(QWidget):
  def __init__(self,hub,parent=None):
-  super().__init__(parent);box=QVBoxLayout(self);box.setContentsMargins(0,8,0,0);self.tabs=QTabWidget();box.addWidget(self.tabs);self.learning=LearningPage(hub);self.contracts=ContractsPage(hub);self.tabs.addTab(self.learning,'学习笔记');self.tabs.addTab(self.contracts,'限时契约')
+  super().__init__(parent);box=QVBoxLayout(self);box.setContentsMargins(0,8,0,0);self.tabs=QTabWidget();box.addWidget(self.tabs);self.learning=LearningPage(hub);self.contracts=ContractsPage(hub);self.study_tabs=QTabWidget();self.tabs.addTab(self.study_tabs,'学习');self.study_tabs.addTab(self.learning,'知识笔记')
+  from .review_plan import review_page,archive_page,error_page
+  self.study_tabs.addTab(review_page(self.learning),'复习计划');self.study_tabs.addTab(archive_page(self.learning),'复习档案');self.study_tabs.addTab(error_page(self.learning),'错题档案')
+  self.study_tabs.currentChanged.connect(lambda i:self.study_tabs.widget(i).refresh());self.tabs.addTab(self.contracts,'限时契约')
 
 class SchedulePage(QWidget):
  def __init__(self,hub,parent=None):

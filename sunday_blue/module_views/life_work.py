@@ -49,8 +49,8 @@ class WorkPage(ModulePage):
             self.invoke(lambda:self.hub.work.trash(task['id']))
 
     def open_village(self):
-        from ..hamlet.page import VillageWindow
-        VillageWindow(self.hub,self).exec()
+        from ..hamlet.page import open_village
+        open_village(self.hub,self)
 
     def inspect_task(self,*args):
         r=self.selected()
@@ -93,8 +93,8 @@ class WorkPage(ModulePage):
             else:self.tree.addTopLevelItem(item)
         if selected_id in items:self.tree.setCurrentItem(items[selected_id])
         self.tree.expandAll();self.tree.verticalScrollBar().setValue(scroll);self.tree.setColumnWidth(0,280);self.tree.setColumnWidth(2,150);self.tree.setColumnWidth(3,255)
-        with self.hub.db.connect() as c:points=c.execute('SELECT COALESCE(sum(amount),0) FROM work_points').fetchone()[0]
-        self.achievement.setText(f'工作成就：累计 {points} 积分；每600分提升一级，当前 Lv.{1+points//600}。工作积分独立于学习金币。')
+        with self.hub.db.connect() as c:points,balance=c.execute('SELECT COALESCE(sum(max(amount,0)),0),COALESCE(sum(amount),0) FROM work_points').fetchone()
+        self.achievement.setText(f'工作成就：累计 {points} 积分；每600分提升一级，当前 Lv.{1+points//600}。可兑换余额 {balance} 积分。')
         for col in range(1,7):self.tree.setColumnHidden(col,True)
         self.tree.setHeaderLabel('项目与任务');self.tree.setColumnWidth(0,300);self.inspect_task();self.tree.setUpdatesEnabled(True)
         selected_role=self.roles.currentData();self.roles.blockSignals(True);self.roles.clear()

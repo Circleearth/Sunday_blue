@@ -48,6 +48,7 @@ class InitializerFaissMixin:
         try:
             result = subprocess.run(
                 [sys.executable, "-c", "import faiss"],
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 capture_output=True,
                 text=True,
                 timeout=10,
@@ -88,6 +89,7 @@ class InitializerFaissMixin:
         try:
             generic_result = subprocess.run(
                 [sys.executable, "-c", "import faiss"],
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 capture_output=True,
                 text=True,
                 timeout=10,

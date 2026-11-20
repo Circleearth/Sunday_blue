@@ -19,3 +19,5 @@ docs/settings-preview.png
 
 /package-check.json
 tests/sunday-package-*/
+
+/assets/hamlet/game/.godot/

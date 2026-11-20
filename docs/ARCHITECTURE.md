@@ -205,3 +205,10 @@ Build Sunday Blue.bat → build.ps1 → SundayBlue.spec，SPECPATH 为 spec 所�
 拖到上/下边缘排序，工作同级拖至中间靠左排序、靠右移入，空白移至顶层。学习同类型条目中间拖放按插入之前处理；课程仅顶层、章节属于课程、知识点属于章节。右键“移动到…”提供明确选择。拒绝循环、隐藏/归档目标、相关运行中专注、工作超过32层和跨类型学习归属。手动顺序优先于默认已完成置顶。历史、笔记和专注链接保留ID，不删除或重建节点。tree_move_history记录归属变动，work_history也记录工作移动。历史时间按现有归属汇总，原始计时链接不变。
 
 维护：module_views/ordered_tree.py、modules/tree_moves.py；专项 tests/test_tree_moves.py，包括连续A→B、B→C操作验证节点不丢失。
+
+
+## 雾铃谷与学习导航
+
+工作页通过 `sunday_blue/hamlet/page.py` 管理 Godot 子进程和本机桥接，`world.py` 在同一数据库事务中执行游戏指令、来源账本扣款和回执。场景与内容目录在 `assets/hamlet/game/`。维护和验证入口见 [雾铃谷说明](HAMLET.md)。
+
+日程的当前计划和每周编辑器共用 `modules/day_plan.py` 的模板与时间解析。成长页管理学习笔记、复习计划、复习档案与错题档案的导航，继续复用现有学习和复习数据库。

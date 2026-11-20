@@ -1,0 +1,246 @@
+{
+  "items": {
+    "wheat": "雾麦",
+    "berry": "灯莓",
+    "milk": "月露乳",
+    "ore": "青铜矿",
+    "crystal": "星辉晶",
+    "ingot": "风纹钢",
+    "silk": "苔绒"
+  },
+  "areas": [
+    [
+      "露桥草径",
+      "苔耳团子",
+      "swift"
+    ],
+    [
+      "青铜回廊",
+      "石壳守卫",
+      "pierce"
+    ],
+    [
+      "星潮遗迹",
+      "星灯蝶",
+      "ward"
+    ]
+  ],
+  "classes": {
+    "swift": [
+      "风铃游侠",
+      "连射"
+    ],
+    "pierce": [
+      "炉火剑士",
+      "破甲"
+    ],
+    "ward": [
+      "月桂术士",
+      "星芒"
+    ]
+  },
+  "activities": {
+    "wheat": {
+      "name": "雾麦",
+      "site": "farm",
+      "minutes": 30,
+      "cost": 2,
+      "inputs": {},
+      "outputs": {
+        "wheat": 4
+      },
+      "desc": "短周期作物，供牧场喂养。"
+    },
+    "berry": {
+      "name": "灯莓",
+      "site": "farm",
+      "minutes": 48,
+      "cost": 3,
+      "inputs": {},
+      "outputs": {
+        "berry": 4
+      },
+      "desc": "集市的高价作物。"
+    },
+    "expand": {
+      "name": "开垦土地",
+      "site": "build",
+      "minutes": 65,
+      "cost": 8,
+      "inputs": {
+        "ingot": 1
+      },
+      "outputs": {},
+      "desc": "永久增加一块田，至多八块。"
+    },
+    "pasture": {
+      "name": "苔羊放牧",
+      "site": "ranch",
+      "minutes": 36,
+      "cost": 3,
+      "inputs": {
+        "wheat": 1
+      },
+      "outputs": {
+        "milk": 2,
+        "silk": 1
+      },
+      "desc": "喂养、收集月露乳，提升羁绊。"
+    },
+    "mine": {
+      "name": "开采青铜",
+      "site": "mine",
+      "minutes": 35,
+      "cost": 3,
+      "inputs": {},
+      "outputs": {
+        "ore": 3
+      },
+      "desc": "产出青铜矿，有机会发现星辉晶。"
+    },
+    "deep": {
+      "name": "晶脉勘探",
+      "site": "mine",
+      "minutes": 58,
+      "cost": 6,
+      "inputs": {
+        "wheat": 1
+      },
+      "outputs": {
+        "ore": 2,
+        "crystal": 1
+      },
+      "desc": "花费口粮，带回稳定晶石。"
+    },
+    "smelt": {
+      "name": "熔炼风纹钢",
+      "site": "forge",
+      "minutes": 32,
+      "cost": 2,
+      "inputs": {
+        "ore": 2
+      },
+      "outputs": {
+        "ingot": 1
+      },
+      "desc": "精炼矿石，用于装备或农田扩建。"
+    },
+    "weapon": {
+      "name": "锻造装备",
+      "site": "forge",
+      "minutes": 45,
+      "cost": 5,
+      "inputs": {
+        "ingot": 1
+      },
+      "outputs": {},
+      "desc": "装备有随机词条，可更换或分解。"
+    },
+    "relic": {
+      "name": "雕刻圣遗物",
+      "site": "forge",
+      "minutes": 70,
+      "cost": 9,
+      "inputs": {
+        "crystal": 2,
+        "silk": 1
+      },
+      "outputs": {},
+      "desc": "提高木桩与探索伤害。"
+    },
+    "delve": {
+      "name": "遗迹远征",
+      "site": "dungeon",
+      "minutes": 38,
+      "cost": 5,
+      "inputs": {},
+      "outputs": {},
+      "desc": "自动战斗并收集掉落，可连续探索下一层。"
+    },
+    "trade": {
+      "name": "集市运货",
+      "site": "market",
+      "minutes": 28,
+      "cost": 1,
+      "inputs": {
+        "berry": 2
+      },
+      "outputs": {},
+      "desc": "售出两颗灯莓，收入 10 谷币。"
+    },
+    "dairy": {
+      "name": "奶品交付",
+      "site": "market",
+      "minutes": 28,
+      "cost": 1,
+      "inputs": {
+        "milk": 1
+      },
+      "outputs": {},
+      "desc": "交付一份月露乳，收入 7 谷币。"
+    },
+    "barn": {
+      "name": "扩建羊舍",
+      "site": "ranch",
+      "minutes": 60,
+      "cost": 8,
+      "inputs": {
+        "ingot": 1,
+        "silk": 1
+      },
+      "outputs": {},
+      "desc": "增加一个同时放牧的位置，最多四栏。"
+    }
+  },
+  "events": [
+    {
+      "name": "旅商的路标",
+      "item": "berry",
+      "count": 2
+    },
+    {
+      "name": "落星宝箱",
+      "item": "crystal",
+      "count": 1
+    },
+    {
+      "name": "废矿补给箱",
+      "item": "ore",
+      "count": 3
+    }
+  ],
+  "equipment": [
+    {
+      "name": "短刃",
+      "affix": "swift",
+      "bonus": 2
+    },
+    {
+      "name": "锻纹锤",
+      "affix": "pierce",
+      "bonus": 2
+    },
+    {
+      "name": "月枝杖",
+      "affix": "ward",
+      "bonus": 2
+    }
+  ],
+  "skills": {
+    "swift": {
+      "weak_bonus": 2,
+      "guard": 0,
+      "every_third": 1
+    },
+    "pierce": {
+      "weak_bonus": 3,
+      "guard": 0,
+      "every_third": 0
+    },
+    "ward": {
+      "weak_bonus": 2,
+      "guard": 1,
+      "every_third": 0
+    }
+  }
+}

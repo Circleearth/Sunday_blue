@@ -184,7 +184,7 @@ class CalendarPage(BasePage):
     def choose_plan(self):
         value,ok=QInputDialog.getItem(self,'当天时间表','计划不代表已完成，不自动发奖',['正常工作日','晚归日','晚归次日'],0,False)
         if ok:
-            self.hub.db.set('day_plan:'+self.calendar.selectedDate().toString('yyyy-MM-dd'),{'正常工作日':'normal','晚归日':'late','晚归次日':'after'}[value]);self.refresh()
+            self.hub.db.set('day_plan:'+self.calendar.selectedDate().toString('yyyy-MM-dd'),{'正常工作日':'normal','晚归日':'late','晚归次日':'after'}[value]);self.hub.changed.emit('weekly_plan');self.refresh()
     def archive_day(self):
         import json
         day=self.calendar.selectedDate().toString('yyyy-MM-dd')

@@ -22,6 +22,23 @@ class ModuleViewTests(unittest.TestCase):
     def tearDown(self):
         for job in self.hub.jobs.values():job.cancel.set();job.wait(5000)
         APP.processEvents();self.window.close();self.window.deleteLater();APP.processEvents();self.temp.cleanup()
+    def test_plan_link_and_study_pages(self):
+        from datetime import date
+        today=date.today().weekday()
+        schedule=self.pages['SchedulePage']
+        editor=schedule.pages['plan']
+        self.hub.db.set('weekly_plan:'+str(today),'临时说明\n0点至24：00 · 今日安排')
+        editor.days.setCurrentRow((today+1)%7)
+        self.hub.changed.emit('weekly_plan')
+        self.assertIn('今日安排',self.window.plan_strip.text())
+        self.window.plan_strip.click()
+        self.assertIs(self.window.page_stack.currentWidget(),schedule)
+        self.assertIs(schedule.tabs.currentWidget(),editor)
+        self.assertEqual((editor.current,editor.table.currentRow()),(today,1))
+        tabs=self.pages['GrowthPage'].study_tabs
+        self.assertEqual([tabs.tabText(i) for i in range(tabs.count())],['知识笔记','复习计划','复习档案','错题档案'])
+        for i in range(tabs.count()):tabs.setCurrentIndex(i)
+
     def test_navigation_focus_settlement_and_persistence(self):
         self.assertEqual(self.window.page_stack.count(),11)
         self.assertTrue(hasattr(self.window,"relationship_button"))

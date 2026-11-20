@@ -1,10 +1,10 @@
 from datetime import date
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QDialog,QVBoxLayout,QHBoxLayout,QListWidget,QListWidgetItem,QLabel,QMessageBox,QPushButton
+from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QListWidget,QListWidgetItem,QLabel,QMessageBox,QPushButton
 from ..modules.review_plan import ReviewPlan
 
-def show_reviews(page):
- service=ReviewPlan(page.hub.db);dlg=QDialog(page);dlg.setWindowTitle('知识回访 · 复习计划');dlg.resize(720,520);box=QVBoxLayout(dlg);box.addWidget(QLabel('按实际回忆结果选择；不会自动提高知识点熟悉度或发放掌握奖励。'));items=QListWidget();box.addWidget(items)
+def review_page(page):
+ service=ReviewPlan(page.hub.db);dlg=QWidget();box=QVBoxLayout(dlg);box.addWidget(QLabel('按实际回忆结果选择；不会自动提高知识点熟悉度或发放掌握奖励。'));items=QListWidget();box.addWidget(items)
  def refresh():
   items.clear()
   for r in service.rows():
@@ -16,14 +16,38 @@ def show_reviews(page):
  row=QHBoxLayout();box.addLayout(row)
  for title in ('忘记','模糊','记住','熟练'):
   b=QPushButton(title);b.clicked.connect(lambda checked=False,t=title:answer(t));row.addWidget(b)
- def history():
-  if items.currentItem():QMessageBox.information(dlg,'复习历史','\n'.join(r['day']+' '+r['rating']+' → '+r['next_due'] for r in service.history(items.currentItem().data(Qt.ItemDataRole.UserRole)['id'])) or '尚无复习记录')
- b=QPushButton('查看历史');b.clicked.connect(history);box.addWidget(b);refresh();dlg.exec()
+ dlg.refresh=refresh
+ return dlg
 
-def show_errors(page):
+def archive_page(page):
+    from PySide6.QtWidgets import QTableWidget,QTableWidgetItem,QHeaderView,QAbstractItemView
+    pane=QWidget()
+    box=QVBoxLayout(pane)
+    title=QLabel('复习档案')
+    box.addWidget(title)
+    table=QTableWidget(0,4)
+    table.setHorizontalHeaderLabels(['复习日期','知识点 / 错题','回忆结果','下次复习'])
+    table.horizontalHeader().setSectionResizeMode(1,QHeaderView.ResizeMode.Stretch)
+    table.verticalHeader().hide()
+    table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+    table.setAlternatingRowColors(True)
+    box.addWidget(table)
+    def refresh():
+        with page.hub.db.connect() as c:
+            rows=c.execute("""SELECT a.day,n.title || CASE WHEN p.error='' THEN '' ELSE ' · 错题' END,
+                a.rating,a.next_due FROM review_attempts a JOIN review_plan p ON p.id=a.card
+                JOIN learning_nodes n ON n.id=p.unit ORDER BY a.created DESC,a.rowid DESC""").fetchall()
+        title.setText(f'复习档案 · {len(rows)} 次回忆记录')
+        table.setRowCount(len(rows))
+        for i,r in enumerate(rows):
+            for k,value in enumerate(r):table.setItem(i,k,QTableWidgetItem(value))
+    pane.refresh=refresh
+    return pane
+
+def error_page(page):
  from PySide6.QtWidgets import QFileDialog,QInputDialog
  from pathlib import Path
- service=ReviewPlan(page.hub.db);dlg=QDialog(page);dlg.setWindowTitle('错题档案');dlg.resize(720,520);box=QVBoxLayout(dlg);items=QListWidget();box.addWidget(items)
+ service=ReviewPlan(page.hub.db);dlg=QWidget();box=QVBoxLayout(dlg);items=QListWidget();box.addWidget(items)
  with page.hub.db.connect() as c:c.execute('CREATE TABLE IF NOT EXISTS error_labels(id TEXT PRIMARY KEY,category TEXT,important INTEGER)')
  def refresh():
   items.clear()
@@ -47,4 +71,4 @@ def show_errors(page):
   if path:Path(path).write_text('# 错题集\n\n'+'\n\n'.join(items.item(i).text() for i in range(items.count())),encoding='utf-8')
  for title,action in [('分类 / 高频标记',tag),('加入复习计划',plan),('导出错题集',export)]:
   b=QPushButton(title);b.clicked.connect(action);box.addWidget(b)
- refresh();dlg.exec()
+ dlg.refresh=refresh;return dlg

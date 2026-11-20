@@ -5,7 +5,7 @@ from PySide6.QtGui import QIcon,QPixmap,QPainter,QColor
 
 class Tray:
     def __init__(self,window):
-        self.window=window;self.exiting=False
+        self.window=window;self.exiting=False;self.hidden_to_tray=False
         icon=window.windowIcon()
         if icon.isNull() or icon.pixmap(32,32).isNull():
             pixmap=QPixmap(32,32);pixmap.fill(Qt.GlobalColor.transparent)
@@ -25,16 +25,17 @@ class Tray:
         if self.exiting:return
         if QSystemTrayIcon.isSystemTrayAvailable():
             if not self.icon.isVisible():self.icon.show()
-        elif not self.window.isVisible():self.show()
+        elif self.hidden_to_tray and not self.window.isVisible():self.show()
 
     def show(self):
+        self.hidden_to_tray=False
         self.window.showNormal();self.window.raise_();self.window.activateWindow()
 
     def hide_on_close(self):
         if self.exiting or not self.window.config.value.get('close_to_tray',False) or not QSystemTrayIcon.isSystemTrayAvailable():return False
         self.icon.show()
         if self.icon.icon().isNull() or not self.icon.isVisible():return False
-        self.window.hide();return True
+        self.hidden_to_tray=True;self.window.hide();return True
 
     def exit(self):
         self.exiting=True

@@ -40,7 +40,13 @@ def install_workspace(window):
             title=current_plan(hub.db,datetime.now())
             window.plan_strip.setText('当前计划   '+title+'   ›')
             window.plan_strip.setVisible(title!='自由安排')
-        window.plan_strip.clicked.connect(lambda:select('plan'))
+        def open_active_plan():
+            from .day_plan import active_plan
+            slot,row,_,day=active_plan(hub.db,datetime.now())
+            select('plan')
+            window.page_stack.widget(positions['schedule']).pages['plan'].reveal(slot,row,day)
+        window.plan_strip.clicked.connect(open_active_plan)
+        hub.changed.connect(lambda name:show_plan() if name=='weekly_plan' else None)
         window.plan_timer=QTimer(window)
         window.plan_timer.timeout.connect(show_plan)
         window.plan_timer.start(30000)

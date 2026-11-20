@@ -67,9 +67,12 @@ def edit_image(parent,root,key,fallback,ratio=1):
  dlg.exec()
 class EditableImage(QWidget):
  def __init__(self,root,key,fallback,title='选择图片 / 调整',ratio=1,parent=None):
-  super().__init__(parent);self.root=root;self.key=key;self.fallback=fallback;self.ratio=ratio;self.setMinimumHeight(70);layout=QVBoxLayout(self);layout.setContentsMargins(4,4,4,4);layout.addStretch();b=QPushButton(title);b.clicked.connect(self.edit);layout.addWidget(b,0,Qt.AlignmentFlag.AlignRight);EVENTS.changed.connect(self.changed);self.reload();self.setHidden(str(root) in _office_roots)
+  super().__init__(parent);self.root=root;self.key=key;self.fallback=fallback;self.ratio=ratio;self.setMinimumHeight(70);layout=QVBoxLayout(self);layout.setContentsMargins(4,4,4,4);layout.addStretch();b=QPushButton(title);b.clicked.connect(self.edit);layout.addWidget(b,0,Qt.AlignmentFlag.AlignRight);EVENTS.changed.connect(self.changed);self.reload()
+  if str(root) in _office_roots:self.hide()
  def changed(self,root,key):
-  if root==str(self.root) and key=='office':self.setVisible(root not in _office_roots)
+  if root==str(self.root) and key=='office':
+   if root in _office_roots:self.hide()
+   elif self.parentWidget() is not None:self.show()
   if root==str(self.root) and key==self.key:self.reload()
  def reload(self):
   self.cfg=selection(self.root,self.key);self.pix=QPixmap(self.cfg.get('path',str(self.fallback)))
