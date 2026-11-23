@@ -13,6 +13,15 @@ def install_workspace(window):
     buttons=QButtonGroup(window);buttons.setExclusive(True);window.module_navigation=buttons
     positions={key:index for index,(key,_,_) in enumerate(entries)}
     def select(key):
+        if key=='weekly':
+            select('growth')
+            growth=window.page_stack.widget(positions['growth'])
+            if window.page_stack.currentWidget()==growth:
+                growth.tabs.setCurrentWidget(growth.weekly)
+                growth.weekly.today()
+                if not growth.weekly.pid:growth.weekly.transition()
+                growth.weekly.tabs.setCurrentIndex(1)
+            return
         if key=='exercise':
             select('life')
             if window.page_stack.currentIndex()==positions['life']:window.page_stack.currentWidget().exercise_dialog()
@@ -31,7 +40,7 @@ def install_workspace(window):
     for index,(key,title,page) in enumerate(entries):
         button=QPushButton(title);button.setCheckable(True);button.setObjectName('ghost');buttons.addButton(button,index)
         window.module_nav.addWidget(button);button.clicked.connect(lambda checked=False,k=key:select(k))
-    hub.navigate.connect(lambda key:select(key) if key in positions or key in ('exercise','study_help','calendar','reminders','checkins','plan') else None)
+    hub.navigate.connect(lambda key:select(key) if key in positions or key in ('weekly','exercise','study_help','calendar','reminders','checkins','plan') else None)
     if hasattr(window,'plan_strip'):
         from ..module_views.moment import current_plan
         from datetime import datetime

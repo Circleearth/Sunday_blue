@@ -65,6 +65,8 @@ class GrowthPage(QWidget):
   from .review_plan import review_page,archive_page,error_page
   self.study_tabs.addTab(review_page(self.learning),'复习计划');self.study_tabs.addTab(archive_page(self.learning),'复习档案');self.study_tabs.addTab(error_page(self.learning),'错题档案')
   self.study_tabs.currentChanged.connect(lambda i:self.study_tabs.widget(i).refresh());self.tabs.addTab(self.contracts,'限时契约')
+  from .weekly_review import WeeklyPage
+  self.weekly=WeeklyPage(hub);self.tabs.addTab(self.weekly,'每周复盘')
 
 class SchedulePage(QWidget):
  def __init__(self,hub,parent=None):

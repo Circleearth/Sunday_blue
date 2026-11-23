@@ -62,6 +62,8 @@ class ModuleHub(QObject):
         self._attention_display=None
         from .private_wellbeing import PrivateWellbeing
         from .reports import Reports
+        from .weekly_review import WeeklyReview
+        self.weekly=WeeklyReview(self.db)
         self.private_wellbeing=PrivateWellbeing(self.db);self.reports=Reports(self)
         from .focus_dialogue import FocusDialogue
         self.focus_dialogue=FocusDialogue(self)
@@ -194,6 +196,9 @@ class ModuleHub(QObject):
             a=self.attention.status();display=(round(a['eye']),round(a['focus']),a['source'])
             if display!=self._attention_display:self._attention_display=display;self.changed.emit('attention')
             self.life_timer.checkpoint()
+            from time import monotonic
+            if monotonic()>=getattr(self,"_weekly_due",0):
+                self.weekly.notify();self._weekly_due=monotonic()+60
             self.reminder_delivery.tick()
             self.focus.checkpoint();self.relations.project();self.social.sync_memories();self._deliver_private();self._plugin_events()
             with self.db.connect() as db:seq=db.execute('SELECT COALESCE(max(seq),0) FROM module_events').fetchone()[0]

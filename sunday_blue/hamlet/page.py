@@ -68,8 +68,12 @@ class GameSession(QObject):
     def refresh_wallet(self):
         self.hub.changed.emit("work")
 
-    def launch(self,extra=()):
+    def launch(self,extra=(),background=False):
+        self.background=background
         if self.process and self.process.poll() is None:
+            if not background:
+                from .window import game_window
+                if not game_window(self.process.pid,True):QTimer.singleShot(350,self.reveal)
             return False
         self.close()
         root=self.hub.root
@@ -79,15 +83,29 @@ class GameSession(QObject):
         world=Village(self.hub.db,catalog=project/'catalog.json')
         self.bridge=Bridge(world,self.exchanged.emit)
         env=dict(os.environ,SUNDAY_VALLEY_PORT=str(self.bridge.server.server_port),SUNDAY_VALLEY_TOKEN=self.bridge.token)
+        startup=None
+        if background and os.name=='nt':
+            startup=subprocess.STARTUPINFO();startup.dwFlags|=subprocess.STARTF_USESHOWWINDOW
+            startup.wShowWindow=7  # SW_SHOWMINNOACTIVE
+        env['SUNDAY_VALLEY_MANAGED']='1'
+        env['SUNDAY_VALLEY_BACKGROUND']='1' if background else '0'
         try:
             self.process=subprocess.Popen([str(engine),'--path',str(project),'--single-window',*extra],env=env,
-                creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+                startupinfo=startup,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
         except BaseException:
             self.close();raise
         self.watch.start()
         return True
 
+    def reveal(self):
+        from .window import game_window
+        if self.process and self.process.poll() is None:game_window(self.process.pid,True)
+
     def check(self):
+        if self.process and self.process.poll() is None:
+            from .window import game_window
+            game_window(self.process.pid,background=self.background)
+            return
         if self.process and self.process.poll() is not None:
             failed=self.process.returncode!=0
             self.close()
@@ -106,5 +124,13 @@ class GameSession(QObject):
 def open_village(hub,parent):
     if not hasattr(hub,'hamlet'):hub.hamlet=GameSession(hub)
     try:
-        if not hub.hamlet.launch():QMessageBox.information(parent,'雾铃谷','谷地已在独立窗口中运行。')
+        hub.hamlet.launch()
     except (ValueError,OSError) as exc:QMessageBox.warning(parent,'无法进入雾铃谷',str(exc))
+
+def start_resident(hub):
+    if not hasattr(hub,'hamlet'):
+        hub.hamlet=GameSession(hub)
+    try:
+        hub.hamlet.launch(background=True)
+    except (ValueError,OSError) as exc:
+        hub.failed.emit('雾铃谷后台启动失败：'+str(exc))

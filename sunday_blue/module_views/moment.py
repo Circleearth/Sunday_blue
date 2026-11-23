@@ -37,6 +37,7 @@ class MomentPage(QWidget):
         button('留下接续笔记',self.note,row)
         button('下班结算与休息',self.afterwork,row)
         button('校对当前感受',self.calibrate,row)
+        self.weekly_link=button('本周行动',lambda:hub.navigate.emit('weekly'),box)
         self.office=QCheckBox('办公模式 · 隐藏生活插图')
         box.addWidget(self.office)
         from ..modules.phone_link import PhoneLink
@@ -125,6 +126,9 @@ class MomentPage(QWidget):
 
     def refresh(self):
         now=datetime.now()
+        active_week=self.hub.weekly.active()
+        self.weekly_link.setVisible(bool(active_week))
+        if active_week:self.weekly_link.setText('本周行动 · '+active_week[0]['minimum']+(' 等 '+str(len(active_week))+' 项' if len(active_week)>1 else ''))
         self.plan.setText(now.strftime('%m 月 %d 日   %H:%M')+'     '+current_plan(self.hub.db,now))
         current=current_plan(self.hub.db,now)
         in_focus=self.hub.focus.status()['state']!='idle'

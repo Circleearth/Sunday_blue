@@ -397,6 +397,8 @@ class Settings(QDialog):
         layout.addWidget(self.chat_preferences)
         self.close_to_tray=QCheckBox('关闭窗口后留在系统托盘，继续后台运行')
         self.close_to_tray.setChecked(self.value.get('close_to_tray',False));layout.addWidget(self.close_to_tray)
+        if getattr(getattr(self.parent(),'tray',None),'resident',False):
+            self.close_to_tray.setChecked(True);self.close_to_tray.setEnabled(False);self.close_to_tray.setText('关闭主窗口后驻留托盘，可从托盘彻底退出')
         layout.addWidget(label('无需打包；托盘可重新打开或退出。电脑休眠、注销或关机不会继续生成回复。'))
         layout.addWidget(label('头像与立绘是普通 PNG 文件，不需要重新编译软件。替换后点击主界面的“刷新素材”。'))
         layout.addWidget(QLabel('assets/roles/<角色 ID>/avatar.png\n推荐：512 × 512，正方形\n\nassets/roles/<角色 ID>/portrait.png\n推荐：1200 × 1800，透明背景，人物居中\n\n软件会等比例缩放；头像建议避免边缘重要内容。'))

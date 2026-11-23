@@ -113,6 +113,59 @@ class ValleyTests(unittest.TestCase):
         self.assertIsNotNone(process.poll())
         self.assertIsNone(session.bridge)
 
+    @unittest.skipUnless(os.name=='nt','Windows resident game window')
+    def test_native_close_hides_and_reopens_same_game(self):
+        import ctypes,time
+        from ctypes import wintypes
+        from PySide6.QtCore import QObject,Signal
+        from PySide6.QtWidgets import QApplication
+        from sunday_blue.hamlet.page import GameSession
+        class Host(QObject):
+            closed=Signal()
+            changed=Signal(str)
+            failed=Signal(str)
+        engine=Path(os.environ.get('SUNDAY_GODOT') or ROOT/'runtime/godot/Godot.exe')
+        if not engine.is_file():self.skipTest('Godot unavailable')
+        app=QApplication.instance() or QApplication([])
+        host=Host();host.db=self.db;host.root=ROOT
+        session=GameSession(host);self.addCleanup(session.close)
+        session.launch(['--position','-4000,-4000','--audio-driver','Dummy'],background=True)
+        proc=session.process
+        ui=ctypes.windll.user32
+        ui.PostMessageW.argtypes=[wintypes.HWND,wintypes.UINT,wintypes.WPARAM,wintypes.LPARAM]
+        def eventually(test):
+            deadline=time.monotonic()+10
+            while time.monotonic()<deadline:
+                app.processEvents()
+                if test():return
+                time.sleep(.04)
+            self.fail('resident window state did not settle')
+        def find():
+            found=[]
+            @ctypes.WINFUNCTYPE(wintypes.BOOL,wintypes.HWND,wintypes.LPARAM)
+            def visit(hwnd,arg):
+                own=wintypes.DWORD()
+                ui.GetWindowThreadProcessId(wintypes.HWND(hwnd),ctypes.byref(own))
+                name=ctypes.create_unicode_buffer(80)
+                ui.GetClassNameW(wintypes.HWND(hwnd),name,80)
+                if own.value==proc.pid and name.value.startswith('Engine'):found.append(hwnd)
+                return True
+            ui.EnumWindows(visit,0)
+            return found[0] if found else None
+        eventually(lambda:find() and self.db.get('hamlet.v2') is not None)
+        hwnd=wintypes.HWND(find())
+        eventually(lambda:not ui.IsWindowVisible(hwnd))
+        self.assertFalse(session.launch())
+        eventually(lambda:ui.IsWindowVisible(hwnd) and not ui.IsIconic(hwnd))
+        ui.PostMessageW(hwnd,0x0010,0,0)
+        eventually(lambda:not ui.IsWindowVisible(hwnd))
+        self.assertIsNone(proc.poll())
+        session.launch()
+        eventually(lambda:ui.IsWindowVisible(hwnd) and not ui.IsIconic(hwnd))
+        self.assertEqual(proc.pid,session.process.pid)
+        host.closed.emit()
+        self.assertIsNotNone(proc.poll())
+
     def test_real_engine_scene(self):
         engine=Path(os.environ.get('SUNDAY_GODOT') or ROOT/'runtime/godot/Godot.exe')
         if not engine.is_file():self.skipTest('Godot 4.6 unavailable')

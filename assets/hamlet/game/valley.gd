@@ -18,6 +18,7 @@ var busy := false
 var signature := ""
 var pending := {}
 var sent_action := "view"
+var lost_contact_at := -1
 var url := ""
 var token := ""
 
@@ -54,6 +55,10 @@ func btn(parent:Control,title:String,task:Callable) -> Button:
 	return b
 
 func _ready():
+	if OS.get_environment("SUNDAY_VALLEY_MANAGED")=="1":
+		get_tree().auto_accept_quit=false
+		if OS.get_environment("SUNDAY_VALLEY_BACKGROUND")=="1":get_window().mode=Window.MODE_MINIMIZED
+		get_window().close_requested.connect(func(): get_window().mode=Window.MODE_MINIMIZED)
 	var face:=SystemFont.new()
 	face.font_names=PackedStringArray(["Microsoft YaHei UI","Microsoft YaHei","Noto Sans CJK SC","sans-serif"])
 	theme=Theme.new()
@@ -183,6 +188,7 @@ func set_place(id:String):
 	rebuild()
 
 func refresh():
+	Engine.max_fps=3 if get_window().mode==Window.MODE_MINIMIZED else 30
 	if not busy:send(pending if not pending.is_empty() else {"action":"view"})
 
 func command(action:String,arg:String=""):
@@ -205,6 +211,12 @@ func send(data:Dictionary):
 
 func receive(result:int,code:int,_headers:PackedStringArray,body:PackedByteArray):
 	busy=false
+	if result!=HTTPRequest.RESULT_SUCCESS and OS.get_environment("SUNDAY_VALLEY_MANAGED")=="1":
+		if lost_contact_at<0:lost_contact_at=Time.get_ticks_msec()
+		elif Time.get_ticks_msec()-lost_contact_at>120000:
+			get_tree().quit()
+			return
+	else:lost_contact_at=-1
 	if result!=HTTPRequest.RESULT_SUCCESS or code>=500:
 		status.text="与 Sunday Blue 的连接中断，恢复后会核对上次操作。"
 		return

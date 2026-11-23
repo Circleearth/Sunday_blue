@@ -42,7 +42,11 @@ def main():
         window=MainWindow(Config(root))
         instance.activated.connect(window.tray.show)
         from sunday_blue.modules.workspace import install_workspace
-        install_workspace(window)
+        hub=install_workspace(window)
+        window.tray.resident=True
+        from sunday_blue.hamlet.page import start_resident
+        QTimer.singleShot(0,lambda:start_resident(hub))
+        app.aboutToQuit.connect(lambda:hub.hamlet.close() if hasattr(hub,"hamlet") else None)
     except Exception as exc:
         instance.close();lock.unlock()
         QMessageBox.critical(None,'启动失败',str(exc))

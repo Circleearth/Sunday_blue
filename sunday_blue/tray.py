@@ -32,7 +32,7 @@ class Tray:
         self.window.showNormal();self.window.raise_();self.window.activateWindow()
 
     def hide_on_close(self):
-        if self.exiting or not self.window.config.value.get('close_to_tray',False) or not QSystemTrayIcon.isSystemTrayAvailable():return False
+        if self.exiting or not (getattr(self,'resident',False) or self.window.config.value.get('close_to_tray',False)) or not QSystemTrayIcon.isSystemTrayAvailable():return False
         self.icon.show()
         if self.icon.icon().isNull() or not self.icon.isVisible():return False
         self.hidden_to_tray=True;self.window.hide();return True
