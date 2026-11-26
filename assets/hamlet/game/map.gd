@@ -291,7 +291,7 @@ func draw_keeper():
 		frame.set_corner_radius_all(6)
 		frame.set_border_width_all(1)
 		draw_style_box(frame,Rect2(npc+Vector2(-17,-41),Vector2(34,43)))
-		draw_texture_rect_region(texture,Rect2(npc+Vector2(-15,-38),Vector2(30,38)),Rect2(texture.get_width()*.15,0,texture.get_width()*.70,texture.get_height()*.59))
+		draw_texture_rect_region(texture,Rect2(npc+Vector2(-15,-38),Vector2(30,38)),Rect2(texture.get_width()*.27,0,texture.get_width()*.48,texture.get_height()*.40))
 	elif not sprite("keeper",npc,52):
 		oval(npc,Vector2(12,4),"91a48d")
 		poly([npc+Vector2(-11,-2),npc+Vector2(-5,-21),npc+Vector2(6,-21),npc+Vector2(12,-2)],"517f80")

@@ -74,13 +74,15 @@ func run():
 	if scene.right.get_child(0).text!="谷地手记":
 		quit(8)
 		return
+	scene.set_place("overview")
 	scene.greet()
-	if not is_instance_valid(scene.guide_dialog) or not scene.guide_dialog.visible:
+	if not is_instance_valid(scene.guide_dialog) or not scene.guide_dialog.visible or scene.page.visible:
 		push_error("Keeper portrait dialogue failed to open")
 		quit(12)
 		return
-	var portraits:Array[Node]=scene.guide_dialog.find_children("*","TextureRect",true,false)
-	if portraits.is_empty() or (portraits[0] as TextureRect).texture==null:
+	var portrait:=scene.guide_dialog.get_node_or_null("Portrait") as TextureRect
+	var box:=scene.guide_dialog.get_node_or_null("DialogueBox") as PanelContainer
+	if not portrait or not portrait.texture or not box or portrait.get_parent()==box:
 		push_error("Keeper portrait texture was not rendered")
 		quit(13)
 		return
@@ -88,14 +90,16 @@ func run():
 	if view_file!="":
 		await RenderingServer.frame_post_draw
 		root.get_texture().get_image().save_png(view_file.get_basename()+"-portrait.png")
-	var actions:Array[Node]=scene.guide_dialog.find_children("*","Button",true,false)
-	if actions.is_empty() or scene.guide_dialog.size.y>=root.size.y:
-		push_error("Keeper dialogue does not fit the viewport")
+	await process_frame
+	var actions:=box.find_children("*","Button",true,false)
+	var panel_style:=box.get_theme_stylebox("panel") as StyleBoxFlat
+	if actions.is_empty() or not panel_style or panel_style.bg_color.a>=1.0 or not scene.guide_dialog.get_rect().encloses(box.get_rect()):
+		push_error("Keeper dialogue box must be translucent and fit the viewport")
 		quit(14)
 		return
 	(actions[0] as Button).pressed.emit()
-	if scene.guide_dialog.visible:
-		push_error("Keeper dialogue could not be dismissed")
+	if scene.guide_dialog.visible or not scene.page.visible:
+		push_error("Keeper dialogue could not bring back the workspace")
 		quit(15)
 		return
 	scene.set_place("dungeon")
