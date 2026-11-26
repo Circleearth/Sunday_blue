@@ -1,7 +1,7 @@
 from .ordered_tree import OrderedTree,choose_parent
 """A small learning notebook: hierarchy, familiarity and local notes."""
 from PySide6.QtCore import Qt,QSignalBlocker
-from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QSplitter,QTreeWidget,QTreeWidgetItem,QHeaderView,QLineEdit,QPlainTextEdit,QTabWidget,QComboBox,QCheckBox,QMessageBox,QInputDialog,QProgressBar,QDialog,QPushButton,QDialogButtonBox,QToolButton,QMenu
+from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QSplitter,QTreeWidget,QTreeWidgetItem,QHeaderView,QLineEdit,QPlainTextEdit,QTabWidget,QComboBox,QCheckBox,QMessageBox,QInputDialog,QProgressBar,QDialog,QPushButton,QDialogButtonBox,QToolButton,QMenu,QScrollArea
 from .module_forms import ModulePage,button,form_dialog,spin
 from .life_widgets import label
 from ..modules.learning import FAMILIARITY
@@ -14,7 +14,20 @@ class NotebookDialog(QDialog):
 class LearningPage(ModulePage):
  module='learning'
  def __init__(self,hub,parent=None):
-  super().__init__(parent);self.hub=hub;self.rows=[];box=self.layout_header('学习 · 知识档案','整理课程，记下疑惑，积累自己的理解。章节阅读与知识点熟悉状态分别保留。')
+  super().__init__(parent)
+  self.hub=hub
+  self.rows=[]
+  outer=QVBoxLayout(self)
+  outer.setContentsMargins(0,0,0,0)
+  scroll=QScrollArea()
+  scroll.setWidgetResizable(True)
+  outer.addWidget(scroll)
+  content=QWidget()
+  scroll.setWidget(content)
+  box=QVBoxLayout(content)
+  box.setContentsMargins(20,14,20,14)
+  heading=label('知识档案','title')
+  box.addWidget(heading)
   row=QHBoxLayout()
   for title,kind in [('添加课程','subject'),('添加章节','chapter'),('添加知识点','unit')]:button(title,lambda checked=False,k=kind:self.add(k),row,kind=='subject')
   self.search=QLineEdit();self.search.setPlaceholderText('搜索名称、备注、疑惑或拓展');self.search.setClearButtonEnabled(True);row.addWidget(self.search,1);box.addLayout(row)
@@ -34,9 +47,14 @@ class LearningPage(ModulePage):
   self.note_tabs=QTabWidget();self.readers={}
   for key,title in [('note','备注 / 小结'),('questions','疑惑'),('extensions','拓展')]:
    text=QPlainTextEdit();text.setReadOnly(True);self.readers[key]=text;self.note_tabs.addTab(text,title)
-  right.addWidget(self.note_tabs,1);row=QHBoxLayout();button('查看 / 编辑笔记',self.edit_notes,row,True);button('重命名',self.rename,row);button('删除',self.remove_node,row);right.addLayout(row)
-  button('练习与旧记录',self.legacy_history,right);self.split.addWidget(pane);self.split.setSizes([300,700]);self.tree.setColumnHidden(1,True);self.tree.setColumnHidden(2,True);box.addWidget(self.split,1)
-  row=QHBoxLayout();button('补报学习时间',self.backfill,row);button('学习当前知识点',self.start,row,True);next_button=button('下一知识点',self.next_unit,row);next_button.setToolTip('只切换笔记条目；正在进行的专注仍属于原知识点。');row.addStretch();box.addLayout(row)
+  right.addWidget(self.note_tabs,1)
+  row=QHBoxLayout()
+  self.edit_button=button('编辑笔记',self.edit_notes,row,True)
+  self.rename_button=button('重命名',self.rename,row)
+  self.remove_button=button('删除',self.remove_node,row)
+  right.addLayout(row)
+  self.history_button=button('练习记录',self.legacy_history,right);self.split.addWidget(pane);self.split.setSizes([300,700]);self.split.setMinimumHeight(340);self.tree.setColumnHidden(1,True);self.tree.setColumnHidden(2,True);box.addWidget(self.split,1)
+  row=QHBoxLayout();self.backfill_button=button('补报学习时间',self.backfill,row);self.start_button=button('学习当前知识点',self.start,row,True);self.next_button=button('下一知识点',self.next_unit,row);self.next_button.setToolTip('只切换笔记条目；正在进行的专注仍属于原知识点。');row.addStretch();box.addLayout(row)
   self.tree.currentItemChanged.connect(lambda *_:self.inspect());self.tree.itemDoubleClicked.connect(lambda *_:self.edit_notes());self.familiarity.activated.connect(self.change_state);self.read_done.clicked.connect(self.chapter);self.search.textChanged.connect(self.filter_items);hub.changed.connect(lambda m:self.refresh() if m in ('learning','focus','modules') else None);self.refresh()
  def remove_node(self):
   try:r=self.selected()
@@ -60,7 +78,7 @@ class LearningPage(ModulePage):
      except ValueError as exc:QMessageBox.information(self,'未移动',str(exc))
  def selected(self,unit=False):
   item=self.tree.currentItem();r=item.data(0,Qt.ItemDataRole.UserRole) if item else None
-  if not r or unit and r['kind']!='unit':raise ValueError('请先选择一个知识点' if unit else '请先选择课程、章节或知识点')
+  if not r or item.isHidden() or unit and r['kind']!='unit':raise ValueError('请先选择一个知识点' if unit else '请先选择课程、章节或知识点')
   return r
  def add(self,kind):
   parent=None
@@ -105,7 +123,19 @@ class LearningPage(ModulePage):
    while parent:line.append(parent);parent=byid[parent]['parent']
    if any(n in matches for n in line):visible.update(line)
   for nid,item in self.items.items():item.setHidden(nid not in visible)
+  current=self.tree.currentItem()
+  if not current or current.isHidden():
+   self.tree.setCurrentItem(next((item for nid,item in self.items.items() if nid in visible),None))
+  self.inspect()
  def inspect(self):
+  item=self.tree.currentItem()
+  available=bool(item and not item.isHidden())
+  unit=available and self.selected()['kind']=='unit'
+  for control in (self.edit_button,self.rename_button,self.remove_button,self.backfill_button):
+   control.setEnabled(available)
+  for control in (self.start_button,self.history_button):
+   control.setEnabled(unit)
+  self.next_button.setEnabled(any(not self.items[n].isHidden() for n in self.unit_order))
   try:r=self.selected()
   except ValueError:
    self.detail_title.setText('先添加课程，再建立章节和知识点');self.detail.setText('双击条目即可打开笔记。');self.familiarity.setEnabled(False);self.read_done.hide();self.progress.setValue(0)

@@ -47,7 +47,9 @@ class Settings(QDialog):
         self.current_role = role
         self.test_worker = None
         self.setWindowTitle('Sunday Blue · 设置')
-        self.resize(980, 720);self.setMinimumSize(900,650)
+        available = self.screen().availableGeometry()
+        self.resize(min(980, available.width()), min(720, available.height()))
+        self.setMinimumSize(min(720, available.width()), min(480, available.height()))
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20,18,20,16);layout.setSpacing(14)
         heading = QLabel('设置')
@@ -80,7 +82,11 @@ class Settings(QDialog):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(22, 20, 22, 18);layout.setSpacing(12)
-        self.tabs.addWidget(page);self.nav.addItem(title)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(page)
+        self.tabs.addWidget(scroll)
+        self.nav.addItem(title)
         return layout
 
     def _duties_page(self):

@@ -16,15 +16,15 @@ class SocialPage(QWidget):
     def __init__(self,hub,parent=None):
         super().__init__(parent);self.hub=hub;self._rendered=None;self._stopped=set();self._drafts={};self._current_group=None
         layout=QVBoxLayout(self);layout.setContentsMargins(28,22,28,22)
-        title=QLabel('一起把日子过明白。');title.setObjectName('title');layout.addWidget(title)
+        title=QLabel('会议');title.setObjectName('title');layout.addWidget(title)
         row=QHBoxLayout();self.groups=QComboBox();self.groups.currentIndexChanged.connect(self._group_changed);row.addWidget(self.groups,1)
         for label,callback in [('创建会议',self.create),('主动交流设置',self.preferences),('请求记录',self.diagnostics)]:
             button=QPushButton(label);button.clicked.connect(callback);row.addWidget(button)
         layout.addLayout(row)
-        self.memory=QCheckBox('角色参考各自最近私聊与长期记忆；私聊也衔接群聊经历');self.memory.toggled.connect(self.memory_changed);layout.addWidget(self.memory)
+        self.memory=QCheckBox('参考角色自己的近期私聊和记忆');self.memory.setToolTip('私聊也可以衔接本会议的公开内容。');self.memory.toggled.connect(self.memory_changed);layout.addWidget(self.memory)
         self.messages=QTextBrowser();self.messages.setOpenExternalLinks(False);layout.addWidget(self.messages,1)
         self.state=QLabel();self.state.setWordWrap(True);self.state.setObjectName('muted');layout.addWidget(self.state)
-        self.input=QPlainTextEdit();self.input.setMaximumHeight(90);layout.addWidget(self.input)
+        self.input=QPlainTextEdit();self.input.setPlaceholderText('输入发给当前会议的消息…');self.input.setMaximumHeight(90);layout.addWidget(self.input)
         row=QHBoxLayout();self.send=QPushButton('发送到会议');self.send.setObjectName('primary');self.send.clicked.connect(self.post);row.addWidget(self.send)
         self.retry=QPushButton('继续回复');self.retry.clicked.connect(self.resume);row.addWidget(self.retry)
         self.summary=QPushButton('结束话题并总结');self.summary.clicked.connect(self.summarize);row.addWidget(self.summary)
@@ -50,7 +50,12 @@ class SocialPage(QWidget):
         if busy:self._stopped.discard(gid)
         self.send.setEnabled(bool(gid) and not busy);self.retry.setEnabled(bool(gid) and not busy);self.summary.setEnabled(bool(gid) and not busy);self.stop.setEnabled(busy)
         self.memory.setEnabled(bool(gid) and not busy)
-        if not gid:self.messages.setPlainText('创建一个群，选择一起交流的角色。群聊不会让角色直接读取彼此的私人历史。');self.state.setText('');return
+        self.input.setEnabled(bool(gid))
+        if not gid:
+            self._rendered=None
+            self.messages.setPlainText('点击「创建会议」，选择参与角色。')
+            self.state.clear()
+            return
         group=self.hub.social.group(gid);self.memory.blockSignals(True);self.memory.setChecked(bool(group['private_context']));self.memory.blockSignals(False)
         names=dict((r[0],r[1]) for r in list_roles(self.hub.root))
         messages=self.hub.social.messages(gid);key=(gid,tuple(m['id'] for m in messages))

@@ -6,12 +6,13 @@ from PySide6.QtWidgets import QApplication,QMessageBox
 from PySide6.QtCore import QDate,QCoreApplication,QEvent
 from sunday_blue.storage import Config,Store
 from sunday_blue.modules.hub import ModuleHub
+from sunday_blue.modules.database import day as living_day
 from sunday_blue.modules.sleep_quality import score_sleep
-from sunday_blue.module_views.life import LifePage
+from sunday_blue.module_views.life import LifePage,living_date
 APP=QApplication.instance() or QApplication([])
 class FinalizeTests(unittest.TestCase):
  def setUp(self):
-  self.temp=tempfile.TemporaryDirectory(dir=Path(__file__).parent);cfg=Config(self.temp.name);self.h=ModuleHub(cfg,Store(cfg.data),start_timer=False);self.widgets=[];self.day=(date.today()-timedelta(days=1)).isoformat()
+  self.temp=tempfile.TemporaryDirectory(dir=Path(__file__).parent);cfg=Config(self.temp.name);self.h=ModuleHub(cfg,Store(cfg.data),start_timer=False);self.widgets=[];self.day=(date.fromisoformat(living_day())-timedelta(days=1)).isoformat()
  def tearDown(self):
   self.h.close()
   for w in self.widgets:w.close();w.deleteLater()
@@ -36,8 +37,23 @@ class FinalizeTests(unittest.TestCase):
  def test_backfill_does_not_restore_today(self):
   with self.h.db.connect() as c:c.execute('UPDATE attention_state SET focus=10 WHERE id=1')
   self.submit((date.today()-timedelta(days=5)).isoformat());self.assertEqual(self.h.attention.status()['focus'],10)
+ def test_rollover_keeps_unsaved_report_on_its_date(self):
+  page=LifePage(self.h)
+  self.widgets.append(page)
+  selected=page.selected_day()
+  page.meal.setPlainText('晚餐草稿')
+  tomorrow=living_date().addDays(1)
+  with patch('sunday_blue.module_views.life.living_date',return_value=tomorrow):
+   page.sync_report_date()
+   self.assertEqual(page.selected_day(),selected)
+   self.assertEqual(page.meal.toPlainText(),'晚餐草稿')
+   with patch.object(QMessageBox,'question',return_value=QMessageBox.StandardButton.No):
+    page.open_daily()
+   self.assertEqual(page.selected_day(),selected)
+   self.assertEqual(page.meal.toPlainText(),'晚餐草稿')
+
  def test_midnight_date_sync_and_cancel(self):
-  p=LifePage(self.h);self.widgets.append(p);p.report_today=QDate.currentDate().addDays(-1);p.day.setDate(QDate.currentDate().addDays(-2));p.sync_report_date();self.assertEqual(p.day.date(),QDate.currentDate());self.assertEqual(p.selected_day(),self.day)
+  p=LifePage(self.h);self.widgets.append(p);p.report_today=living_date().addDays(-1);p.day.setDate(living_date().addDays(-2));p.sync_report_date();self.assertEqual(p.day.date(),living_date());self.assertEqual(p.selected_day(),self.day)
   p.bed.load('23:00');p.wake.load('07:00')
   with patch('PySide6.QtWidgets.QMessageBox.question',return_value=QMessageBox.StandardButton.No):p.save_daily()
   self.assertFalse(self.h.life.daily(self.day))

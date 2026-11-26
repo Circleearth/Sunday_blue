@@ -46,7 +46,7 @@ class Portrait(QFrame):
     def __init__(self,root):
         super().__init__()
         self.root=root; self.role='rui'; self.pix=QPixmap(); self.tint=QColor('#7cb7ff'); self.theme='dark'
-        self.setObjectName('portrait'); self.setMinimumHeight(310)
+        self.setObjectName('portrait'); self.setMinimumHeight(105)
         self.choose_art=QPushButton('选择立绘 / 调整',self);self.choose_art.clicked.connect(lambda:edit_image(self,self.root,'portrait:'+self.role,self.root/'assets/roles'/self.role/'portrait.png',max(1,self.width()-28)/max(1,self.height()-90)));EVENTS.changed.connect(self.art_changed)
 
     def set_role(self,role):

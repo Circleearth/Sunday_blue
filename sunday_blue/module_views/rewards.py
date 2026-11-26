@@ -1,7 +1,7 @@
 import uuid
 from PySide6.QtCore import Qt,QSize
 from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QLabel,QListWidget,QListWidgetItem,QPushButton,
-    QFrame,QDialog,QFormLayout,QLineEdit,QComboBox,QSpinBox,QDoubleSpinBox,QMessageBox,QInputDialog)
+    QFrame,QDialog,QFormLayout,QLineEdit,QComboBox,QSpinBox,QDoubleSpinBox,QMessageBox,QInputDialog,QTabWidget)
 from PySide6.QtGui import QPixmap
 from ..roles import list_roles
 from ..image_layouts import EditableImage
@@ -11,20 +11,55 @@ from ..numeric_inputs import NumberSpin as QSpinBox, DecimalSpin as QDoubleSpinB
 class RewardsPage(QWidget):
     def __init__(self,hub,parent=None):
         super().__init__(parent);self.hub=hub
-        layout=QVBoxLayout(self);layout.setContentsMargins(32,24,32,24)
-        title=QLabel('努力可以兑换，休息不需要许可。');title.setObjectName('title');layout.addWidget(title)
-        self.balance=QLabel();layout.addWidget(self.balance)
-        note=QLabel('金币是虚拟激励，与真实预算分开。预算奖励只有在你确认实际消费后，才记入预算。');note.setWordWrap(True);layout.addWidget(note)
-        banner=EditableImage(hub.root,'shop_background',hub.root/'assets/shop/background.png',ratio=1600/300);banner.setFixedHeight(100);layout.addWidget(banner)
-        body=QHBoxLayout();layout.addLayout(body,3)
-        self.items=QListWidget();self.items.setViewMode(QListWidget.ViewMode.IconMode);self.items.setResizeMode(QListWidget.ResizeMode.Adjust);self.items.setMovement(QListWidget.Movement.Static);self.items.setGridSize(QSize(270,245));self.items.setSpacing(12);body.addWidget(self.items,1)
+        layout=QVBoxLayout(self);layout.setContentsMargins(20,14,20,14)
+        header=QHBoxLayout()
+        title=QLabel('商店');title.setObjectName('title');header.addWidget(title)
+        header.addStretch()
+        passes=QPushButton('我的时间券');passes.clicked.connect(self.open_passes);header.addWidget(passes)
+        settings=QPushButton('商店设置');settings.clicked.connect(self.settings);header.addWidget(settings)
+        layout.addLayout(header)
+        self.balance=QLabel();self.balance.setWordWrap(True);layout.addWidget(self.balance)
+        self.tabs=QTabWidget()
+        layout.addWidget(self.tabs,1)
+        storefront=QWidget()
+        shop=QVBoxLayout(storefront)
+        self.tabs.addTab(storefront,'商品')
+        body=QHBoxLayout()
+        shop.addLayout(body,1)
+        self.items=QListWidget();self.items.setViewMode(QListWidget.ViewMode.IconMode);self.items.setResizeMode(QListWidget.ResizeMode.Adjust);self.items.setMovement(QListWidget.Movement.Static);self.items.setGridSize(QSize(242,186));self.items.setSpacing(6);body.addWidget(self.items,1)
         self.mascot=EditableImage(hub.root,'shop_mascot',hub.root/'assets/shop/mascot.png',ratio=.6);self.mascot.setMinimumWidth(180);body.addWidget(self.mascot)
         row=QHBoxLayout()
-        for label,callback in [('兑换所选',self.redeem),('修改商品',self.edit_selected),('删除商品',self.remove_selected),('我的时间券',self.open_passes),('商店设置',self.settings)]:
-            button=QPushButton(label);button.clicked.connect(callback);row.addWidget(button)
-        layout.addLayout(row);layout.addWidget(QLabel('最近兑换'));self.history=QListWidget();layout.addWidget(self.history,1)
-        confirm=QPushButton('确认所选奖励已实际消费');confirm.clicked.connect(self.confirm);layout.addWidget(confirm)
+        self.edit_button=QPushButton('修改商品')
+        self.edit_button.clicked.connect(self.edit_selected)
+        self.remove_button=QPushButton('删除商品')
+        self.remove_button.clicked.connect(self.remove_selected)
+        row.addWidget(self.edit_button);row.addWidget(self.remove_button);row.addStretch()
+        shop.addLayout(row)
+        appearance=QWidget()
+        gallery=QVBoxLayout(appearance)
+        banner=EditableImage(hub.root,'shop_background',hub.root/'assets/shop/background.png',ratio=1600/300)
+        banner.setFixedHeight(100)
+        gallery.addWidget(banner)
+        gallery.addStretch()
+        history_page=QWidget()
+        history_layout=QVBoxLayout(history_page)
+        self.history=QListWidget()
+        history_layout.addWidget(self.history,1)
+        self.confirm_button=QPushButton('确认所选奖励已实际消费')
+        self.confirm_button.clicked.connect(self.confirm)
+        history_layout.addWidget(self.confirm_button)
+        self.tabs.addTab(history_page,'兑换记录')
+        self.tabs.addTab(appearance,'背景素材')
+        self.items.currentRowChanged.connect(self.update_actions)
+        self.history.currentRowChanged.connect(self.update_actions)
         hub.changed.connect(lambda *_:self.refresh());self.refresh()
+    def update_actions(self,*_):
+        selected=bool(self.items.currentItem())
+        self.edit_button.setEnabled(selected)
+        self.remove_button.setEnabled(selected)
+        item=self.history.currentItem()
+        self.confirm_button.setEnabled(bool(item and item.data(Qt.ItemDataRole.UserRole)['status']=='pending'))
+
     def refresh(self):
         values=self.hub.rewards.balances();self.balance.setText(f"{values['coins']} 金币  ·  现实预算 ¥{values['budget_cents']/100:.2f}")
         quota=self.hub.rewards.allowance.status()
@@ -43,9 +78,9 @@ class RewardsPage(QWidget):
                     suffix=f" · ¥{r['cents']/100:.2f}（实际消费需确认）"
                 else:
                     suffix=f" · {r['minutes']} 分钟"
-                item=QListWidgetItem(f"{r['title']} · {r['cost']} 金币{suffix}");item.setData(Qt.ItemDataRole.UserRole,r);item.setSizeHint(QSize(250,225));self.items.addItem(item)
+                item=QListWidgetItem(f"{r['title']} · {r['cost']} 金币{suffix}");item.setData(Qt.ItemDataRole.UserRole,r);item.setSizeHint(QSize(230,176));self.items.addItem(item)
                 card=QFrame();card.setObjectName('card');box=QVBoxLayout(card);box.setSpacing(10)
-                art=EditableImage(self.hub.root,'shop_item:'+r['id'],self.hub.root/'assets/shop'/(r['id']+'.png'),ratio=2.5);art.setFixedHeight(92)
+                art=EditableImage(self.hub.root,'shop_item:'+r['id'],self.hub.root/'assets/shop'/(r['id']+'.png'),ratio=2.5);art.setFixedHeight(55)
                 box.addWidget(art);name=QLabel(r['title']);name.setWordWrap(True);name.setObjectName('cardTitle');box.addWidget(name)
                 price=QLabel(str(r['cost'])+' 金币'+suffix);price.setWordWrap(True);box.addWidget(price)
                 buy=QPushButton('兑换');buy.clicked.connect(lambda checked=False,i=item:self.buy_item(i));box.addWidget(buy);self.items.setItemWidget(item,card)
@@ -58,6 +93,8 @@ class RewardsPage(QWidget):
             elif r['kind']=='extra':detail=' · 额外 1 次'
             elif r['kind']=='budget':detail=f" · ¥{r['cents']/100:.2f}"
             item=QListWidgetItem(f"{r['title']} · {status} · {r['cost']} 金币{detail}");item.setData(Qt.ItemDataRole.UserRole,r);self.history.addItem(item)
+        self.update_actions()
+
     def open_passes(self):
         import time
         from PySide6.QtCore import QTimer

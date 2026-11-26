@@ -25,7 +25,8 @@ class GrowthTests(unittest.TestCase):
   self.l.practice(self.unit,2,2,'已能解释',request_id='retry',error_id='batch1');self.assertEqual(self.l.evidence(self.unit)['total'],12)
   with self.assertRaises(ValueError):self.l.practice(self.unit,2,1,'更换内容',request_id='retry')
   with self.assertRaises(ValueError):self.l.review(self.unit,True)
-  self.assertGreater(self.l.evidence(self.unit)['due'],datetime.now(ZONE).date().isoformat())
+  from sunday_blue.modules.database import day as living_day
+  self.assertGreater(self.l.evidence(self.unit)['due'],living_day())
   with self.assertRaises(ValueError):self.l.add('unit','错误层级',self.course)
  def test_focus_link_and_existing_reward_once(self):
   clock=[0];self.h.focus.clock=lambda:clock[0];self.h.start_focus('学习','导数','loluns');run=self.h.focus.status()['id'];self.l.bind(run,self.unit)
@@ -64,7 +65,8 @@ class GrowthTests(unittest.TestCase):
   with self.h.db.connect() as db:db.execute("UPDATE redemptions SET created=datetime('now','-7 days')")
   self.assertEqual(rewards.extra_count(),0)
  def test_night_use_rest_and_offline_do_not_confuse_physical(self):
-  clock=[0];a=Attention(self.h.db,clock=lambda:clock[0]);night=datetime.now(ZONE).replace(hour=23)
+  clock=[0];a=Attention(self.h.db,clock=lambda:clock[0]);night=datetime.now(ZONE).replace(hour=23,minute=0,second=0,microsecond=0)
+  a.daily_boundary(night.replace(hour=9))
   with self.h.db.connect() as db:db.execute('UPDATE attention_state SET eye=40,focus=60')
   physical=self.h.life.energy()['physical'];clock[0]=10;a.tick(active=True,now=night);self.assertGreater(a.status()['eye'],40)
   previous=a.status();clock[0]=20;a.tick(active=False,now=night+timedelta(seconds=10));self.assertLess(a.status()['eye'],previous['eye']);self.assertGreater(a.status()['focus'],previous['focus']);self.assertEqual(self.h.life.energy()['physical'],physical)

@@ -110,7 +110,7 @@ class Contracts:
   from .life_state import ZONE
   with self.db.connect() as c:
    c.execute('BEGIN IMMEDIATE')
-   for channel in ('local','qq'):c.execute(f"UPDATE reminder_occurrences SET {channel}_status='missed' WHERE id LIKE 'contract-%' AND due<? AND {channel}_status IN ('pending','failed')",((now-timedelta(days=1)).isoformat(),))
+   for channel in ('local','qq'):c.execute(f"UPDATE reminder_occurrences SET {channel}_status='missed' WHERE id LIKE 'contract-%' AND julianday(due)<julianday(?) AND {channel}_status IN ('pending','failed')",((now-timedelta(days=1)).isoformat(),))
    for r in c.execute("SELECT * FROM challenge_contracts WHERE status IN ('active','review')").fetchall():
     if self.progress(c,r)>=r['target']:self._settle(c,r,'success');continue
     if datetime.fromisoformat(r['deadline'])<=now:

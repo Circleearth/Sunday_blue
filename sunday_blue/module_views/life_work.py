@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt,QDate,QTimer
 from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QFormLayout,QLabel,QPushButton,
     QLineEdit,QPlainTextEdit,QComboBox,QCheckBox,QSpinBox,QDoubleSpinBox,QDateEdit,
     QFrame,QTreeWidget,QTreeWidgetItem,QListWidget,QListWidgetItem,QProgressBar,QTabWidget,
-    QDialog,QDialogButtonBox,QMessageBox,QInputDialog,QScrollArea,QSplitter)
+    QDialog,QDialogButtonBox,QMessageBox,QInputDialog,QScrollArea,QSplitter,QToolButton,QMenu)
 from ..roles import list_roles
 from ..modules.life_state import MUSCLES
 
@@ -25,17 +25,30 @@ class WorkPage(ModulePage):
         content=QWidget();scroll.setWidget(content);layout=QVBoxLayout(content)
         layout.setContentsMargins(18,16,18,16)
         title=QLabel('工作 · 项目档案');title.setObjectName('title');layout.addWidget(title)
-        row=QHBoxLayout();button('新建任务',lambda:self.edit_task(),row,True);button('添加子任务',self.add_child,row)
+        row=QHBoxLayout();button('新建任务',lambda:self.edit_task(),row,True);self.subtask_button=button('添加子任务',self.add_child,row)
         self.archived=QCheckBox('显示已归档');self.archived.toggled.connect(self.refresh);row.addStretch();row.addWidget(self.archived);layout.addLayout(row)
         self.tree=OrderedTree();self.tree.move_requested.connect(self.move_node);self.tree.choose_parent.connect(lambda key:choose_parent(self,'work',key));self.tree.setHeaderLabels(['任务','状态','完成进度','投入 / 预计（时间比例）','截止','优先级','备注']);self.tree.setRootIsDecorated(True);self.tree.setAlternatingRowColors(True);self.work_split=QSplitter();self.work_split.addWidget(self.tree);detail=QFrame();detail.setObjectName("card");detail_box=QVBoxLayout(detail);detail_box.setContentsMargins(20,16,20,16);self.task_heading=QLabel('选择一项工作');self.task_heading.setObjectName('title');self.task_heading.setWordWrap(True);detail_box.addWidget(self.task_heading);self.task_metrics=QLabel();self.task_metrics.setWordWrap(True);detail_box.addWidget(self.task_metrics);self.task_progress=QProgressBar();detail_box.addWidget(self.task_progress);self.task_notes=QPlainTextEdit();self.task_notes.setReadOnly(True);self.task_notes.setPlaceholderText('任务说明与备注会显示在这里');detail_box.addWidget(self.task_notes,1);button('任务变更记录',self.show_history,detail_box);self.work_split.addWidget(detail);self.work_split.setSizes([330,700]);layout.addWidget(self.work_split,1);self.tree.currentItemChanged.connect(self.inspect_task)
         self.tree.setStyleSheet('QTreeWidget {border: none;} QTreeWidget::item {padding: 12px 6px; border-bottom: 1px solid rgba(128,128,128,45);} QTreeWidget::item:selected {background: rgba(100,120,150,45); color: palette(text); border-left: 3px solid #7189d9;}')
         self.tree.setIndentation(26)
         self.tree.itemDoubleClicked.connect(lambda *_:self.edit_selected())
-        actions=QHBoxLayout();button('编辑 / 更新进度',self.edit_selected,actions);button('暂缓 / 继续',self.pause_task,actions);button('归档 / 恢复',self.archive_task,actions);button('补报工作时间',self.backfill,actions);layout.addLayout(actions)
+        actions=QHBoxLayout()
+        self.edit_button=button('编辑任务',self.edit_selected,actions)
+        self.task_menu=QToolButton()
+        self.task_menu.setText('任务操作 ▾')
+        self.task_menu.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        menu=QMenu(self.task_menu)
+        self.pause_action=menu.addAction('暂缓',self.pause_task)
+        self.archive_action=menu.addAction('归档',self.archive_task)
+        self.backfill_action=menu.addAction('补报工作时间',self.backfill)
+        self.remove_action=menu.addAction('删除任务…',self.remove_task)
+        self.task_menu.setMenu(menu)
+        actions.addWidget(self.task_menu)
+        actions.addStretch()
+        layout.addLayout(actions)
         focus=QHBoxLayout();focus.addWidget(QLabel('陪伴人格'));self.roles=QComboBox();focus.addWidget(self.roles)
-        button('开始所选任务的番茄钟',self.start_selected,focus,True);focus.addStretch();layout.addLayout(focus)
+        self.focus_button=button('开始任务专注',self.start_selected,focus,True);focus.addStretch();layout.addLayout(focus)
         self.achievement=QLabel();layout.addWidget(self.achievement);self.summary=QLabel();self.summary.setWordWrap(True);layout.addWidget(self.summary)
-        row=QHBoxLayout();layout.addLayout(row);button('查看今日安排建议',self.suggestions,row);button('进入雾铃谷',self.open_village,row);button('删除所选',self.remove_task,row);button('撤销删除',lambda:self.invoke(self.hub.work.undo_trash),row)
+        row=QHBoxLayout();layout.addLayout(row);button('今日任务建议',self.suggestions,row);button('撤销删除',self.undo_delete,row);row.addStretch()
         notes=QHBoxLayout();layout.addLayout(notes);left=QVBoxLayout();right=QVBoxLayout();notes.addLayout(left,1);notes.addLayout(right,1)
         self.today_caption=QLabel('今天接续');left.addWidget(self.today_caption);self.today_note=QPlainTextEdit();self.today_note.setReadOnly(True);self.today_note.setMaximumHeight(70);left.addWidget(self.today_note)
         heading=QHBoxLayout();self.tomorrow_caption=QLabel('留给明天');heading.addWidget(self.tomorrow_caption);button('确认留给明天',self.save_tomorrow,heading,True);right.addLayout(heading)
@@ -48,12 +61,35 @@ class WorkPage(ModulePage):
         if task and QMessageBox.question(self,'移除工作任务',f"移除「{task['title']}」及其子任务？可撤销，已记录的工时保留。")==QMessageBox.StandardButton.Yes:
             self.invoke(lambda:self.hub.work.trash(task['id']))
 
-    def open_village(self):
-        from ..hamlet.page import open_village
-        open_village(self.hub,self)
+    def undo_delete(self):
+        try:
+            self.hub.work.undo_trash()
+        except ValueError as exc:
+            self.note_status.setText(str(exc))
+            return
+        self.hub.changed.emit('work')
+        self.note_status.setText('已恢复最近删除的任务。')
 
     def inspect_task(self,*args):
         r=self.selected()
+        active=bool(r and not r['archived'])
+        for control in (self.edit_button,self.task_menu):
+            control.setEnabled(bool(r))
+        for control in (self.subtask_button,self.pause_action,self.backfill_action):
+            control.setEnabled(active)
+        reason=''
+        if active:
+            with self.hub.db.connect() as conn:
+                try:
+                    self.hub.work.validate_binding(conn,r['id'])
+                except ValueError as exc:
+                    reason=str(exc)
+        if self.hub.focus.status()['state']!='idle':
+            reason='已有一轮专注。结束后可切换任务。'
+        self.focus_button.setEnabled(active and not reason)
+        self.focus_button.setToolTip(reason or '开始并进入番茄钟')
+        self.archive_action.setText('恢复到任务列表' if r and r['archived'] else '归档')
+        self.pause_action.setText('继续任务' if r and r['status']=='paused' else '暂缓任务')
         if not r:
             self.task_heading.setText('选择一项工作');self.task_metrics.clear();self.task_notes.clear();self.task_progress.setValue(0);return
         self.task_heading.setText(r['title']);self.task_metrics.setText(f"{STATUS.get(r['status'],r['status'])} · 优先级 {r['priority']} · 截止 {r['due'] or '未设置'}\n已投入 {r['actual_seconds']/60:.1f} 分钟 / 预计 {r['estimate_minutes'] or '未设置'} 分钟");self.task_progress.setValue(round(r['progress']));self.task_progress.setFormat('任务完成 %p%');self.task_notes.setPlainText(r.get('notes',''))

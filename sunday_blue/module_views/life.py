@@ -1,6 +1,6 @@
 """Life cockpit and grouped records; writes exclusively use existing domain services."""
 import json
-from PySide6.QtCore import Qt,QDate,QTimer
+from PySide6.QtCore import Qt,QDate,QTimer,QSignalBlocker
 from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QFormLayout,QLabel,QPushButton,QLineEdit,QPlainTextEdit,QComboBox,QCheckBox,QDoubleSpinBox,QDateEdit,QListWidget,QListWidgetItem,QTabWidget,QMessageBox,QScrollArea,QBoxLayout)
 from .module_forms import ModulePage,button,clock_pair,hm_pair,spin,form_dialog,INTENSITY
 from .life_widgets import StatusCard,MuscleMap,TrendChart,card,label,recovery_rows,RECOVERY_COLORS,RECOVERY_LABELS
@@ -37,13 +37,13 @@ class LifePage(ModulePage):
         self.muscle_map=MuscleMap(hub.root);an.addWidget(self.muscle_map,1);self.muscle_map.selected.connect(self.select_muscle)
         parts=QGridLayout();self.part_buttons={}
         for i,name in enumerate(MUSCLES):
-            w=QPushButton(name);w.setCheckable(True);w.clicked.connect(lambda checked=False,p=name:self.select_muscle(p));self.part_buttons[name]=w;parts.addWidget(w,i//3,i%3)
+            w=QPushButton(name);w.setObjectName('workspaceTab');w.setCheckable(True);w.clicked.connect(lambda checked=False,p=name:self.select_muscle(p));self.part_buttons[name]=w;parts.addWidget(w,i//3,i%3)
         an.addLayout(parts)
         legend=label('● 浅红 恢复　● 浅橙 谨慎　● 浅黄 基本恢复　● 浅绿 可考虑训练');an.addWidget(legend)
         button('选择人体底图 / 调整',lambda:edit_image(self,hub.root,'recovery_body',asset_spec(hub.root,'recovery_body')['file'],4/3),an)
         button('人体底图 · 替换与提示词',lambda:asset_details(self,hub.root,'recovery_body'),an)
         side=QWidget();sb=QVBoxLayout(side);sb.setContentsMargins(0,0,0,0);sb.setSpacing(12);self.main_row.addWidget(side,2)
-        advice,ad=card('今天，按自己的节奏');self.advice=label('','lifeAdvice');ad.addWidget(self.advice);self.training_advice=label();ad.addWidget(self.training_advice);sb.addWidget(advice)
+        advice,ad=card('今日建议');self.advice=label('','lifeAdvice');ad.addWidget(self.advice);self.training_advice=label();ad.addWidget(self.training_advice);sb.addWidget(advice)
         detail,de=card('部位详情');self.muscle_detail=label('选择人体区域或下方部位按钮。');de.addWidget(self.muscle_detail);sb.addWidget(detail)
         pc,pl=card('私人记录 · 近7天节奏');self.private_recovery=label();pl.addWidget(self.private_recovery);sb.addWidget(pc)
         self.art=ArtworkSlot(hub.root,'recovery_scene');sb.addWidget(self.art);sb.addStretch()
@@ -62,7 +62,7 @@ class LifePage(ModulePage):
         exercise,ex=self.page('运动记录');top=QHBoxLayout();button('记录一场运动',lambda:self.exercise_dialog(),top,True);button('修改所选记录',self.edit_exercise,top);top.addStretch();self.exercise_summary=label();top.addWidget(self.exercise_summary);ex.addLayout(top)
         ex.addWidget(label('记录真实活动，温和积累成长。修改沿用原记录，金币按差额结算。'))
         self.exercises=QListWidget();self.exercises.setWordWrap(True);self.exercises.setMinimumHeight(300);self.exercises.itemDoubleClicked.connect(lambda *_:self.edit_exercise());ex.addWidget(self.exercises,1)
-        activity,al=self.page('生活正计时');clock,cl=card('给日常留一段时间');self.activity_title=QLineEdit();self.activity_title.setPlaceholderText('这次做什么？例如散步、看书放松或玩游戏');cl.addWidget(self.activity_title)
+        activity,al=self.page('生活正计时');clock,cl=card('活动计时');self.activity_title=QLineEdit();self.activity_title.setPlaceholderText('这次做什么？例如散步、看书放松或玩游戏');cl.addWidget(self.activity_title)
         self.clock_label=label('00:00:00','lifeClock');self.clock_label.setAlignment(Qt.AlignmentFlag.AlignCenter);cl.addWidget(self.clock_label);self.clock_status=label();self.clock_status.setAlignment(Qt.AlignmentFlag.AlignCenter);cl.addWidget(self.clock_status)
         row=QHBoxLayout();row.addStretch();self.timer_buttons={}
         for key,title,fn in [('start','开始',lambda:self.invoke(lambda:self.hub.life_timer.start(self.activity_title.text()))),('pause','暂停',lambda:self.invoke(self.hub.life_timer.pause)),('resume','继续',lambda:self.invoke(self.hub.life_timer.resume)),('finish','结束并核对',self.finish_activity)]:self.timer_buttons[key]=button(title,fn,row,key=='start')
@@ -95,9 +95,11 @@ class LifePage(ModulePage):
         self.set_daily_saved(False)
     def open_missing_daily(self):
         target=QDate.fromString(self.hub.life.latest_missing_day(),'yyyy-MM-dd')
-        self.day.setDate(target.addDays(1));self.set_daily_saved(False);self.tabs.setCurrentIndex(self.daily_index)
+        self.day.setDate(target.addDays(1))
+        self.tabs.setCurrentIndex(self.daily_index)
     def open_daily(self):
-        self.day.setDate(living_date());self.load_daily();self.tabs.setCurrentIndex(self.daily_index)
+        self.day.setDate(living_date())
+        self.tabs.setCurrentIndex(self.daily_index)
     def open_history_day(self,item):
         self.day.setDate(QDate.fromString(item.data(Qt.ItemDataRole.UserRole),'yyyy-MM-dd').addDays(1));self.tabs.setCurrentIndex(self.daily_index)
     def resizeEvent(self,event):
@@ -116,14 +118,35 @@ class LifePage(ModulePage):
     def sync_report_date(self,*args):
         current=living_date()
         if current!=self.report_today:
-            self.report_today=current;self.day.setMaximumDate(current);self.day.setDate(current);self.load_daily()
-    def selected_day(self):return self.day.date().addDays(-1).toString('yyyy-MM-dd')
+            self.report_today=current
+            self.day.setMaximumDate(current)
+            if self.form_values()!=self._loaded_values:
+                self.daily_status.setText('新的一天已开始。当前草稿仍属于 '+self.selected_day())
+                return
+            self.day.setDate(current)
+
+    def selected_day(self):
+        return self.day.date().addDays(-1).toString('yyyy-MM-dd')
+
+    def form_values(self):
+        return (self.bed.value(),self.wake.value(),self.phone_total.value(),self.phone_fun.value(),
+                self.meal.toPlainText(),self.note.text(),self.private_count.value(),
+                self.private_minutes.value(),self.private_discomfort.isChecked(),self.private_impact.isChecked())
+
     def load_daily(self,*args):
+        if hasattr(self,'_loaded_date') and self.day.date()!=self._loaded_date and self.form_values()!=self._loaded_values:
+            answer=QMessageBox.question(self,'切换上报日期','当前日期有未保存的修改。放弃修改并切换？')
+            if answer!=QMessageBox.StandardButton.Yes:
+                with QSignalBlocker(self.day):
+                    self.day.setDate(self._loaded_date)
+                return
         self.editing_revision=None
         row=self.hub.life.daily(self.selected_day()) or {};self.meal.setPlainText(row.get('meal') or '');self.note.setText(row.get('note') or '')
         self.bed.load(row.get('sleep_start'));self.wake.load(row.get('sleep_end'))
         self.phone_total.load(row.get('phone_total'));self.phone_fun.load(row.get('phone_fun'))
         private=self.hub.private_wellbeing.get(self.selected_day());self.private_count.setValue(private.get('count',-1));self.private_minutes.setValue(private.get('minutes',0));self.private_discomfort.setChecked(bool(private.get('discomfort')));self.private_impact.setChecked(bool(private.get('impact')))
+        self._loaded_date=self.day.date()
+        self._loaded_values=self.form_values()
         self.refresh_private();self.set_daily_saved(bool(row))
         self.daily_status.setText(('旧睡眠时长 '+str(row['sleep_hours'])+' 小时；填写新起止时间前保留。') if row.get('sleep_hours') is not None and not row.get('sleep_start') else '上报资料属于 '+self.selected_day())
     def refresh_private(self):
@@ -145,6 +168,8 @@ class LifePage(ModulePage):
             sleep_start=self.bed.value(),sleep_end=self.wake.value())
         result=self.invoke(lambda:self.hub.life.finalize_daily(self.selected_day(),None if self.private_count.value()<0 else (self.private_count.value(),self.private_minutes.value(),self.private_discomfort.isChecked(),self.private_impact.isChecked()),revision=revision,**values))
         if result is not None:
+            self._loaded_values=self.form_values()
+            self.editing_revision=None
             self.refresh_private();self.refresh_energy()
             self.daily_status.setText(f"已保存 {self.selected_day()} · 睡眠 {result.get('sleep_hours','未知')} 小时；上传奖励不重复。")
             if self.selected_day()<living_date().toString('yyyy-MM-dd'):

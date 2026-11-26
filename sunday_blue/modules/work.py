@@ -1,5 +1,6 @@
 """Stable, module-owned work tasks; progress is reported, never inferred from time."""
 from datetime import date,datetime,timedelta
+from functools import cache
 import json
 import math
 import sqlite3
@@ -16,7 +17,6 @@ class Work:
         with self.db.connect() as c:
             c.execute('BEGIN IMMEDIATE');rows=[c.execute('SELECT * FROM work_tasks WHERE id=?',(i,)).fetchone() for i in ids]
             if any(r is None for r in rows) or len({r['parent_id'] for r in rows})!=1:raise ValueError('只能调整同级顺序')
-            c.execute('CREATE TABLE IF NOT EXISTS work_order(id TEXT PRIMARY KEY,position INTEGER)')
             c.executemany('INSERT INTO work_order VALUES(?,?) ON CONFLICT(id) DO UPDATE SET position=excluded.position',[(key,n) for n,key in enumerate(ids)])
     def __init__(self,db):
         self.db=db
@@ -28,6 +28,7 @@ class Work:
                 CREATE TABLE IF NOT EXISTS work_day_notes(day TEXT PRIMARY KEY,body TEXT NOT NULL,updated TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS work_day_note_history(id INTEGER PRIMARY KEY,day TEXT,body TEXT,created TEXT);
                 CREATE TABLE IF NOT EXISTS work_notes(task_id TEXT PRIMARY KEY,notes TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS work_order(id TEXT PRIMARY KEY,position INTEGER);
                 CREATE UNIQUE INDEX IF NOT EXISTS work_dida_unique ON work_tasks(dida_id) WHERE dida_id<>'';
                 CREATE INDEX IF NOT EXISTS work_parent ON work_tasks(parent_id);
                 CREATE TABLE IF NOT EXISTS work_history (
@@ -248,10 +249,12 @@ class Work:
             byid,children=self._aggregate(rows);times={}
             if self._exists(conn,'focus_task_links') and self._exists(conn,'activity_records'):
                 times={r[0]:r[1] for r in conn.execute('SELECT l.task_id,COALESCE(sum(a.seconds),0) FROM focus_task_links l JOIN activity_records a ON a.id=l.run_id GROUP BY l.task_id')}
-        def total(tid):return times.get(tid,0)+sum(total(k['id']) for k in children.get(tid,[]))
-        for tid,r in byid.items():r['actual_seconds']=total(tid)
-        with self.db.connect() as c:
-            c.execute('CREATE TABLE IF NOT EXISTS work_order(id TEXT PRIMARY KEY,position INTEGER)');order=dict(c.execute('SELECT id,position FROM work_order'))
+            order=dict(conn.execute('SELECT id,position FROM work_order'))
+        @cache
+        def total(tid):
+            return times.get(tid,0)+sum(total(k['id']) for k in children.get(tid,[]))
+        for tid,row in byid.items():
+            row['actual_seconds']=total(tid)
         return sorted([r for r in byid.values() if include_archived or not r['archived']],key=lambda r:(order.get(r['id'],100000),r['status']!='done',r['created']))
 
     def task(self,tid):

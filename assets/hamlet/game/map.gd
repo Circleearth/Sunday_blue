@@ -4,9 +4,16 @@ signal plot_clicked(index: int)
 signal greet
 signal selected(site: String)
 const Expedition = preload("res://expedition.gd")
-const SPOTS = {"farm":Vector2(148,310),"ranch":Vector2(358,268),"mine":Vector2(512,152),"forge":Vector2(433,398),"dungeon":Vector2(284,119),"market":Vector2(126,443)}
+const Farm = preload("res://farm.gd")
+const SPOTS = {"farm":Vector2(144,291),"ranch":Vector2(408,230),"mine":Vector2(540,149),"forge":Vector2(470,409),"dungeon":Vector2(271,106),"market":Vector2(122,438)}
+const PLAZA = Vector2(311,320)
+const WORLD_SIZE = Vector2(640,512)
 const NAMES = {"farm":"雾麦梯田","ranch":"月露牧场","mine":"星辉矿脉","forge":"溪畔工坊","dungeon":"雾门遗迹","market":"风铃集市"}
-var place := "farm"
+var place := "overview"
+var open_plots:Array=[0,1,2]
+var wheat_frames:Array[Texture2D]=[]
+var farm_selection:=-1
+var hover_plot:=-1
 var state := {}
 var catalog := {}
 var phase := 0.0
@@ -18,38 +25,83 @@ var strike := 0.0
 
 func _ready():
 	clip_contents=true
+	texture_filter=CanvasItem.TEXTURE_FILTER_NEAREST
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	font = get_theme_default_font()
 	var file := "res://art/valley.png"
 	if FileAccess.file_exists(file):
 		var img := Image.load_from_file(ProjectSettings.globalize_path(file))
 		if img != null: overlay = ImageTexture.create_from_image(img)
-	for id in ["keeper","keeper_portrait","sheep","depth_1","depth_2","depth_3","wheat","berry","swift","pierce","ward","foe_1","foe_2","foe_3"]:
+	for id in ["keeper","keeper_portrait","sheep","farm","depth_1","depth_2","depth_3","depth","wheat","berry","swift","pierce","ward","foe_1","foe_2","foe_3"]:
 		var path:="res://art/%s.png"%id
 		if FileAccess.file_exists(path):
 			var img:=Image.load_from_file(ProjectSettings.globalize_path(path))
 			if img!=null:sprites[id]=ImageTexture.create_from_image(img)
-	mouse_exited.connect(func(): hovered = "")
+	var atlas_file:="res://art/expedition-atlas.png"
+	if FileAccess.file_exists(atlas_file):
+		var atlas:=Image.load_from_file(ProjectSettings.globalize_path(atlas_file))
+		if atlas!=null:
+			var cell:=Vector2i(atlas.get_width()/3,atlas.get_height()/2)
+			var keys:=["swift","pierce","ward","foe_1","foe_2","foe_3"]
+			for i in keys.size():
+				if sprites.has(keys[i]):continue
+				var frame:=atlas.get_region(Rect2i(Vector2i(i%3,i/3)*cell,cell))
+				var used:=visible_region(frame)
+				if used.has_area():sprites[keys[i]]=ImageTexture.create_from_image(frame.get_region(used))
+	var wheat_file:="res://art/wheat-growth.png"
+	if FileAccess.file_exists(wheat_file):
+		var wheat:=Image.load_from_file(ProjectSettings.globalize_path(wheat_file))
+		if wheat!=null:
+			var cell:=Vector2i(wheat.get_width()/4,wheat.get_height())
+			for i in 4:
+				var frame:=wheat.get_region(Rect2i(Vector2i(i*cell.x,0),cell))
+				var used:=visible_region(frame)
+				if used.has_area():wheat_frames.append(ImageTexture.create_from_image(frame.get_region(used)))
+			if wheat_frames.size()!=4:wheat_frames.clear()
+	mouse_exited.connect(func():
+		hovered=""
+		hover_plot=-1)
+
+func visible_region(frame:Image) -> Rect2i:
+	frame.convert(Image.FORMAT_RGBA8)
+	var pixels:=frame.get_data()
+	var width:=frame.get_width()
+	var height:=frame.get_height()
+	var low:=Vector2i(width,height)
+	var high:=Vector2i.ZERO
+	for y in range(0,height,3):
+		for x in range(0,width,3):
+			if pixels[(y*width+x)*4+3]>=110:
+				low=Vector2i(mini(low.x,x),mini(low.y,y))
+				high=Vector2i(maxi(high.x,x),maxi(high.y,y))
+	if high.x<low.x or high.y<low.y:return Rect2i()
+	var padding:=Vector2i(4,4)
+	low=(low-padding).max(Vector2i.ZERO)
+	high=(high+padding).min(Vector2i(width,height))
+	return Rect2i(low,high-low)
 
 func origin() -> Vector2:
-	return (size-Vector2(640,520)*zoom())*0.5
+	return (size-WORLD_SIZE*zoom())*0.5
 
 func zoom() -> float:
-	return minf(size.x/640.0,size.y/520.0)
+	return minf(size.x/WORLD_SIZE.x,size.y/WORLD_SIZE.y)
 
 func _gui_input(event):
-	if place=="dungeon":return
-	var point := (get_local_mouse_position()-origin())/maxf(zoom(),0.01)
+	if place=="dungeon" or not event is InputEventMouse:return
+	var point:Vector2 = (event.position-origin())/maxf(zoom(),0.01)
+	var press:bool=event is InputEventMouseButton and event.button_index==MOUSE_BUTTON_LEFT and event.pressed
 	hovered=""
-	if place=="farm" and event is InputEventMouseButton and event.button_index==MOUSE_BUTTON_LEFT and event.pressed:
-		for i in int(state.get("plots",3)):
-			var center:Vector2=SPOTS.farm+plot_offset(i)
-			var d:=point-center
-			if abs(d.x)/16+abs(d.y)/9<=1:
-				plot_clicked.emit(i)
-				accept_event()
-				return
-	if point.distance_to(Vector2(316,320))<21 and event is InputEventMouseButton and event.pressed and event.button_index==MOUSE_BUTTON_LEFT:
+	hover_plot=-1
+	if place=="farm":
+		for i in Farm.TILE_COUNT:
+			if Farm.bounds(i).has_point(point):
+				hover_plot=i
+				if press:
+					plot_clicked.emit(i)
+					accept_event()
+				break
+		return
+	if point.distance_to(PLAZA-Vector2(0,12))<24 and event is InputEventMouseButton and event.pressed and event.button_index==MOUSE_BUTTON_LEFT:
 		greet.emit()
 		accept_event()
 		return
@@ -62,6 +114,7 @@ func _gui_input(event):
 		accept_event()
 
 func _process(delta):
+	if get_window().mode==Window.MODE_MINIMIZED:return
 	phase=fmod(phase+delta,10000)
 	strike=maxf(0,strike-delta)
 	queue_redraw()
@@ -114,7 +167,7 @@ func fields(p: Vector2):
 	var crops: Dictionary={}
 	for job in state.get("jobs",[])+state.get("ready",[]):
 		if job.key in ["berry","wheat"]:crops[int(job.plot)]=job
-	for i in int(state.get("plots",3)):
+	for i in open_plots:
 		var pos:=p+plot_offset(i)
 		poly([pos+Vector2(-15,0),pos+Vector2(1,-8),pos+Vector2(17,0),pos+Vector2(1,8)],"a06e50")
 		if crops.has(i) and sprites.has(crops[i].key):
@@ -135,12 +188,15 @@ func fields(p: Vector2):
 				draw_circle(top,2+growth*2,Color("cb6882" if j.key=="berry" else "f4cb65"))
 
 func _draw():
-	draw_rect(Rect2(Vector2.ZERO,size),Color("c5dcba"))
+	draw_rect(Rect2(Vector2.ZERO,size),Color("182823"))
 	draw_set_transform(origin(),0,Vector2.ONE*zoom())
+	if place=="farm":
+		Farm.render(self,state)
+		return
 	if place=="dungeon" and not catalog.is_empty():
 		Expedition.render(self,phase,state,catalog)
 		return
-	if overlay:draw_texture_rect(overlay,Rect2(0,0,640,520),false)
+	if overlay:draw_texture_rect(overlay,Rect2(Vector2.ZERO,WORLD_SIZE),false)
 	else:
 		poly([Vector2(-80,117),Vector2(40,39),Vector2(96,65),Vector2(167,8),Vector2(216,57),Vector2(313,-4),Vector2(417,73),Vector2(523,4),Vector2(717,100),Vector2(717,-120),Vector2(-80,-120)],"92b7a5")
 		for i in 41:
@@ -168,8 +224,17 @@ func _draw():
 			draw_circle(p,1.8,Color("ecdbab"))
 	for id in SPOTS:
 		var p:Vector2=SPOTS[id]
-		if id==place or id==hovered:oval(p+Vector2(0,5),Vector2(48,13),"efd998")
-		match id:
+		if id==place or id==hovered:
+			draw_arc(p,22,0,TAU,40,Color("edc77d"),2,true)
+		if not overlay or id=="farm":
+			draw_site(id,p)
+		draw_site_label(id,p)
+	draw_keeper()
+	if strike>0 and place=="forge":
+		draw_string(font,SPOTS.forge+Vector2(16,-45-(1-strike)*22),"✧",HORIZONTAL_ALIGNMENT_LEFT,-1,30,Color("ffe39a"))
+
+func draw_site(id:String, p:Vector2):
+	match id:
 			"farm":fields(p)
 			"ranch":
 				house(p+Vector2(9,-8),"ad7862")
@@ -193,6 +258,7 @@ func _draw():
 				for n in 3:
 					var t:=fmod(phase*.6+n*.34,1)
 					draw_circle(p+Vector2(18+t*8,-53-t*21),3+t*4,Color(1,.98,.9,.5*(1-t)))
+func draw_site_label(id:String, p:Vector2):
 		if not catalog.is_empty():
 			for job in state.get("jobs",[]):
 				var site:String=catalog.activities[job.key].site
@@ -206,16 +272,30 @@ func _draw():
 						draw_line(hand,tip,Color("a48557"),3,true)
 						draw_line(hand-Vector2(5,0),hand+Vector2(5,1),Color("d9d7b3"),3,true)
 					break
-		var color:=Color("274e48") if id==place else Color("526c5b")
-		draw_rect(Rect2(p+Vector2(-39,15),Vector2(78,24)),color)
-		draw_string(font,p+Vector2(-39,32),NAMES[id],HORIZONTAL_ALIGNMENT_CENTER,78,14,Color("fff5da"))
-	var npc:=Vector2(316,328+sin(phase*2))
-	if not sprite("keeper",npc,52):
+
+		var badge:=StyleBoxFlat.new()
+		badge.bg_color=Color("22302c") if id==place else Color(0.10,0.16,0.15,0.86)
+		badge.border_color=Color("ebc782") if id==place else Color("899a82")
+		badge.set_border_width_all(1)
+		badge.set_corner_radius_all(5)
+		draw_style_box(badge,Rect2(p+Vector2(-42,18),Vector2(84,25)))
+		draw_string(font,p+Vector2(-42,36),NAMES[id],HORIZONTAL_ALIGNMENT_CENTER,84,14,Color("fff5da"))
+
+func draw_keeper():
+	var npc:=PLAZA+Vector2(0,sin(phase*2))
+	if overlay and sprites.has("keeper_portrait") and not sprites.has("keeper"):
+		var texture:Texture2D=sprites.keeper_portrait
+		var frame:=StyleBoxFlat.new()
+		frame.bg_color=Color("273d36")
+		frame.border_color=Color("edc77d")
+		frame.set_corner_radius_all(6)
+		frame.set_border_width_all(1)
+		draw_style_box(frame,Rect2(npc+Vector2(-17,-41),Vector2(34,43)))
+		draw_texture_rect_region(texture,Rect2(npc+Vector2(-15,-38),Vector2(30,38)),Rect2(texture.get_width()*.15,0,texture.get_width()*.70,texture.get_height()*.59))
+	elif not sprite("keeper",npc,52):
 		oval(npc,Vector2(12,4),"91a48d")
 		poly([npc+Vector2(-11,-2),npc+Vector2(-5,-21),npc+Vector2(6,-21),npc+Vector2(12,-2)],"517f80")
 		draw_circle(npc+Vector2(0,-28),9,Color("edc8a8"))
 		draw_arc(npc+Vector2(0,-28),9,PI,TAU,12,Color("785746"),5,true)
 		draw_circle(npc+Vector2(7,-33),3,Color("ecc473"))
-	draw_string(font,npc+Vector2(-22,15),"铃禾",HORIZONTAL_ALIGNMENT_CENTER,44,13,Color("314b42"))
-	if strike>0:
-		draw_string(font,SPOTS.forge+Vector2(16,-63-(1-strike)*12),"✦",HORIZONTAL_ALIGNMENT_LEFT,-1,25,Color("ffe39a"))
+	draw_string(font,npc+Vector2(-22,15),"铃禾",HORIZONTAL_ALIGNMENT_CENTER,44,13,Color("fff5da"))

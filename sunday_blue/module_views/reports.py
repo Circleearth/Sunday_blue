@@ -4,16 +4,34 @@ from PySide6.QtWidgets import QVBoxLayout,QHBoxLayout,QListWidget,QListWidgetIte
 from .module_forms import ModulePage,button
 from .life_widgets import label,card
 from ..art_assets import ArtworkSlot
+from ..modules.database import day as living_day
 class ReportsPage(ModulePage):
  module='reports'
  def __init__(self,hub,parent=None):
-  super().__init__(parent);self.hub=hub;box=self.layout_header('结算与回顾','上报前一天生活后生成日结算；周期报告使用截止日前的完整日期，不重复发金币。');row=QHBoxLayout();self.day=QDateEdit(QDate.currentDate().addDays(-1));self.day.setCalendarPopup(True);self.day.setMaximumDate(QDate.currentDate().addDays(-1));row.addWidget(self.day);button('查看该日结算',self.generate,row,True);button('查看所选报告',self.open_selected,row);button('复制所选报告',self.copy_selected,row);box.addLayout(row)
-  self.items=QListWidget();self.items.setWordWrap(True);self.items.itemDoubleClicked.connect(lambda *_:self.open_selected());box.addWidget(self.items,1);self.dialog=None;hub.reports.ready.connect(lambda *_:self.refresh());hub.report_open.connect(self.show_report);self.refresh()
+  super().__init__(parent);self.hub=hub;box=self.layout_header('结算与回顾','上报前一天生活后生成日结算；周期报告使用截止日前的完整日期，不重复发金币。');row=QHBoxLayout();self.day=QDateEdit(self.latest_complete_day());self.day.setCalendarPopup(True);self.day.setMaximumDate(self.latest_complete_day());row.addWidget(self.day);button('查看该日结算',self.generate,row,True);self.open_button=button('打开选中报告',self.open_selected,row);self.copy_button=button('复制',self.copy_selected,row);box.addLayout(row)
+  self.items=QListWidget();self.items.setWordWrap(True);self.items.currentRowChanged.connect(self.update_actions);self.items.itemDoubleClicked.connect(lambda *_:self.open_selected());box.addWidget(self.items,1);self.dialog=None;hub.reports.ready.connect(lambda *_:self.refresh());hub.report_open.connect(self.show_report);self.refresh()
+ @staticmethod
+ def latest_complete_day():
+  return QDate.fromString(living_day(),'yyyy-MM-dd').addDays(-1)
+
+ def showEvent(self,event):
+  super().showEvent(event)
+  latest=self.latest_complete_day()
+  was_latest=self.day.date()==self.day.maximumDate()
+  self.day.setMaximumDate(latest)
+  if was_latest:self.day.setDate(latest)
+
+ def update_actions(self,*_):
+  found=bool(self.items.currentItem())
+  self.open_button.setEnabled(found)
+  self.copy_button.setEnabled(found)
+
  def refresh(self):
   current=self.items.currentItem();rid=current.data(Qt.ItemDataRole.UserRole)['id'] if current else None;self.items.clear()
   for r in self.hub.reports.rows():
    item=QListWidgetItem(f"{r['start']} → {r['end']}（不含截止日） · "+{'day':'日结算','week':'周报','month':'月报','year':'年报'}[r['kind']]+' · '+{'queued':'等待评价','running':'正在评价','done':'已完成','fallback':'本次未评价'}[r['state']]);item.setData(Qt.ItemDataRole.UserRole,r);self.items.addItem(item)
    if r['id']==rid:self.items.setCurrentItem(item)
+  self.update_actions()
  def generate(self):
   from datetime import date,timedelta
   day=self.day.date().toString('yyyy-MM-dd');rid='day:'+day+':'+(date.fromisoformat(day)+timedelta(days=1)).isoformat()
@@ -25,7 +43,11 @@ class ReportsPage(ModulePage):
   item=self.items.currentItem();return item.data(Qt.ItemDataRole.UserRole) if item else None
  def copy_selected(self):
   r=self.selected()
-  if r:QApplication.clipboard().setText(r['body']+'\n\n角色评价：'+r['comment'])
+  if r:
+   QApplication.clipboard().setText(r['body']+'\n\n角色评价：'+r['comment'])
+   self.copy_button.setText('已复制')
+   from PySide6.QtCore import QTimer
+   QTimer.singleShot(1800,self.copy_button,lambda:self.copy_button.setText('复制'))
  def open_selected(self):
   r=self.selected()
   if r:self.show_report(r['id'])

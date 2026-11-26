@@ -3,7 +3,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication,QMessageBox,QDialog
+from PySide6.QtWidgets import QApplication,QMessageBox,QDialog,QTabWidget
+from PySide6.QtCore import QPoint
 from sunday_blue.storage import Config
 from sunday_blue.ui import MainWindow
 from sunday_blue.modules.workspace import install_workspace
@@ -22,6 +23,46 @@ class ModuleViewTests(unittest.TestCase):
     def tearDown(self):
         for job in self.hub.jobs.values():job.cancel.set();job.wait(5000)
         APP.processEvents();self.window.close();self.window.deleteLater();APP.processEvents();self.temp.cleanup()
+    def test_narrow_window_all_primary_routes_and_editors(self):
+        self.window.resize(1000,620)
+        self.window.move(-4000,-4000)
+        self.window.show()
+        visited=[]
+        for control in self.window.module_navigation.buttons():
+            control.click()
+            APP.processEvents()
+            current=self.window.page_stack.currentWidget()
+            self.assertTrue(control.isChecked())
+            self.assertGreater(current.height(),300)
+            position=control.mapTo(self.window,QPoint())
+            self.assertLessEqual(position.x()+control.width(),self.window.width())
+            visited.append(control.text())
+        self.assertEqual(len(visited),11)
+        self.window.module_navigation.button(0).click()
+        self.assertLessEqual(self.window.chat_page.minimumSizeHint().width(),self.window.chat_page.width())
+        learn=self.pages['GrowthPage']
+        self.window.module_navigation.button(self.window.page_stack.indexOf(learn)).click()
+        APP.processEvents()
+        self.assertGreater(learn.learning.note_tabs.currentWidget().height(),80)
+        for page in (self.pages['SchedulePage'],learn,self.pages['RewardsPage']):
+            self.window.module_navigation.button(self.window.page_stack.indexOf(page)).click()
+            for i in range(page.tabs.count()):
+                page.tabs.setCurrentIndex(i)
+                APP.processEvents()
+                self.assertGreater(page.tabs.currentWidget().height(),180)
+
+    def test_restore_context_uses_original_transcript(self):
+        sid=self.window.sid
+        first=self.window.store.add(sid,'user','必须保留的原始需求')
+        self.window.store.add(sid,'assistant','原始回复')
+        self.window.store.update(sid,summary='原始需求摘要',summarized_through=first)
+        self.window.update_context()
+        self.assertFalse(self.window.restore_context_button.isHidden())
+        with patch.object(QMessageBox,'question',return_value=QMessageBox.StandardButton.Yes):
+            self.window.restore_context_button.click()
+        self.assertTrue(self.window.restore_context_button.isHidden())
+        self.assertEqual(self.window.store.messages(sid,context=True)[0]['content'],'必须保留的原始需求')
+
     def test_plan_link_and_study_pages(self):
         from datetime import date
         today=date.today().weekday()

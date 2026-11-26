@@ -25,6 +25,18 @@ QPushButton#primary {{ background:{t['accent']}; color:#fff; border-color:{t['ac
 QPushButton#primary:hover {{ background:{t['accent_hover']}; }}
 QPushButton#ghost {{ background:transparent; border-color:transparent; color:{t['text_muted']}; }}
 QPushButton#ghost:hover {{ background:{t['surface_hover']}; color:{t['text']}; }}
+QFrame#workspaceNav {{ background:{t['surface']}; border-bottom:1px solid {t['border']}; }}
+QPushButton#workspaceTab,QPushButton#planLink {{ background:transparent; border-color:transparent; padding:5px 10px; }}
+QPushButton#workspaceTab:hover,QPushButton#planLink:hover {{ background:{t['surface_hover']}; }}
+QPushButton#workspaceTab:checked {{ color:{t['text']}; background:{t['accent_soft']}; border-color:{t['accent']}; font-weight:650; }}
+QPushButton#workspaceTab:focus,QPushButton#planLink:focus {{ border-color:{t['accent']}; }}
+QPushButton#workspaceTab:disabled {{ color:{t['text_subtle']}; }}
+QToolButton {{ background:{t['surface_raised']}; border:1px solid {t['border']}; border-radius:{t['radius_control']}px; padding:6px 10px; }}
+QToolButton:hover {{ background:{t['surface_hover']}; }}
+QToolButton:focus {{ border-color:{t['accent']}; }}
+QToolButton:disabled {{ color:{t['text_subtle']}; }}
+QToolButton::menu-indicator {{ image:none; }}
+QPushButton#planLink {{ color:{t['text_muted']}; text-align:left; }}
 QPushButton#close:hover {{ background:{t['danger']}; color:#fff; }}
 QPushButton#role {{ border:1px solid transparent; background:transparent; border-radius:9px; padding:5px; }}
 QPushButton#role:checked {{ background:{t['accent_soft']}; border-color:{t['accent']}; }}

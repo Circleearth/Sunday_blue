@@ -37,7 +37,7 @@ class RemindersPage(BasePage):
         header=QHBoxLayout();title=QLabel('提醒');title.setObjectName('title');header.addWidget(title);header.addStretch()
         settings=QPushButton('提醒设置');settings.clicked.connect(self.qq);header.addWidget(settings)
         add=QPushButton('新建提醒');add.setObjectName('primary');add.clicked.connect(self.add);header.addWidget(add);layout.addLayout(header)
-        note=QLabel('把要记得的事留在这里。电脑和 QQ 按所选渠道提醒；共享提醒需要应用保持运行。');note.setWordWrap(True);note.setObjectName('muted');layout.addWidget(note)
+        note=QLabel('应用运行时，提醒将发往选定的电脑或 QQ 渠道。');note.setWordWrap(True);note.setObjectName('muted');layout.addWidget(note)
         self.overview=QLabel();layout.addWidget(self.overview)
         tabs=QTabWidget();self.tabs=tabs;self._reminder_theme=None;layout.addWidget(tabs,1)
         upcoming=QWidget();up=QVBoxLayout(upcoming);up.setContentsMargins(0,16,0,0);tabs.addTab(upcoming,'提醒列表')
@@ -150,7 +150,7 @@ class RemindersPage(BasePage):
 class CalendarPage(BasePage):
     def __init__(self,hub,parent=None):
         super().__init__(parent);self.hub=hub;layout=QVBoxLayout(self);layout.setContentsMargins(28,24,28,24)
-        title=QLabel('日历 · 每一天都有迹可循');title.setObjectName('title');layout.addWidget(title)
+        title=QLabel('日历');title.setObjectName('title');layout.addWidget(title)
         split=QSplitter();self.calendar=DayCalendar(hub.config);self.calendar.setGridVisible(False);self.calendar.setVerticalHeaderFormat(QCalendarWidget.VerticalHeaderFormat.NoVerticalHeader)
         split.addWidget(self.calendar);panel=QWidget();right=QVBoxLayout(panel);self.summary=QLabel();self.summary.setWordWrap(True);right.addWidget(self.summary)
         self.agenda=QListWidget();self.agenda.setWordWrap(True);right.addWidget(self.agenda);split.addWidget(panel);layout.addWidget(split,2)
@@ -228,7 +228,7 @@ class CheckinsPage(BasePage):
         from PySide6.QtWidgets import QTabWidget
         super().__init__(parent);self.hub=hub;self.job=None
         layout=QVBoxLayout(self);layout.setContentsMargins(28,24,28,24);layout.setSpacing(14)
-        title=QLabel('把今天的事情，一件件完成。');title.setObjectName('title');layout.addWidget(title)
+        title=QLabel('打卡');title.setObjectName('title');layout.addWidget(title)
         tabs=QTabWidget();layout.addWidget(tabs)
         remote_page=QWidget();remote_layout=QVBoxLayout(remote_page);tabs.addTab(remote_page,'滴答清单')
         note=QLabel('勾选任务即同步完成到滴答清单。循环任务只完成当前一期；不支持在这里撤销完成或删除。')
@@ -246,8 +246,14 @@ class CheckinsPage(BasePage):
         local_page=QWidget();local_layout=QVBoxLayout(local_page);tabs.addTab(local_page,'本地打卡')
         local_layout.addWidget(QLabel('这里的打卡保存在 Sunday_Blue，不会创建滴答任务。'))
         self.items=QListWidget();local_layout.addWidget(self.items)
-        for title,fn in [('添加打卡',self.add),('确认今天已完成',self.check),('删除今日打卡记录',self.uncheck)]:
-            button=QPushButton(title);button.clicked.connect(fn);local_layout.addWidget(button)
+        actions=QHBoxLayout()
+        add=QPushButton('添加打卡项目');add.clicked.connect(self.add);actions.addWidget(add)
+        actions.addStretch()
+        self.uncheck_button=QPushButton('撤销今日打卡');self.uncheck_button.clicked.connect(self.uncheck);actions.addWidget(self.uncheck_button)
+        self.check_button=QPushButton('完成今日打卡');self.check_button.setObjectName('primary')
+        self.check_button.clicked.connect(self.check);actions.addWidget(self.check_button)
+        local_layout.addLayout(actions)
+        self.items.currentItemChanged.connect(self.update_local_actions)
         self.remote.itemChanged.connect(self.complete_checked)
         self.query.textChanged.connect(self.refresh);self.scope.currentIndexChanged.connect(self.refresh);self.projects.currentIndexChanged.connect(self.refresh)
         hub.changed.connect(lambda *_:self.refresh());self.refresh()
@@ -295,9 +301,23 @@ class CheckinsPage(BasePage):
             item.setCheckState(Qt.CheckState.Checked if done else Qt.CheckState.Unchecked);self.remote.addItem(item);shown+=1
         self.remote.verticalScrollBar().setValue(position);self.remote.blockSignals(False)
         self.summary.setText(f"显示 {shown} 项 · 未完成 {sum(r['status'] in (0,1) for r in rows)} 项 · 最近同步 {self.hub.db.get('dida_last_sync','尚未同步')}")
+        current=self.items.currentItem()
+        selected=current.data(Qt.ItemDataRole.UserRole)['id'] if current else None
         self.items.clear()
         for r in self.hub.planner.checkins():
-            item=QListWidgetItem(('✓ 已完成  ' if r['done'] else '○ 未记录  ')+r['title']);item.setData(Qt.ItemDataRole.UserRole,r);self.items.addItem(item)
+            item=QListWidgetItem(('✓ 已完成  ' if r['done'] else '○ 未记录  ')+r['title'])
+            item.setData(Qt.ItemDataRole.UserRole,r)
+            self.items.addItem(item)
+            if r['id']==selected:
+                self.items.setCurrentItem(item)
+        self.update_local_actions()
+
+    def update_local_actions(self,*_):
+        item=self.items.currentItem()
+        record=item.data(Qt.ItemDataRole.UserRole) if item else None
+        self.uncheck_button.setEnabled(bool(record and record['done']))
+        self.check_button.setEnabled(bool(record and not record['done']))
+
     def add(self):
         title,ok=QInputDialog.getText(self,'新打卡','项目名称：')
         if ok:self.invoke(lambda:self.hub.planner.add_checkin(title))

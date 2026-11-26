@@ -69,26 +69,60 @@ class Village:
         s['log']=(s['log']+[message])[-25:]
         return message
 
-    def _schedule(self,c,s,key,when,plot=None):
-        recipe=self.catalog['activities'][key]
-        site=recipe['site']
-        active=[j for j in s['jobs'] if self.catalog['activities'][j['key']]['site']==site]
-        limit=s['plots'] if site=='farm' else s['barn'] if key=='pasture' else 1
-        if site=='farm':active=active+s['ready']
-        if key=='barn' and (s['barn']>=4 or any(j['key']=='barn' for j in active)):
-            raise ValueError('羊舍已满级或正在扩建。')
-        if len(active)>=limit:raise ValueError('这里正在作业，请等当前批次结束。')
-        if key=='expand' and s['plots']>=8:raise ValueError('农田已全部开垦。')
-        bag=s['inventory']
-        if any(bag[k]<n for k,n in recipe['inputs'].items()):raise ValueError('所需材料不足，请查看配方。')
-        self._money(c,s,-recipe['cost'],recipe['name'])
-        for k,n in recipe['inputs'].items():bag[k]-=n
-        job=dict(id=uuid.uuid4().hex,key=key,start=when,end=when+60*recipe['minutes'])
-        if site=='farm':
-            occupied={j['plot'] for j in active}
-            if plot is None:plot=next(i for i in range(s['plots']) if i not in occupied)
-            if plot not in range(s['plots']) or plot in occupied:raise ValueError('该田块无法播种')
-            job['plot']=plot
+    PLOT_COUNT = 8
+
+    @staticmethod
+    def _open_plots(s):
+        return s.get('open_plots', list(range(s['plots'])))
+
+    def _availability(self, s, key, plot=None):
+        recipe = self.catalog['activities'][key]
+        site = recipe['site']
+        active = [job for job in s['jobs'] if self.catalog['activities'][job['key']]['site'] == site]
+        open_plots = self._open_plots(s)
+        if key == 'expand':
+            locked = [index for index in range(self.PLOT_COUNT) if index not in open_plots]
+            if not locked:
+                return '农田已经全部开垦。', None
+            if plot is not None and plot not in locked:
+                return '请选择一块尚未开垦的田地。', None
+            plot = locked[0] if plot is None else plot
+        if key == 'barn' and s['barn'] >= 4:
+            return '羊舍已经扩建到四栏。', None
+        if site == 'farm':
+            occupied = {job['plot'] for job in active + s['ready']}
+            free = [index for index in open_plots if index not in occupied]
+            if not free:
+                return '田地已满。先收获成熟作物，或等待空地。', None
+            if plot is not None and plot not in free:
+                return '所选田块不可用。请选择空地。', None
+            plot = free[0] if plot is None else plot
+        elif site == 'ranch':
+            if key == 'barn' and any(job['key'] == 'barn' for job in active):
+                return '羊舍正在扩建。', None
+            if key == 'pasture' and sum(job['key'] == 'pasture' for job in active) >= s['barn']:
+                return '羊栏都在放牧，等待这一批回来。', None
+        elif active:
+            return '这里已有进行中的委托。', None
+        missing = [f"{self.catalog['items'][item]} ×{count-s['inventory'][item]}"
+                   for item, count in recipe['inputs'].items() if s['inventory'][item] < count]
+        if missing:
+            return '缺少 ' + '、'.join(missing), None
+        if s['cash'] < recipe['cost']:
+            return f"还差 {recipe['cost']-s['cash']} 谷币。可在集市兑换。", None
+        return '', plot
+
+    def _schedule(self, c, s, key, when, plot=None):
+        reason, plot = self._availability(s, key, plot)
+        if reason:
+            raise ValueError(reason)
+        recipe = self.catalog['activities'][key]
+        self._money(c, s, -recipe['cost'], recipe['name'])
+        for item, count in recipe['inputs'].items():
+            s['inventory'][item] -= count
+        job = dict(id=uuid.uuid4().hex, key=key, start=when, end=when + 60 * recipe['minutes'])
+        if plot is not None:
+            job['plot'] = plot
         if key=='delve':
             job.update(team=list(s['team']),power=self.damage(s),floor=s['floor'])
             job['battle']=self._battle(s,job)
@@ -136,7 +170,18 @@ class Village:
             return
         for k,n in recipe['outputs'].items():bag[k]+=n
         detail='、'.join(self.catalog['items'][k]+' ×'+str(n) for k,n in recipe['outputs'].items())
-        if key=='expand':s['plots']+=1;detail='新田地已开放'
+        if key=='expand':
+            opened=self._open_plots(s)
+            plot=j.get('plot')
+            if plot is None:
+                # Jobs started by older versions expand the first locked plot.
+                plot=next((index for index in range(self.PLOT_COUNT) if index not in opened),None)
+            if plot is not None and plot not in opened:
+                s['open_plots']=sorted([*opened,plot])
+                s['plots']=len(s['open_plots'])
+                detail=f'第 {plot+1} 块田已开放'
+            else:
+                detail='田地已开放'
         elif key=='barn':s['barn']+=1;detail='羊舍已扩建'
         elif key=='pasture':s['bond']+=1
         elif key=='mine' and rng.random()<.25:bag['crystal']+=1;detail+='、星辉晶 ×1'
@@ -192,24 +237,34 @@ class Village:
                     c.execute('INSERT INTO hamlet_receipts VALUES(?,?,?)',(request_id,command,message));dirty=True
             if dirty:self._save(c,s)
             return dict(state=s,work=self._balance(c,'work'),coins=self._balance(c,'coin'),running=running,
-                        damage=self.damage(s),message=message,catalog=self.catalog)
+                        damage=self.damage(s),message=message,catalog=self.catalog,
+                        open_plots=self._open_plots(s),
+                        availability={key:self._availability(s,key)[0] for key in self.catalog['activities']})
 
     def _command(self,c,s,action,arg,rid):
         if action=='start' and arg in self.catalog['activities']:
             return self._schedule(c,s,arg,s['world'])
+        if action=='expand' and arg.isdecimal() and len(arg) == 1:
+            return self._schedule(c,s,'expand',s['world'],int(arg))
         if action=='sow':
             crop,_,index=arg.partition(':')
             if crop not in self.catalog['activities'] or self.catalog['activities'][crop]['site']!='farm' or not index.isdecimal():
                 raise ValueError('无效的作物或田块')
             return self._schedule(c,s,crop,s['world'],int(index))
         if action=='harvest':
-            job=next((j for j in s['ready'] if j['id']==arg),None)
-            if not job:raise ValueError('这块地还没有成熟作物')
-            s['ready'].remove(job)
-            recipe=self.catalog['activities'][job['key']]
-            for k,n in recipe['outputs'].items():s['inventory'][k]+=n
-            s['xp']+=1
-            return self._note(s,recipe['name']+'已收进背包')
+            ripe = [job for job in s['ready'] if arg == 'all' or job['id'] == arg]
+            if not ripe:
+                raise ValueError('没有成熟作物可收获。')
+            collected = {}
+            for job in ripe:
+                s['ready'].remove(job)
+                recipe = self.catalog['activities'][job['key']]
+                for item, amount in recipe['outputs'].items():
+                    s['inventory'][item] += amount
+                    collected[item] = collected.get(item, 0) + amount
+            s['xp'] += len(ripe)
+            detail = '、'.join(f"{self.catalog['items'][item]} ×{amount}" for item, amount in collected.items())
+            return self._note(s, '收获 · ' + detail)
         if action=='exchange' and arg in ('work','coin'):
             if self._balance(c,arg)<1:raise ValueError('来源余额不足')
             table={'work':'work_points','coin':'coin_ledger'}[arg]

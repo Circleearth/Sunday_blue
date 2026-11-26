@@ -22,7 +22,8 @@ class LifeCockpitTests(unittest.TestCase):
   for p in self.pages:p.close();p.deleteLater()
   self.hub.deleteLater();APP.processEvents();QCoreApplication.sendPostedEvents(None,QEvent.Type.DeferredDelete);self.temp.cleanup()
  def test_visual_state_drilldown_and_no_data_changes(self):
-  day=date.today().isoformat();self.hub.life.exercise('力量训练',40,'high',day=day,muscles=['胸','二头肌'])
+  from sunday_blue.modules.database import day as living_day
+  day=living_day();self.hub.life.exercise('力量训练',40,'high',day=day,muscles=['胸','二头肌'])
   page=LifePage(self.hub);self.pages.append(page);page.setStyleSheet(style_for('light'));page.resize(1100,760);page.show();APP.processEvents()
   self.assertEqual(page.tabs.count(),6);self.assertEqual(page.trend.count(),7);self.assertFalse(page.cards['physical'].bar.isTextVisible())
   self.assertEqual(next(r for r in page.muscle_rows if r['part']=='胸')['level'],'red')

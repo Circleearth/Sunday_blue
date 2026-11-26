@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QApplication,QMessageBox
 from PySide6.QtCore import QCoreApplication,QEvent
 from sunday_blue.storage import Config,Store
 from sunday_blue.modules.hub import ModuleHub
+from sunday_blue.modules.database import day as living_day
 from sunday_blue.modules.attention import Attention
 from sunday_blue.modules.life_state import ZONE
 APP=QApplication.instance() or QApplication([])
@@ -19,7 +20,7 @@ class FollowupTests(unittest.TestCase):
   for w in self.widgets:w.close();w.deleteLater()
   self.h.deleteLater();APP.processEvents();QCoreApplication.sendPostedEvents(None,QEvent.Type.DeferredDelete);self.tmp.cleanup()
  def test_private_thresholds_and_yesterday_form_no_toggle(self):
-  p=self.h.private_wellbeing;day=(datetime.now(ZONE)-timedelta(days=1)).date().isoformat()
+  p=self.h.private_wellbeing;day=(datetime.fromisoformat(living_day())-timedelta(days=1)).date().isoformat()
   for count,level in [(0,'green'),(2,'green'),(3,'yellow'),(5,'orange'),(7,'orange'),(8,'red'),(12,'red')]:
    p.save(day,count,count*5);state=p.status();self.assertEqual(state['level'],level);self.assertEqual(state['ratio'],count/5)
   from sunday_blue.module_views.life import LifePage
@@ -62,12 +63,12 @@ class FollowupTests(unittest.TestCase):
   self.assertAlmostEqual(a.status()['focus'],99)
   tomorrow=(now+timedelta(days=1)).date().isoformat();self.assertEqual(self.h.life.state.caps(tomorrow)['focus_cap'],100)
  def test_exercise_daily_not_total_and_separate_ledger_report(self):
-  c=self.h.contracts;now=datetime.now(ZONE);yesterday=(now-timedelta(days=1)).date().isoformat();today=now.date().isoformat()
-  rid=c.sign('每天运动','exercise_daily',30,(now+timedelta(days=1)).isoformat())
+  c=self.h.contracts;now=datetime.fromisoformat(living_day()).replace(tzinfo=ZONE,hour=12);yesterday=(now-timedelta(days=1)).date().isoformat();today=now.date().isoformat()
+  rid=c.sign('每天运动','exercise_daily',30,(datetime.now(ZONE)+timedelta(days=1)).isoformat())
   with self.h.db.connect() as db:db.execute('UPDATE challenge_contracts SET signed=?,deadline=? WHERE id=?',((now-timedelta(days=1)).replace(hour=4,minute=0,second=0).isoformat(),now.replace(hour=23,minute=59,second=59).isoformat(),rid))
-  self.h.life.exercise('快走',90,'light',day=yesterday);c.tick();row=next(r for r in c.rows() if r['id']==rid);self.assertEqual(row['status'],'active');self.assertEqual(row['progress'],0)
-  self.h.life.exercise('散步',30,'light',day=today);c.tick();self.assertEqual(c.balance('exercise'),110);self.assertEqual(c.balance('study'),100)
-  c.tick();self.assertEqual(c.balance('exercise'),110)
+  self.h.life.exercise('快走',90,'light',day=yesterday);c.tick(now);row=next(r for r in c.rows() if r['id']==rid);self.assertEqual(row['status'],'active');self.assertEqual(row['progress'],0)
+  self.h.life.exercise('散步',30,'light',day=today);c.tick(now);self.assertEqual(c.balance('exercise'),110);self.assertEqual(c.balance('study'),100)
+  c.tick(now);self.assertEqual(c.balance('exercise'),110)
   snapshot=self.h.reports.snapshot(today,(now+timedelta(days=1)).date().isoformat());self.assertEqual(snapshot['contracts'][0]['amount'],10);self.assertEqual(snapshot['contracts'][0]['metric'],'exercise_daily')
   with self.h.db.connect() as db:
    self.assertIsNotNone(db.execute('SELECT * FROM challenge_settlement_evidence WHERE contract_id=?',(rid,)).fetchone());db.execute('UPDATE exercise_records SET minutes=1')

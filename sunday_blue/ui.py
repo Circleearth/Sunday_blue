@@ -28,6 +28,30 @@ class PageStack(QStackedWidget):
     def heightForWidth(self,width):
         return -1
 
+class PlanButton(QPushButton):
+    def __init__(self):
+        super().__init__()
+        self.plan = ""
+        self.setObjectName("planLink")
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+
+    def set_plan(self, plan):
+        self.plan = plan
+        self.setVisible(bool(plan))
+        self.setToolTip(plan)
+        self.setAccessibleName("当前计划 " + plan)
+        self._update_caption()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._update_caption()
+
+    def _update_caption(self):
+        caption = f"当前计划   {self.plan}   ›" if self.plan else ""
+        self.setText(self.fontMetrics().elidedText(caption, Qt.TextElideMode.ElideRight, self.width()-28)
+                     if self.width() > 180 else caption)
+
+
 class MainWindow(QWidget):
     """Main window: sidebar sessions, chat view, character panel, role rail.
 
@@ -79,28 +103,41 @@ class MainWindow(QWidget):
         top=TitleBar(); top.setObjectName('top'); top.setFixedHeight(56)
         bar=QHBoxLayout(top); bar.setContentsMargins(20,7,10,7)
         bar.addWidget(text_label('Sunday Blue','brand'))
-        nav_scroll=QScrollArea();nav_scroll.setWidgetResizable(True);nav_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        nav_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        nav_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        nav_content=QWidget();self.module_nav=QHBoxLayout(nav_content);self.module_nav.setContentsMargins(0,0,0,0)
-        nav_scroll.setWidget(nav_content);bar.addWidget(nav_scroll,1)
+        self.plan_strip = PlanButton()
+        self.plan_strip.hide()
+        bar.addWidget(self.plan_strip, 1)
+        bar.addStretch()
+        self.game_button = QPushButton("雾铃谷 ↗")
+        self.game_button.setObjectName("ghost")
+        self.game_button.setToolTip("打开雾铃谷游戏窗口")
+        self.game_button.hide()
+        bar.addWidget(self.game_button)
         bar.addWidget(button('设置',self.settings,'ghost'))
         self.theme_button=button('☀  浅色' if self.ui_theme=='dark' else '☾  暗色',self.toggle_theme,'ghost'); bar.addWidget(self.theme_button)
         bar.addSpacing(10)
-        for title,fn,obj in [('—',self.showMinimized,'ghost'),('□',self.maximize,'ghost'),('×',self.close,'close')]:
-            b=button(title,fn,obj); b.setFixedSize(34,32); bar.addWidget(b)
+        for title, label, callback, style in (
+            ("—", "最小化", self.showMinimized, "ghost"),
+            ("□", "最大化或还原", self.maximize, "ghost"),
+            ("×", "关闭窗口", self.close, "close"),
+        ):
+            control = button(title, callback, style)
+            control.setToolTip(label)
+            control.setAccessibleName(label)
+            control.setFixedSize(34, 32)
+            bar.addWidget(control)
         main.addWidget(top)
-        self.plan_strip=QPushButton()
-        self.plan_strip.setObjectName('ghost')
-        self.plan_strip.setMaximumHeight(25)
-        self.plan_strip.hide()
-        main.addWidget(self.plan_strip)
+        navigation = QFrame()
+        navigation.setObjectName("workspaceNav")
+        self.module_nav = QHBoxLayout(navigation)
+        self.module_nav.setContentsMargins(14, 6, 14, 6)
+        self.module_nav.setSpacing(4)
+        main.addWidget(navigation)
         self.page_stack=PageStack();self.chat_page=QWidget();self.page_stack.addWidget(self.chat_page);main.addWidget(self.page_stack,1)
         body=QHBoxLayout(self.chat_page);body.setContentsMargins(0,0,0,0);body.setSpacing(0)
         self._sidebar(body); self._chat(body); self._character(body); self._rail(body)
         foot=QHBoxLayout(); foot.setContentsMargins(16,3,3,3)
-        foot.addWidget(text_label('SUNDAY BLUE  /  0.1','eyebrow')); foot.addStretch()
-        self.footer=text_label('本地会话 · 独立记忆 · 由你掌控','muted'); foot.addWidget(self.footer)
+        foot.addStretch()
+        self.footer=text_label('','muted'); foot.addWidget(self.footer)
         grip=QSizeGrip(self); grip.setFixedSize(16,16); foot.addWidget(grip); main.addLayout(foot)
         last=config.value.get('last_role','rui')
         self.switch_role(last if last in {r[0] for r in list_roles(self.config.root)} else list_roles(self.config.root)[0][0])
@@ -177,7 +214,7 @@ class MainWindow(QWidget):
         QTimer.singleShot(0,lambda:bar.setValue(bar.maximum() if follow else min(position,bar.maximum())))
 
     def _sidebar(self,body):
-        frame=QFrame(); frame.setObjectName('sidebar'); frame.setFixedWidth(232)
+        frame=QFrame(); frame.setObjectName('sidebar'); frame.setFixedWidth(188)
         layout=QVBoxLayout(frame); layout.setContentsMargins(16,22,14,16); layout.setSpacing(12)
         layout.addWidget(text_label('当前角色','section'))
         self.side_name=text_label('Rui','title'); layout.addWidget(self.side_name)
@@ -190,11 +227,10 @@ class MainWindow(QWidget):
         row=QHBoxLayout()
         row.addWidget(button('重命名',self.rename_session,'ghost')); row.addWidget(button('导出',self.export_session,'ghost'))
         row.addWidget(button('已归档',self.archived_dialog,'ghost')); layout.addLayout(row)
-        layout.addWidget(text_label('每一次对话，都有迹可循。','muted'))
         body.addWidget(frame)
 
     def _chat(self,body):
-        panel=QWidget(); layout=QVBoxLayout(panel); layout.setContentsMargins(24,20,24,14); layout.setSpacing(12)
+        panel=QWidget(); layout=QVBoxLayout(panel); layout.setContentsMargins(14,14,14,10); layout.setSpacing(12)
         row=QHBoxLayout(); names=QVBoxLayout()
         self.chat_title=text_label('Rui','title'); names.addWidget(self.chat_title)
         self.chat_status=text_label('就绪','muted'); names.addWidget(self.chat_status); row.addLayout(names); row.addStretch()
@@ -204,8 +240,11 @@ class MainWindow(QWidget):
         self.session_menu.addSeparator()
         self.archive_action=self.session_menu.addAction('归档会话'); self.archive_action.triggered.connect(self._menu_archive)
         self.delete_action=self.session_menu.addAction('删除会话'); self.delete_action.triggered.connect(self._menu_delete)
-        self.session_button=button('⋮',lambda:None,'ghost'); self.session_button.setFixedSize(34,32)
-        self.session_button.clicked.connect(lambda:self._show_session_menu())
+        self.session_button=button('⋮',self._show_session_menu,'ghost')
+        self.session_button.setToolTip('会话操作')
+        self.session_button.setAccessibleName('会话操作')
+        self.session_button.setFixedSize(34,32)
+        self.restore_context_button = button('恢复原文上下文', self.restore_context, 'ghost')
         self.relationship_button=button('关系',self.open_relations,'ghost');row.addWidget(self.relationship_button)
         row.addWidget(button('历史记录',self.more_history,'ghost'));row.addWidget(self.session_button); layout.addLayout(row)
         self.chat_scroll=QScrollArea(); self.chat_scroll.setWidgetResizable(True)
@@ -222,22 +261,23 @@ class MainWindow(QWidget):
         composer=QFrame(); composer.setObjectName('composer'); c=QVBoxLayout(composer); c.setContentsMargins(12,9,12,9)
         self.input=Composer(); self.input.setObjectName('input'); self.input.setPlaceholderText('')
         self.input.setFixedHeight(80); self.input.send.connect(self.send); c.addWidget(self.input)
-        actions=QHBoxLayout(); actions.addWidget(text_label('Enter 发送  ·  Shift + Enter 换行','muted')); actions.addStretch()
+        actions=QHBoxLayout(); actions.addStretch()
         self.retry_button=button('重试',self.retry,'ghost'); actions.addWidget(self.retry_button)
-        self.compact_button=button('压缩上下文',self.request_compact,'ghost');actions.addWidget(self.compact_button)
+        self.compact_button=button('压缩',self.request_compact,'ghost');self.compact_button.setToolTip('压缩会话上下文');actions.addWidget(self.compact_button)
         self.stop_button=button('停止并撤回',self.stop,'ghost'); actions.addWidget(self.stop_button)
-        self.send_button=button('发送  ↗',self.send,'primary'); actions.addWidget(self.send_button); c.addLayout(actions); layout.addWidget(composer)
+        self.send_button=button('发送  ↗',self.send,'primary'); self.send_button.setToolTip('Enter 发送 · Shift + Enter 换行'); actions.addWidget(self.send_button); c.addLayout(actions); layout.addWidget(composer)
         body.addWidget(panel,1)
 
     def _character(self,body):
-        panel=QWidget(); panel.setFixedWidth(276);self.character_panel=panel
-        layout=QVBoxLayout(panel); layout.setContentsMargins(0,20,16,16); layout.setSpacing(10)
+        panel=QWidget(); panel.setFixedWidth(246);self.character_panel=panel
+        layout=QVBoxLayout(panel); layout.setContentsMargins(0,12,12,10); layout.setSpacing(10)
         row=QHBoxLayout(); row.addWidget(text_label('角色档案','section')); row.addStretch(); row.addWidget(button('刷新素材',self.refresh_art,'ghost')); layout.addLayout(row)
         self.portrait=Portrait(self.config.root);self.portrait.theme=self.ui_theme;layout.addWidget(self.portrait,1)
         self.role_description=text_label('','muted'); self.role_description.setWordWrap(True); layout.addWidget(self.role_description)
         layout.addSpacing(5)
         self.context_label=text_label('上下文 · 等待第一条消息','muted'); self.context_label.setWordWrap(True); layout.addWidget(self.context_label)
         self.context_progress=QProgressBar(); self.context_progress.setRange(0,100); self.context_progress.setTextVisible(False); self.context_progress.setFixedHeight(4); layout.addWidget(self.context_progress)
+        layout.addWidget(self.restore_context_button)
         layout.addWidget(button('编辑已确认记忆',self.memory_dialog,'ghost'))
         layout.addWidget(button('协作记录',self.event_dialog,'ghost'))
         layout.addWidget(button('记忆大脑 / Ollama',self.brain_dialog,'ghost'))
@@ -245,7 +285,7 @@ class MainWindow(QWidget):
         body.addWidget(panel)
 
     def _rail(self,body):
-        rail=QFrame(); rail.setObjectName('rail'); rail.setFixedWidth(96)
+        rail=QFrame(); rail.setObjectName('rail'); rail.setFixedWidth(84)
         layout=QVBoxLayout(rail); layout.setContentsMargins(8,18,8,10); layout.setSpacing(10)
         layout.addWidget(text_label('角色','section'),0,Qt.AlignmentFlag.AlignHCenter)
         scroll=QScrollArea(); scroll.setWidgetResizable(True); scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -698,6 +738,10 @@ class MainWindow(QWidget):
     def show_notice(self,text):
         self.notice.setText(text); self.notice.show()
 
+    def show_module_notice(self, text):
+        self.footer.setText(self.footer.fontMetrics().elidedText(text, Qt.TextElideMode.ElideRight, 600))
+        self.footer.setToolTip(text)
+
     def send(self):
         if self.sid in self.workers:return
         text=self.input.toPlainText().strip()
@@ -724,9 +768,23 @@ class MainWindow(QWidget):
 
     def request_compact(self):
         if not self.sid or self.sid in self.workers:return
-        if QMessageBox.question(self,'压缩上下文','将历史整理为摘要，并保留近期对话；原始聊天记录不删除。需要一次模型请求，是否继续？')!=QMessageBox.StandardButton.Yes:return
+        if QMessageBox.question(self,'压缩上下文','将历史整理为摘要，并保留近期对话；原始聊天记录不删除。可能调用模型多次。是否继续？')!=QMessageBox.StandardButton.Yes:return
         if is_compact_command(self.input.toPlainText()):self.input.clear()
         self.start_worker(compact=True)
+
+    def restore_context(self):
+        if not self.sid or self.sid in self.workers:
+            return
+        session = self.store.session(self.sid)
+        if not session or not session['summarized_through']:
+            return
+        answer = QMessageBox.question(
+            self, '恢复原文上下文',
+            '下次回复将重新读取原始记录。超出模型容量时仍会自动压缩。继续？')
+        if answer == QMessageBox.StandardButton.Yes:
+            self.store.update(self.sid, summary='', summarized_through=0, usage='{}')
+            self.update_context()
+            self.show_notice('已恢复原文上下文。')
 
     def start_worker(self,compact=False):
         # Normal chat turns. Typing "/compact" in the composer is intercepted inside the agent.
@@ -850,6 +908,8 @@ class MainWindow(QWidget):
 
     def update_context(self):
         session=self.store.session(self.sid) if self.sid else None
+        self.restore_context_button.setVisible(bool(session and session['summarized_through']))
+        self.restore_context_button.setEnabled(self.sid not in self.workers)
         if not session:
             self.context_label.setText('上下文 · 等待第一条消息'); self.context_progress.setValue(0)
             return

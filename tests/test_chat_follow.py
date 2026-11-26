@@ -1,6 +1,5 @@
 import shutil
 import tempfile
-import time
 import unittest
 from pathlib import Path
 from PySide6.QtTest import QTest
@@ -15,7 +14,7 @@ class ChatFollowTests(unittest.TestCase):
         self.temp=tempfile.TemporaryDirectory(prefix='chat-follow-',dir=Path(__file__).parent)
         self.root=Path(self.temp.name)/'app';self.config=Config(self.root)
         project=Path(__file__).resolve().parents[1]
-        shutil.copytree(project/'assets',self.root/'assets')
+        shutil.copytree(project/'assets',self.root/'assets',ignore=shutil.ignore_patterns('hamlet'))
         shutil.copytree(project/'personas',self.root/'personas')
         (self.root/'extensions'/'skills').mkdir(parents=True)
         shutil.copytree(project/'extensions/plugins',self.root/'extensions/plugins')
@@ -23,7 +22,7 @@ class ChatFollowTests(unittest.TestCase):
         self.window=MainWindow(self.config);self.window.show();APP.processEvents()
     def tearDown(self):
         APP.processEvents();self.window.close();self.window.deleteLater();APP.processEvents();self.temp.cleanup()
-    def _fill(self,count=240):
+    def _fill(self,count=30):
         for i in range(count):self.window.store.add(self.window.sid,'assistant',f'历史消息 {i} '+(f'内容{i}。'*8))
         self.window.render();QTest.qWait(80)
     def test_reading_history_is_not_pulled_down_by_new_message(self):

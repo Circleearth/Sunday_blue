@@ -37,7 +37,10 @@ class DesktopUpgradeTests(unittest.TestCase):
   self.assertEqual(self.hub.rewards.balances()['coins'],1)
   with self.assertRaises(ValueError):self.hub.life.save_daily(day,phone_total=20,phone_fun=30)
  def test_capacity_growth_correction_and_daily_idempotency(self):
-  now=datetime.now(ZONE).replace(hour=10,minute=0);day=now.date().isoformat();state=self.hub.life.state
+  from sunday_blue.modules.database import day as living_day
+  day=living_day()
+  now=datetime.fromisoformat(day).replace(tzinfo=ZONE,hour=10)
+  state=self.hub.life.state
   state.settle(now);r=self.hub.life.exercise('足球',30,'moderate',day=day);cap=state.caps(day)['physical_cap'];self.assertGreater(cap,30)
   self.hub.life.exercise('足球',30,'moderate',day=day);self.assertEqual(state.caps(day)['physical_cap'],cap)
   state.settle(now);state.settle(now);self.assertEqual(state.caps(day)['physical_cap'],cap)

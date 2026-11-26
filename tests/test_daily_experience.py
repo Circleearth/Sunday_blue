@@ -28,10 +28,10 @@ class DailyExperienceTests(unittest.TestCase):
   self.assertTrue(predicate())
  def test_numeric_units_are_not_editable_and_first_click_replaces_value(self):
   w=QWidget();self.widgets.append(w);layout=QVBoxLayout(w);other=QLineEdit();spin=NumberSpin();spin.setRange(0,240);spin.setSuffix(' 分钟');spin.setValue(15);layout.addWidget(other);layout.addWidget(spin);w.show();other.setFocus();APP.processEvents()
-  self.assertEqual(spin.lineEdit().text(),'15');self.assertEqual(spin._unit.text(),'分钟')
+  self.assertEqual(spin.lineEdit().text(),'15');self.assertEqual(spin._units['right'].text(),'分钟')
   QTest.mouseClick(spin.lineEdit(),Qt.MouseButton.LeftButton);APP.processEvents();QTest.keyClicks(spin.lineEdit(),'25');spin.interpretText();self.assertEqual(spin.value(),25)
   QTest.keyClick(spin,Qt.Key.Key_Up);self.assertEqual(spin.value(),26)
-  dec=DecimalSpin();dec.setPrefix('元');dec.setValue(2.5);self.assertNotIn('元',dec.lineEdit().text());self.assertEqual(dec.value(),2.5)
+  dec=DecimalSpin();dec.setPrefix('元');dec.setValue(2.5);self.assertEqual(dec._units['left'].text(),'元');self.assertNotIn('元',dec.lineEdit().text());self.assertEqual(dec.value(),2.5)
  def test_morning_tiers_and_restart_do_not_compound(self):
   for i,(value,expected) in enumerate([(19,1.9),(20,4),(49,9.8),(50,15),(79,23.7),(80,40),(100,50)]):
    now=datetime(2030,1,1+i,9,tzinfo=ZONE)

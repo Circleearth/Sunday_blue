@@ -22,7 +22,7 @@ class UITests(unittest.TestCase):
         self.temp=tempfile.TemporaryDirectory(prefix='ui-test-',dir=Path(__file__).parent)
         self.root=Path(self.temp.name)/'app';self.config=Config(self.root)
         project=Path(__file__).resolve().parents[1]
-        shutil.copytree(project/'assets',self.root/'assets')
+        shutil.copytree(project/'assets',self.root/'assets',ignore=shutil.ignore_patterns('hamlet'))
         shutil.copytree(project/'personas',self.root/'personas')
         (self.root/'extensions'/'skills').mkdir(parents=True)
         shutil.copytree(project/'extensions/plugins',self.root/'extensions/plugins')
@@ -46,8 +46,7 @@ class UITests(unittest.TestCase):
         self.window.switch_role('red');self.window.input.setPlainText('red draft');self.window.switch_role('rui')
         self.assertEqual(self.window.sid,original);self.assertEqual(self.window.input.toPlainText(),'unsent draft')
         self.window.store.add(original,'user','测试用户消息');self.window.store.add(original,'assistant',[{'type':'text','text':'测试气泡回复。\n代码与段落均可复制。'}])
-        self.window.render();QTest.qWait(300);APP.processEvents()
-        self.window.grab().save(str(Path(__file__).resolve().parents[1]/'docs'/'chat-preview.png'))
+        self.window.render()
         self.window.fork_session();self.assertNotEqual(self.window.sid,original)
         self.assertEqual(len(self.window.store.messages(self.window.sid)),2)
     def test_archive_delete_and_restore_flow(self):
@@ -97,7 +96,6 @@ class UITests(unittest.TestCase):
         dlg.permission_role.setCurrentIndex(1);APP.processEvents();self.assertEqual(dlg.permission_role.currentData(),'red')
         for index in range(dlg.tabs.count()):dlg.tabs.setCurrentIndex(index);APP.processEvents()
         dlg.tabs.setCurrentIndex(0);QTest.qWait(150);APP.processEvents()
-        dlg.grab().save(str(Path(__file__).resolve().parents[1]/'docs'/'settings-preview.png'))
         dlg.save();self.assertEqual(dlg.result(),QDialog.DialogCode.Accepted)
         self.assertEqual(Config(self.root).value['api']['model'],'mock-model')
         dlg.deleteLater()
@@ -219,7 +217,6 @@ class UITests(unittest.TestCase):
         prefs.role.setCurrentIndex(prefs.role.findData('red'))
         prefs.family.setCurrentIndex(max(0,prefs.family.findData('STXinwei')))
         dlg.nav.setCurrentRow(5);dlg.show();QTest.qWait(120);APP.processEvents()
-        dlg.grab().save(str(Path(__file__).resolve().parents[1]/'docs'/'appearance-redesign-preview.png'))
         dlg.save();loaded=Config(self.root).value
         self.assertEqual(loaded['ui_display']['font_family'],'YouYuan')
         self.assertEqual(chat_font(self.root,loaded['chat_display'],'rui').family(),'Noto Sans SC')

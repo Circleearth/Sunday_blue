@@ -2,9 +2,10 @@
 from datetime import datetime
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (QCheckBox,QComboBox,QDialog,QDialogButtonBox,QHBoxLayout,QInputDialog,
-    QLabel,QMessageBox,QPlainTextEdit,QPushButton,QVBoxLayout,QWidget)
+    QLabel,QMessageBox,QPlainTextEdit,QPushButton,QVBoxLayout,QWidget,QToolButton,QMenu)
 from ..modules.day_plan import current_plan
 from .module_forms import button
+from .life_widgets import card
 
 class MomentPage(QWidget):
     def __init__(self,hub,parent=None):
@@ -13,37 +14,65 @@ class MomentPage(QWidget):
         self.window_owner=parent
         box=QVBoxLayout(self)
         box.setContentsMargins(28,22,28,22)
+        header=QHBoxLayout()
         self.title=QLabel('此刻')
         self.title.setObjectName('title')
-        box.addWidget(self.title)
+        header.addWidget(self.title)
+        header.addStretch()
+        self.office=QCheckBox('办公模式')
+        self.office.setToolTip('隐藏日常页面插图')
+        header.addWidget(self.office)
+        options=QToolButton()
+        options.setText('更多 ▾')
+        options.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        menu=QMenu(options)
+        menu.addAction('校对当前感受',self.calibrate)
+        menu.addAction('手机亮屏提醒与配对',self.pair_phone)
+        audio=menu.addAction('工作日 08:00–18:00 自动静音')
+        audio.setCheckable(True)
+        audio.setChecked(hub.db.get('work_audio_enabled',True))
+        audio.toggled.connect(self.set_scheduled_mute)
+        options.setMenu(menu)
+        header.addWidget(options)
+        box.addLayout(header)
+
+        overview,overview_layout=card('当前安排')
+        self.plan=QLabel()
+        self.plan.setObjectName('cardTitle')
+        self.plan.setWordWrap(True)
+        overview_layout.addWidget(self.plan)
+        self.state=QLabel()
+        self.state.setWordWrap(True)
+        self.state.setObjectName('muted')
+        overview_layout.addWidget(self.state)
+        box.addWidget(overview)
+
+        continuation,actions=card('接下来')
+        self.next=QLabel()
+        self.next.setWordWrap(True)
+        actions.addWidget(self.next)
+        row=QHBoxLayout()
+        self.primary=button('开始',self.primary_action,row,True)
+        button('接续笔记',self.note,row)
+        row.addStretch()
+        actions.addLayout(row)
+        box.addWidget(continuation)
+
+        row=QHBoxLayout()
+        button('工作专注',lambda:self.launch('工作'),row)
+        button('学习专注',lambda:self.launch('学习'),row)
+        button('下班结算与休息',self.afterwork,row)
+        row.addStretch()
+        box.addLayout(row)
+        self.weekly_link=button('本周行动',lambda:hub.navigate.emit('weekly'),box)
         self.companion=QLabel()
         self.companion.setWordWrap(True)
+        self.companion.hide()
         box.addWidget(self.companion)
         hub.feedback.connect(self.role_message)
-        self.primary=button('开始',self.primary_action,box,True)
-        self.plan=QLabel()
-        self.state=QLabel()
-        self.next=QLabel()
-        for label in (self.plan,self.state,self.next):
-            label.setWordWrap(True)
-            box.addWidget(label)
-        row=QHBoxLayout()
-        box.addLayout(row)
-        button('继续工作',lambda:self.launch('工作'),row,True)
-        button('从学习断点开始',lambda:self.launch('学习'),row)
-        button('学习卡住了',self.help_study,row)
-        row=QHBoxLayout()
-        box.addLayout(row)
-        button('留下接续笔记',self.note,row)
-        button('下班结算与休息',self.afterwork,row)
-        button('校对当前感受',self.calibrate,row)
-        self.weekly_link=button('本周行动',lambda:hub.navigate.emit('weekly'),box)
-        self.office=QCheckBox('办公模式 · 隐藏生活插图')
-        box.addWidget(self.office)
         from ..modules.phone_link import PhoneLink
         self.phone=PhoneLink(hub.db)
         hub.closed.connect(self.phone.stop)
-        button('手机亮屏提醒 · 局域网连接',self.pair_phone,box)
         if hub.db.get('phone_enabled',False):
             try:self.phone.start()
             except (OSError,ValueError):pass
@@ -86,6 +115,7 @@ class MomentPage(QWidget):
         names={r[0]:r[1] for r in list_roles(self.hub.root)}
         line=names.get(role,role)+'  ·  '+text
         self.companion.setText(line)
+        self.companion.show()
         if self.window_owner and hasattr(self.window_owner,'footer'):
             from PySide6.QtCore import Qt
             footer=self.window_owner.footer
@@ -129,18 +159,19 @@ class MomentPage(QWidget):
         active_week=self.hub.weekly.active()
         self.weekly_link.setVisible(bool(active_week))
         if active_week:self.weekly_link.setText('本周行动 · '+active_week[0]['minimum']+(' 等 '+str(len(active_week))+' 项' if len(active_week)>1 else ''))
-        self.plan.setText(now.strftime('%m 月 %d 日   %H:%M')+'     '+current_plan(self.hub.db,now))
         current=current_plan(self.hub.db,now)
-        in_focus=self.hub.focus.status()['state']!='idle'
+        self.plan.setText(now.strftime('%m 月 %d 日   %H:%M')+'     '+current)
+        active=self.hub.focus.status()
+        in_focus=active['state']!='idle'
         if in_focus:self.intent='focus'
-        elif self.hub.recovery.status()['active']:self.intent='rest'
+        elif self.hub.recovery.status()['active'] or any(k in current for k in ('睡眠窗口','准备睡觉','安静入睡')):
+            self.intent='rest'
         elif any(k in current for k in ('学习','CPA','练习','复现')):self.intent='study'
         elif any(k in current for k in ('力量','有氧','运动','步行')):self.intent='exercise'
         elif now.weekday()<5 and 8<=now.hour<18 and current=='自由安排':self.intent='work'
         else:self.intent='plan'
         self.primary.setText({'work':'接上手头工作','study':'先学五分钟','rest':'进入安静休息','exercise':'打开运动记录','focus':'回到正在进行的专注','plan':'打开今天的安排'}[self.intent])
         a=self.hub.attention.status()
-        active=self.hub.focus.status()
         self.state.setText(f"视疲劳估计 {a['eye']:.0f}%   ·   专注 {a['focus']:.0f}   ·   {a['source']}"+('   ·   '+active.get('label','') if active['state']!='idle' else ''))
         note=self.hub.db.get('continue_note','') or self.hub.work.day_note()
         work=self.hub.work.suggest()
@@ -151,7 +182,12 @@ class MomentPage(QWidget):
             uid=self.hub.db.get('last_study_unit','')
             unit=next((r for r in self.hub.learning.notebook_rows() if r['id']==uid),None)
             if unit:hint=unit['title']+(' · '+unit['questions'][:100] if unit.get('questions') else '')
-        self.next.setText('接下来   '+(note or hint)+('\n系统静音未生效：'+self.audio_error if self.audio_error else ''))
+        if self.intent=='rest':
+            hint='可以先离屏休息，稍后再接续手头的事。'
+        elif self.intent=='focus':
+            hint=active.get('label') or '回到当前计时'
+        self.next.setText((hint if self.intent in ('rest','focus') else note or hint)
+                          +('\n系统静音未生效：'+self.audio_error if self.audio_error else ''))
 
     def note(self):
         text,ok=QInputDialog.getMultiLineText(self,'接续笔记','下一步做什么？可附题号、资料或卡住的地方。',self.hub.db.get('continue_note',''))
@@ -260,6 +296,12 @@ class MomentPage(QWidget):
             key='rest-return:'+datetime.now().isoformat()
             h.db.emit(c,key,'rest.returned',{'early':not bool(finished),'minutes':minutes,'remaining':max(0,round(end-monotonic()))})
         self.refresh()
+
+    def set_scheduled_mute(self, enabled):
+        self.hub.db.set('work_audio_enabled',enabled)
+        if not enabled:
+            self.release_audio()
+        self.hub.db.set('work_audio_period',None)
 
     def release_audio(self):
         from ..modules.work_audio import release

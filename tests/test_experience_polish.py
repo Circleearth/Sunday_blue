@@ -30,7 +30,7 @@ class PolishTests(unittest.TestCase):
     clock[0]+=30;a.tick({'state':'running','phase':'focus','category':'工作'} if working else {},active=working,now=now)
   for _ in range(4):
    a.configure({'mode':'screen'});advance(25,True);a.configure({'mode':'rest'});advance(5,False)
-  advance(30,False);self.assertAlmostEqual(a.status()['eye_floor'],2);self.assertAlmostEqual(a.status()['eye'],2);self.assertLess(a.status()['focus_cap'],100)
+  advance(30,False);self.assertAlmostEqual(a.status(now)['eye_floor'],2);self.assertAlmostEqual(a.status(now)['eye'],2);self.assertLess(a.status(now)['focus_cap'],100)
   self.assertEqual(Attention(self.h.db).options()['rest_eye'],3.5)
   tomorrow=now+timedelta(days=1);a.daily_boundary(tomorrow);clock[0]+=30;a.tick(active=False,now=tomorrow);self.assertLess(a.status()['eye'],2)
   self.assertEqual(self.h.life.state.caps(tomorrow.date().isoformat())['focus_cap'],100)
@@ -42,8 +42,8 @@ class PolishTests(unittest.TestCase):
   out=framed(self.cfg.root,'test',self.cfg.root/'missing.png',QSize(60,60));self.assertEqual(out.size(),QSize(60,60));self.assertEqual(path.read_bytes(),before)
   save_selection(self.cfg.root,'other',{'zoom':1});self.assertEqual(selection(self.cfg.root,'test')['path'],str(path));path.unlink();image.reload();self.assertTrue(image.pix.isNull())
  def test_reported_form_locks_then_edit_or_nearest_missing(self):
-  from sunday_blue.module_views.life import LifePage
-  yesterday=QDate.currentDate().addDays(-1);prior=yesterday.addDays(-1)
+  from sunday_blue.module_views.life import LifePage,living_date
+  yesterday=living_date().addDays(-1);prior=yesterday.addDays(-1)
   self.h.life.save_daily(yesterday.toString('yyyy-MM-dd'),sleep_start='23:00',sleep_end='07:00')
   page=LifePage(self.h);self.widgets.append(page);page.show();APP.processEvents();self.assertFalse(page.saved_panel.isHidden());self.assertTrue(page.submit_daily.isHidden())
   page.set_daily_saved(False);self.assertFalse(page.submit_daily.isHidden());page.open_missing_daily();self.assertEqual(page.selected_day(),prior.toString('yyyy-MM-dd'))

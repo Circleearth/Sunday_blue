@@ -6,6 +6,9 @@ def synchronize(db, now=None, endpoint=None):
     working=now.weekday()<5 and 8<=now.hour<18
     key='work_audio_period'
     previous=db.get(key,None)
+    if not db.get('work_audio_enabled',True):
+        release(db,endpoint)
+        return
     if previous is working or (previous is None and not working):
         return
     if endpoint is None:
@@ -13,10 +16,12 @@ def synchronize(db, now=None, endpoint=None):
         device=AudioUtilities.GetSpeakers()
         if device is None:return
         endpoint=device.EndpointVolume
-    if working:
-        db.set('work_audio_owned',not bool(endpoint.GetMute()))
-    endpoint.SetMute(int(working),None)
-    if not working:db.set('work_audio_owned',False)
+    if working and not endpoint.GetMute():
+        endpoint.SetMute(1,None)
+        db.set('work_audio_owned',True)
+    elif not working and db.get('work_audio_owned',False):
+        endpoint.SetMute(0,None)
+        db.set('work_audio_owned',False)
     db.set(key,working)
 
 

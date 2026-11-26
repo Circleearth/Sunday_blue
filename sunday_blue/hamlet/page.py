@@ -19,6 +19,13 @@ class Bridge:
         token = self.token = secrets.token_hex(32)
 
         class Handler(BaseHTTPRequestHandler):
+            def handle(self):
+                try:
+                    super().handle()
+                except (ConnectionError, TimeoutError):
+                    # Godot can close the connection while switching windows or exiting.
+                    pass
+
             def log_message(self,*args):
                 pass
 
@@ -26,6 +33,7 @@ class Bridge:
                 if self.path!='/village' or not hmac.compare_digest(self.headers.get('Authorization',''),'Bearer '+token):
                     self.send_error(403);return
                 try:
+                    self.connection.settimeout(5)
                     size=int(self.headers.get('Content-Length','0'))
                     if not 0<size<=4096:raise ValueError('无效的请求长度')
                     payload=json.loads(self.rfile.read(size))
@@ -69,13 +77,14 @@ class GameSession(QObject):
         self.hub.changed.emit("work")
 
     def launch(self,extra=(),background=False):
-        self.background=background
         if self.process and self.process.poll() is None:
             if not background:
+                self.background=False
                 from .window import game_window
                 if not game_window(self.process.pid,True):QTimer.singleShot(350,self.reveal)
             return False
         self.close()
+        self.background=background
         root=self.hub.root
         engine=Path(os.environ.get('SUNDAY_GODOT') or root/'runtime/godot/Godot.exe')
         project=root/'assets/hamlet/game'

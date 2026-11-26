@@ -109,7 +109,7 @@ class Transitions(unittest.TestCase):
         self.assertFalse(any(r['id']==child for r in work.tasks()))
         work.undo_trash()
         moment=MomentPage(self.h);self.widgets.append(moment)
-        next(b for b in moment.findChildren(QPushButton) if b.text()=='继续工作').click()
+        next(b for b in moment.findChildren(QPushButton) if b.text()=='工作专注').click()
         self.assertEqual(self.h.focus.status()['task_id'],child)
         self.h.focus.finish()
         self.h.db.set('weekly_plan:0','23:30–次日01:00 · 阅读')
@@ -119,5 +119,10 @@ class Transitions(unittest.TestCase):
         clock[0]+=38*600
         self.assertEqual(game.transact()['state']['floor'],2)
         endpoint=Mock()
+        endpoint.GetMute.return_value=False
         for hour in (8,11,18,19):synchronize(self.h.db,datetime(2026,11,16,hour),endpoint)
         self.assertEqual([call.args[0] for call in endpoint.SetMute.call_args_list],[1,0])
+        endpoint.reset_mock()
+        endpoint.GetMute.return_value=True
+        for hour in (8,18):synchronize(self.h.db,datetime(2026,11,17,hour),endpoint)
+        endpoint.SetMute.assert_not_called()

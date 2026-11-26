@@ -245,6 +245,20 @@ class ProviderTests(Fixture):
         self.assertEqual(len(self.store.messages(sid)),1)
         self.assertEqual(len(self.store.messages(sid,True)),0)
         self.assertIn('摘要',self.store.session(sid)['summary'])
+    def test_truncated_summary_keeps_previous_context_cursor(self):
+        from unittest.mock import patch
+        sid=self.store.create('rui')
+        prior=self.store.add(sid,'user','原始决策')
+        self.store.update(sid,summary='已核对决策',summarized_through=prior)
+        self.store.add(sid,'assistant','新增证据')
+        agent=Agent(self.root,self.config.snapshot(),self.store,sid,True)
+        with patch.object(agent.provider,'complete',return_value=([{'type':'text','text':'不完整'}],{},'max_tokens')):
+            with self.assertRaisesRegex(ValueError,'摘要为空或被截断'):
+                agent._run()
+        session=self.store.session(sid)
+        self.assertEqual((session['summary'],session['summarized_through']),('已核对决策',prior))
+        self.assertEqual(len(self.store.messages(sid)),2)
+
     def test_slash_compact_command_intercepted(self):
         sid=self.store.create('rui');self.store.add(sid,'user','first exchange');self.store.add(sid,'assistant','first reply')
         last=self.store.add(sid,'user','/compact')

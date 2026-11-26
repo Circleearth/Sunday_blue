@@ -79,6 +79,35 @@ class ValleyTests(unittest.TestCase):
         with self.db.connect() as c:
             self.assertEqual(c.execute('SELECT sum(amount) FROM hamlet_ledger').fetchone()[0],s['cash'])
 
+    def test_independent_plot_expansion_and_restart(self):
+        self.act('start','mine')
+        self.advance(35)
+        self.act('start','smelt')
+        self.advance(32)
+        self.act('expand','7')
+        with self.assertRaises(ValueError):
+            self.act('sow','wheat:7')
+        self.assertEqual(self.game.transact()['state']['jobs'][0]['plot'],7)
+        self.game=Village(self.db,lambda:self.wall)
+        self.advance(65)
+        self.assertEqual(self.game.transact()['open_plots'],[0,1,2,7])
+        self.act('sow','wheat:7')
+        self.assertEqual(self.advance(30)['ready'][0]['plot'],7)
+        with self.assertRaises(ValueError):
+            self.act('sow','wheat:3')
+
+    def test_harvest_all_has_one_receipt_and_reuses_crop_rules(self):
+        self.act('sow','wheat:0')
+        self.act('sow','berry:1')
+        self.advance(50)
+        request=uuid.uuid4().hex
+        first=self.act('harvest','all',request)
+        replay=self.act('harvest','all',request)
+        self.assertEqual(first['message'],replay['message'])
+        self.assertEqual((replay['state']['inventory']['wheat'],replay['state']['inventory']['berry']),(4,4))
+        self.assertFalse(replay['state']['ready'])
+        self.assertEqual(replay['availability']['pasture'],'')
+
     def test_legacy_conversion_once(self):
         self.db.set('hamlet.v1',dict(spent=2,coins=1,ore=4,wheat=3,plots=[1,0,0],weapon=2))
         for i in range(2):
@@ -182,3 +211,4 @@ class ValleyTests(unittest.TestCase):
         state=self.game.transact()
         self.assertEqual([j['key'] for j in state['state']['jobs']],['wheat','delve'])
         self.assertEqual(state['work'],9)
+        self.assertEqual(state['state']['jobs'][0]['plot'],2)

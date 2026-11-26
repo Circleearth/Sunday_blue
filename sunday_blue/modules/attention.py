@@ -50,10 +50,12 @@ class Attention:
    except (ValueError,TypeError):raise ValueError('夜间时间请用 HH:mm')
   if o['night_start']==o['night_end']:raise ValueError('夜间开始与结束不能相同')
   self.db.set('attention_options',o);self.anchor=self.clock();self._seconds=0
- def status(self):
-  with self.db.connect() as c:r=dict(c.execute('SELECT * FROM attention_state WHERE id=1').fetchone())
-  with self.db.connect() as c:spent=c.execute('SELECT spent FROM attention_capacity WHERE day=?',(day(),)).fetchone()
-  with self.db.connect() as c:load=c.execute('SELECT minutes FROM eye_daily_load WHERE day=?',(day(),)).fetchone()
+ def status(self, at=None):
+  key=day(at)
+  with self.db.connect() as c:
+   r=dict(c.execute('SELECT * FROM attention_state WHERE id=1').fetchone())
+   spent=c.execute('SELECT spent FROM attention_capacity WHERE day=?',(key,)).fetchone()
+   load=c.execute('SELECT minutes FROM eye_daily_load WHERE day=?',(key,)).fetchone()
   return r|{'eye_floor':min(20,(load[0] if load else 0)*.02),'focus_cap':max(0,100-(spent[0] if spent else 0)/2),'source':self.last_mode,'mode':self.options()['mode']}
  def tick(self,focus=None,active=None,now=None):
   self.new_alert=0
