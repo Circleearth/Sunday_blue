@@ -14,7 +14,7 @@ var orders := ProgressBar.new()
 var workspace_tabs := {}
 var ledger_scroll := ScrollContainer.new()
 var portfolio := ""
-var guide_dialog: AcceptDialog
+var guide_dialog: Window
 var exchange_dialog: ConfirmationDialog
 var sound := AudioStreamPlayer.new()
 var poll := Timer.new()
@@ -173,35 +173,48 @@ func _ready():
 
 func greet():
 	if is_instance_valid(guide_dialog):return
-	var dlg:=AcceptDialog.new()
+	var dlg:=Window.new()
 	guide_dialog=dlg
 	dlg.title="与铃禾交谈"
-	dlg.ok_button_text="回到谷地"
+	dlg.unresizable=true
+	dlg.transient=true
+	dlg.exclusive=true
+	dlg.close_requested.connect(dlg.hide)
+	dlg.window_input.connect(func(event):
+		if event.is_action_pressed("ui_cancel"):
+			dlg.hide())
 	add_child(dlg)
 	var line:="第一季的雾麦很适合喂苔羊。收成到了，我会替你把田地标出来。"
 	if not snapshot.is_empty():
 		if not snapshot.state.ready.is_empty():line="你闻，麦香已经飘过桥了。去田里看看，成熟的那批可以收啦。"
 		elif snapshot.state.floor>1:line="我看见遗迹那头亮了灯。回来时带点矿石，我们可以把下一把短刃做得更趁手。"
+	var pane:=PanelContainer.new()
+	dlg.add_child(pane)
+	pane.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	pane.add_theme_stylebox_override("panel",panel("23332e",12,20))
 	var layout:=HBoxContainer.new()
-	dlg.add_child(layout)
+	layout.add_theme_constant_override("separation",22)
+	pane.add_child(layout)
 	if world_map.sprites.has("keeper_portrait"):
 		var portrait:=TextureRect.new()
 		portrait.texture=world_map.sprites.keeper_portrait
 		portrait.expand_mode=TextureRect.EXPAND_IGNORE_SIZE
 		portrait.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		portrait.custom_minimum_size=Vector2(250,360)
+		portrait.custom_minimum_size=Vector2(240,0)
 		layout.add_child(portrait)
 	var dialogue:=VBoxContainer.new()
 	dialogue.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	dialogue.alignment=BoxContainer.ALIGNMENT_CENTER
-	dialogue.custom_minimum_size.x=270
 	layout.add_child(dialogue)
 	label(dialogue,"铃禾",26,GOLD)
 	label(dialogue,"守谷人",14,SUB)
 	label(dialogue,line,18)
+	var close:=btn(dialogue,"回到谷地",dlg.hide)
+	close.size_flags_horizontal=Control.SIZE_SHRINK_BEGIN
 	dlg.visibility_changed.connect(func():
 		if not dlg.visible:dlg.queue_free())
-	dlg.popup_centered(Vector2i(610,440))
+	dlg.popup_centered(Vector2i(610,402))
+	close.grab_focus()
 
 func setup_sound():
 	var wave:=AudioStreamWAV.new()

@@ -54,7 +54,7 @@ Sunday Blue 是个人 Windows 桌面应用。用番茄钟开启工作和学习�
 
 - 查某个功能的页面、服务和测试，从 [模块索引](docs/MODULE_INDEX.md) 开始。
 - UI 与数据流见 [设计规范](docs/UI_DESIGN_SYSTEM.md)、[架构](docs/ARCHITECTURE.md) 和 [生活与结算](docs/DAILY_EXPERIENCE.md)。
-- 新增插件见 [插件规范](handoff/PLUGIN_SPEC.md)。
+- 新增插件见 [插件规范](handoff/PLUGIN_SPEC.md)。角色辨识特征、立绘验收与英文提示词见 [美术规范](docs/ART_DIRECTION.md)。
 - 跨对话继续工作时，以 Git 当前改动、[交接入口](handoff/HANDOFF.md) 和实际测试结果为准。更新交接时写清用户最新决定、涉及文件、验证结果及未验证范围。
 
 ## 验证与构建

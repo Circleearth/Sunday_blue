@@ -26,7 +26,7 @@
     "ratio": "2:3",
     "transparent": true,
     "placement": "成年陪伴角色居中，完整半身或立绘；四周留白，文字由界面显示。",
-    "positive": "Refined Japanese visual novel character illustration, an adult woman companion with warm composed expression, elegant casual cream cardigan and muted blue skirt, relaxed welcoming pose, hands naturally visible, soft even lighting, clean cel shading, centered three quarter body composition, generous empty margins, transparent background, crisp high resolution silhouette.",
-    "negative": "child, text, watermark, logo, extra fingers, missing fingers, distorted hands, extra limbs, malformed anatomy, exaggerated proportions, cluttered background, harsh shadows, blurry edges"
+    "positive": "Refined Japanese visual-novel illustration of an adult woman hosting a daily recap, short wavy dark-blue hair with a side part, deep brown skin with a warm copper undertone, wide-set crescent-shaped gray-brown eyes, a dusting of freckles across the nose, and a relaxed welcoming smile. Softly fitted cream cardigan, muted blue skirt, small circular brass lapel pin, naturally relaxed shoulders with a slight collarbone highlight. Unforced adult poise, natural neck, shoulder, arm and wrist proportions, calm even light, clean cel shading, centered half-body composition, clear face at small UI scale, generous margins, transparent background.",
+    "negative": "generic shared face, childlike anatomy, crossed eyes, warped shoulders, twisted wrists, extra or fused fingers, duplicate limbs, exaggerated proportions, gratuitous exposure, cluttered background, harsh shadows, blurry silhouette, watermark, text"
   }
 }

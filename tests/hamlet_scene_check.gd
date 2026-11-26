@@ -79,10 +79,27 @@ func run():
 		push_error("Keeper portrait dialogue failed to open")
 		quit(12)
 		return
-	scene.guide_dialog.hide()
+	var portraits:Array[Node]=scene.guide_dialog.find_children("*","TextureRect",true,false)
+	if portraits.is_empty() or (portraits[0] as TextureRect).texture==null:
+		push_error("Keeper portrait texture was not rendered")
+		quit(13)
+		return
+	var view_file:=OS.get_environment("SUNDAY_VALLEY_CAPTURE")
+	if view_file!="":
+		await RenderingServer.frame_post_draw
+		root.get_texture().get_image().save_png(view_file.get_basename()+"-portrait.png")
+	var actions:Array[Node]=scene.guide_dialog.find_children("*","Button",true,false)
+	if actions.is_empty() or scene.guide_dialog.size.y>=root.size.y:
+		push_error("Keeper dialogue does not fit the viewport")
+		quit(14)
+		return
+	(actions[0] as Button).pressed.emit()
+	if scene.guide_dialog.visible:
+		push_error("Keeper dialogue could not be dismissed")
+		quit(15)
+		return
 	scene.set_place("dungeon")
 	await create_timer(.2).timeout
-	var view_file:=OS.get_environment("SUNDAY_VALLEY_CAPTURE")
 	if view_file!="":
 		await RenderingServer.frame_post_draw
 		root.get_texture().get_image().save_png(view_file)
